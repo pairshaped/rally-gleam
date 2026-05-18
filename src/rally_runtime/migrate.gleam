@@ -21,6 +21,7 @@ pub type MigrationError {
   MigrationFailed(filename: String, message: String)
   VersionUpdateFailed(message: String)
   FilenameParseFailed(filename: String)
+  SchemaTableCorrupted(row_count: Int)
 }
 
 pub fn error_to_string(error: MigrationError) -> String {
@@ -41,6 +42,11 @@ pub fn error_to_string(error: MigrationError) -> String {
       "Failed to update migration version: " <> message
     FilenameParseFailed(filename:) ->
       "Invalid migration filename (expected NNN_name.sql): " <> filename
+    SchemaTableCorrupted(row_count:) ->
+      "schema_migrations table has "
+      <> int.to_string(row_count)
+      <> " rows (expected 0 or 1). Inspect the table and resolve manually; "
+      <> "Rally will not silently reset to version 0."
   }
 }
 
@@ -103,7 +109,7 @@ fn get_current_version(
 
   case
     sqlight.query(
-      "SELECT last_migration FROM schema_migrations LIMIT 1",
+      "SELECT last_migration FROM schema_migrations",
       on: conn,
       with: [],
       expecting: decoder,
@@ -118,14 +124,7 @@ fn get_current_version(
       |> result.map_error(fn(e) { VersionInitFailed(message: e.message) })
       |> result.map(fn(_) { 0 })
     }
-    Ok(_multiple) -> {
-      let _cleanup =
-        sqlight.exec(
-          "DELETE FROM schema_migrations; INSERT INTO schema_migrations (last_migration) VALUES (0);",
-          on: conn,
-        )
-      Ok(0)
-    }
+    Ok(rows) -> Error(SchemaTableCorrupted(row_count: list.length(rows)))
     Error(e) -> Error(VersionQueryFailed(message: e.message))
   }
 }
