@@ -575,6 +575,10 @@ fn generate_for_config(config: ScanConfig) -> Result(Nil, RallyError) {
       })
     option.None -> Ok(option.None)
   })
+  use _ <- result.try(check_json_client_context_compatibility(
+    contracts,
+    config.protocol,
+  ))
   let raw_codec_files =
     codec.generate(
       contracts,
@@ -1251,6 +1255,52 @@ fn last_module_segment(module_path: String) -> String {
   case string.split_once(module_path, "pages/") {
     Ok(#(_, rest)) -> rest
     _ -> module_path
+  }
+}
+
+/// Refuse to generate a JSON-protocol client when any page references
+/// `send_to_client_context`. The JSON encoding path is not implemented yet
+/// (tracked in rally-au0s) and the runtime panic shim in the generated
+/// `rally_runtime/effect` is a backstop, not an acceptable failure mode.
+fn check_json_client_context_compatibility(
+  contracts: List(#(types.ScannedRoute, types.PageContract)),
+  protocol: String,
+) -> Result(Nil, RallyError) {
+  check_json_client_context_compatibility_result(contracts, protocol)
+  |> result.map_error(RallyError)
+}
+
+/// Test-facing entry point for the JSON / client-context compatibility check.
+/// Returns the rendered error message rather than the private RallyError so
+/// tests can import it without touching internals.
+pub fn check_json_client_context_compatibility_result(
+  contracts: List(#(types.ScannedRoute, types.PageContract)),
+  protocol: String,
+) -> Result(Nil, String) {
+  case protocol {
+    "json" -> {
+      let offenders =
+        list.filter_map(contracts, fn(pair) {
+          let #(route, contract) = pair
+          case string.contains(contract.source, "send_to_client_context") {
+            True -> Ok(route.module_path)
+            False -> Error(Nil)
+          }
+        })
+      case offenders {
+        [] -> Ok(Nil)
+        _ ->
+          Error(
+            "JSON protocol does not yet support client-context messages. "
+            <> "These pages call send_to_client_context but the JSON encoder "
+            <> "is not implemented (tracked in rally-au0s):\n  - "
+            <> string.join(offenders, "\n  - ")
+            <> "\nEither switch the namespace to protocol = \"etf\" or remove "
+            <> "the send_to_client_context calls from these pages.",
+          )
+      }
+    }
+    _ -> Ok(Nil)
   }
 }
 
