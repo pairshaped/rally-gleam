@@ -10,6 +10,7 @@
 
 import argus
 import gleam/crypto
+import gleam/result
 import gleam/string
 
 const login_code_alphabet = "23456789abcdefghjkmnpqrstuvwxyz"
@@ -42,11 +43,22 @@ pub type Cookie {
 ///
 /// This is intended for secrets that will be checked later, such as passwords
 /// or short login codes. It uses Argus with a fresh salt.
+///
+/// Panics only on Argus misconfiguration (e.g. invalid memory_cost on a
+/// freshly loaded NIF). Application code that wants to handle that case
+/// explicitly should use `try_hash` instead.
 pub fn hash(secret secret: String) -> String {
-  let assert Ok(hashes) =
-    argus.hasher()
-    |> argus.hash(secret, argus.gen_salt())
-  hashes.encoded_hash
+  let assert Ok(hashed) = try_hash(secret:)
+  hashed
+}
+
+/// Hash an auth secret for storage, returning the underlying Argus error
+/// rather than panicking. Use this when the caller needs to log or react to
+/// a hashing failure (e.g. observability around deploys).
+pub fn try_hash(secret secret: String) -> Result(String, argus.HashError) {
+  argus.hasher()
+  |> argus.hash(secret, argus.gen_salt())
+  |> result.map(fn(hashes) { hashes.encoded_hash })
 }
 
 /// Check a submitted auth secret against a stored hash.
@@ -77,8 +89,20 @@ pub fn generate_login_code() -> String {
 ///
 /// The scope is usually an email address or other lookup value. Rally
 /// normalizes the scope and code before hashing.
+///
+/// Panics only on Argus misconfiguration. Use `try_hash_login_code` for
+/// explicit error handling.
 pub fn hash_login_code(scope scope: String, code code: String) -> String {
   hash(secret: login_code_secret(scope:, code:))
+}
+
+/// Hash a scoped login code, returning the underlying Argus error rather
+/// than panicking.
+pub fn try_hash_login_code(
+  scope scope: String,
+  code code: String,
+) -> Result(String, argus.HashError) {
+  try_hash(secret: login_code_secret(scope:, code:))
 }
 
 /// Check a submitted login code against a stored hash.

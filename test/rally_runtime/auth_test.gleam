@@ -60,3 +60,22 @@ pub fn login_code_verify_rejects_wrong_code_test() {
   auth.verify_login_code(stored:, scope: "test@example.com", code: "xyz89")
   |> should.be_false
 }
+
+pub fn try_hash_returns_ok_on_normal_input_test() {
+  let assert Ok(hashed) = auth.try_hash(secret: "a secret")
+
+  hashed
+  |> string.starts_with("$argon2")
+  |> should.be_true
+
+  auth.verify(stored: hashed, secret: "a secret")
+  |> should.be_true
+}
+
+pub fn try_hash_login_code_returns_ok_and_verifies_test() {
+  let assert Ok(stored) =
+    auth.try_hash_login_code(scope: "test@example.com", code: "abc23")
+
+  auth.verify_login_code(stored:, scope: "test@example.com", code: "abc23")
+  |> should.be_true
+}
