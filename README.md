@@ -134,9 +134,9 @@ The `rally/internal/...` modules are codegen implementation. App code should tre
 
 ### Auth helpers
 
-`rally_runtime/auth` contains the shared types Rally expects for page auth, plus helpers for common auth flows. `auth.hash` stores passwords or other submitted secrets with Argus. `auth.verify` checks a submitted secret against a stored hash.
+`rally_runtime/auth` contains the shared types Rally expects for page auth, plus helpers for common auth flows. `auth.hash` stores passwords or other submitted secrets with PBKDF2-SHA256 using Erlang/OTP crypto. `auth.verify` checks a submitted secret against a stored hash.
 
-For short login-code flows, use `auth.generate_login_code`, then store `auth.hash_login_code(scope:, code:)`. Later, check the submitted code with `auth.verify_login_code(stored:, scope:, code:)`. The scope is usually an email address or another app-owned lookup value. Rally trims and lowercases both the scope and the code before hashing.
+For short login-code flows, use `auth.generate_login_code`, then store `auth.hash_login_code(scope:, code:, secret_key:)`. Later, check the submitted code with `auth.verify_login_code(stored:, scope:, code:, secret_key:)`. The scope is usually an email address or another app-owned lookup value. Rally trims and lowercases both the scope and the code before hashing. The `secret_key` should be a stable app secret that is not stored in the database.
 
 ## Generated files
 
@@ -174,54 +174,6 @@ gleam test
 ```
 
 Rally depends on [Libero](https://hexdocs.pm/libero/). App projects should add both packages with `gleam add rally libero`.
-
-## Troubleshooting
-
-### Jargon fails to link on macOS
-
-Rally currently depends on [Argus](https://hexdocs.pm/argus/) for auth secret hashing. Argus depends on Jargon, which builds an Erlang NIF. That means every Rally app may build Jargon as part of `gleam build`. On macOS, fresh builds can fail if your shell already has `LDFLAGS` set, because Jargon may skip the linker flags Erlang NIFs need.
-
-A fix is open in [Pevensie/jargon#7](https://github.com/Pevensie/jargon/pull/7). Until that lands in a Jargon release, Rally apps on macOS may need to add the missing NIF linker flag themselves.
-
-The error usually mentions unresolved `enif_*` symbols:
-
-```text
-Undefined symbols for architecture arm64:
-  "_enif_alloc", referenced from:
-  "_enif_free", referenced from:
-  "_enif_get_uint", referenced from:
-```
-
-For one-off commands, append `-undefined dynamic_lookup` to `LDFLAGS`:
-
-```sh
-LDFLAGS="-undefined dynamic_lookup" gleam build
-```
-
-For test runs, use the same flag:
-
-```sh
-LDFLAGS="-undefined dynamic_lookup" gleam test
-```
-
-If your app already needs linker flags, keep them and append the Jargon workaround:
-
-```sh
-LDFLAGS="-L/opt/homebrew/opt/postgresql@16/lib -undefined dynamic_lookup" gleam build
-```
-
-For project scripts, load your `.env` first, then add the workaround only on macOS:
-
-```sh
-if [ "$(uname -s)" = "Darwin" ]; then
-  case " ${LDFLAGS:-} " in
-    *" -undefined dynamic_lookup "*) ;;
-    *) export LDFLAGS="${LDFLAGS:+$LDFLAGS }-undefined dynamic_lookup" ;;
-  esac
-fi
-```
-
-This bug is also tracked in [Pevensie/jargon#8](https://github.com/Pevensie/jargon/issues/8).
 
 ## Influences
 
