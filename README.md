@@ -169,6 +169,41 @@ gleam test
 
 Rally depends on [Libero](https://hexdocs.pm/libero/). App projects should add both packages with `gleam add rally libero`.
 
+## Troubleshooting
+
+### Jargon fails to link on macOS
+
+Rally currently depends on [Argus](https://hexdocs.pm/argus/) for auth secret hashing. Argus depends on Jargon, which builds an Erlang NIF. That means every Rally app may build Jargon as part of `gleam build`. On macOS, fresh builds can fail if your shell already has `LDFLAGS` set, because Jargon may skip the linker flags Erlang NIFs need.
+
+The error usually mentions unresolved `enif_*` symbols:
+
+```text
+Undefined symbols for architecture arm64:
+  "_enif_alloc", referenced from:
+  "_enif_free", referenced from:
+  "_enif_get_uint", referenced from:
+```
+
+Workaround:
+
+```sh
+LDFLAGS="-undefined dynamic_lookup" gleam build
+```
+
+For test runs:
+
+```sh
+LDFLAGS="-undefined dynamic_lookup" gleam test
+```
+
+If you need your existing linker flags too, include them:
+
+```sh
+LDFLAGS="-L/opt/homebrew/opt/postgresql@16/lib -undefined dynamic_lookup" gleam build
+```
+
+This is tracked upstream in [Pevensie/jargon#8](https://github.com/Pevensie/jargon/issues/8).
+
 ## Influences
 
 - [Lamdera](https://lamdera.com): explicit server handler types as the contract, TEA on both sides

@@ -1,14 +1,14 @@
-import datetime
 import generated/sql/auth_sql
 import gleam/list
 import gleam/string
+import helpers/datetime
 import lustre/attribute as attr
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
-import password
 import public/client_context.{type ClientContext, SignedIn, SignedOut, User}
+import rally_runtime/auth
 import rally_runtime/effect as rally_effect
 import server_context.{type ServerContext}
 
@@ -232,7 +232,7 @@ pub fn server_update_settings(
               case string.length(msg.password) < 8 {
                 True -> Error(["Password must be at least 8 characters"])
                 False -> {
-                  let hash = password.hash(password: msg.password)
+                  let hash = auth.hash(secret: msg.password)
                   case
                     auth_sql.update_user_with_password(
                       db: server_context.db,

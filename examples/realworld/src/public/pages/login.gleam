@@ -1,15 +1,15 @@
-import datetime
 import generated/sql/auth_sql
 import gleam/list
 import gleam/option.{Some}
 import gleam/string
+import helpers/datetime
 import lustre/attribute as attr
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
-import password
 import public/client_context.{type ClientContext, SignedIn, User}
+import rally_runtime/auth
 import rally_runtime/effect as rally_effect
 import server_context.{type ServerContext}
 
@@ -135,9 +135,7 @@ pub fn server_login(
         auth_sql.find_user_by_email(db: server_context.db, email: msg.email)
       {
         Ok([user]) -> {
-          case
-            password.verify(password: msg.password, stored: user.password_hash)
-          {
+          case auth.verify(stored: user.password_hash, secret: msg.password) {
             True -> {
               let session_id = rally_effect.get_ws_session()
               let now = datetime.now_unix()
