@@ -1,5 +1,5 @@
 import gleeunit/should
-import slug
+import helpers/slug
 
 pub fn simple_title_test() {
   slug.from_title("Hello World")
