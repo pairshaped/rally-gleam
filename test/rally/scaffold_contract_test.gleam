@@ -119,14 +119,12 @@ pub fn scaffold_uses_app_env_and_no_client_context_page_arity_test() {
   |> should.equal(True)
 
   script
-  |> string.contains(
-    "import { main } from \"/_build/client/generated/app.mjs\"",
-  )
+  |> string.contains("{{rally_client_script}}")
   |> should.equal(True)
 
   script
-  |> string.contains("main();")
-  |> should.equal(True)
+  |> string.contains("/_build/client/generated/app.mjs")
+  |> should.equal(False)
 
   script
   |> string.contains("const client_build_root")
@@ -614,6 +612,64 @@ pub fn ssr_app_marker_preserves_tag_order_test() {
   output
   |> string.contains("let id_dq_spaced = \"id = \\\"app\\\"\"")
   |> should.equal(True)
+}
+
+pub fn ssr_replaces_client_script_marker_test() {
+  let output =
+    ssr_shell_output(
+      "<html><head></head><body><div id=\"app\"></div>{{rally_client_script}}</body></html>",
+    )
+
+  output
+  |> string.contains("{{rally_client_script}}")
+  |> should.equal(False)
+
+  output
+  |> string.contains("/_build/client/generated/app.mjs")
+  |> should.equal(True)
+}
+
+pub fn ssr_injects_client_script_when_shell_omits_marker_test() {
+  let output =
+    ssr_shell_output(
+      "<html><head></head><body><div id=\"app\"></div></body></html>",
+    )
+
+  output
+  |> string.contains("/_build/client/generated/app.mjs")
+  |> should.equal(True)
+}
+
+pub fn ssr_rewrites_stale_generated_app_path_test() {
+  let output =
+    ssr_shell_output(
+      "<html><head></head><body><div id=\"app\"></div><script type='module'>import { main } from '/_build/public/generated/app.mjs'; main();</script></body></html>",
+    )
+
+  output
+  |> string.contains("/_build/public/generated/app.mjs")
+  |> should.equal(False)
+
+  output
+  |> string.contains("/_build/client/generated/app.mjs")
+  |> should.equal(True)
+}
+
+fn ssr_shell_output(shell_html: String) -> String {
+  ssr_handler.generate(
+    [],
+    False,
+    False,
+    "server_context",
+    "generated/router",
+    shell_html,
+    "generated/public/rpc_atoms",
+    option.None,
+    option.None,
+    option.None,
+    wire_import_module: "generated/public/protocol_wire",
+    protocol: "etf",
+  )
 }
 
 fn test_scan_config() -> ScanConfig {

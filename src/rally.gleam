@@ -440,7 +440,7 @@ fn generate_for_config(config: ScanConfig) -> Result(Nil, RallyError) {
   let shell_html = case simplifile.read(config.shell_file) {
     Ok(html) -> html
     _ ->
-      "<!DOCTYPE html>\n<html>\n<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>\n<body><div id='app'></div><script type='module' src='/client.js'></script></body>\n</html>"
+      "<!DOCTYPE html>\n<html>\n<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>\n<body><div id='app'></div>{{rally_client_script}}</body>\n</html>"
   }
 
   // Walk discovered types and build push dispatch tables

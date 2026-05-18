@@ -736,10 +736,7 @@ fn shell_html() -> String {
 </head>
 <body>
   <div id=\"app\"></div>
-  <script type=\"module\">
-    import { main } from \"/_build/client/generated/app.mjs\";
-    main();
-  </script>
+  {{rally_client_script}}
 </body>
 </html>
 "

@@ -88,13 +88,11 @@ pub fn init_project_writes_hex_scaffold_test() {
 
   let assert Ok(shell) = simplifile.read(dir <> "/src/public/shell.html")
   shell
-  |> string.contains(
-    "import { main } from \"/_build/client/generated/app.mjs\"",
-  )
+  |> string.contains("{{rally_client_script}}")
   |> should.be_true()
   shell
-  |> string.contains("main();")
-  |> should.be_true()
+  |> string.contains("/_build/client/generated/app.mjs")
+  |> should.be_false()
 
   let assert Ok(readme) = simplifile.read(dir <> "/README.md")
   readme

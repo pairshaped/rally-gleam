@@ -8,10 +8,17 @@
 
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/regexp
 import gleam/string
 import rally/internal/types.{
   type AuthConfig, type PageContract, type ScannedRoute, AuthConfig,
 }
+
+const client_script_marker = "{{rally_client_script}}"
+
+const client_script_path = "/_build/client/generated/app.mjs"
+
+const generated_app_path_pattern = "(['\"])/_build/[^'\"]+/generated/app\\.mjs(['\"])"
 
 pub fn generate(
   page_contracts page_contracts: List(#(ScannedRoute, PageContract)),
@@ -215,8 +222,9 @@ fn context_script(client_context: client_context.ClientContext) -> String {
 
   let dark_mode_script =
     "<script>(function(){var c=document.cookie;if(c.includes('__rally_dark_mode=1')||(!c.includes('__rally_dark_mode=')&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}})()</script>"
+  let shell_with_client = ensure_client_script(shell_html)
   let shell_with_dark =
-    string.replace(shell_html, "</head>", dark_mode_script <> "</head>")
+    string.replace(shell_with_client, "</head>", dark_mode_script <> "</head>")
   let escaped_shell =
     shell_with_dark
     |> string.replace("\\", "\\\\")
@@ -412,6 +420,48 @@ fn generate_layout_imports(
       _ -> string.join(imports, "\n") <> "\n"
     }
   }
+}
+
+fn ensure_client_script(shell_html: String) -> String {
+  let shell_html = rewrite_generated_app_paths(shell_html)
+  case string.contains(shell_html, client_script_marker) {
+    True ->
+      string.replace(shell_html, client_script_marker, client_script_tag())
+    False ->
+      case string.contains(shell_html, client_script_path) {
+        True -> shell_html
+        False -> inject_client_script(shell_html)
+      }
+  }
+}
+
+fn rewrite_generated_app_paths(shell_html: String) -> String {
+  case regexp.from_string(generated_app_path_pattern) {
+    Ok(pattern) ->
+      regexp.match_map(pattern, in: shell_html, with: fn(match) {
+        case match.submatches {
+          [Some(open_quote), Some(close_quote)] ->
+            open_quote <> client_script_path <> close_quote
+          _ -> match.content
+        }
+      })
+    Error(_) -> shell_html
+  }
+}
+
+fn inject_client_script(shell_html: String) -> String {
+  case string.contains(shell_html, "</body>") {
+    True ->
+      string.replace(shell_html, "</body>", client_script_tag() <> "</body>")
+    False -> shell_html <> client_script_tag()
+  }
+}
+
+fn client_script_tag() -> String {
+  "<script type=\"module\">
+    import { main } from \"" <> client_script_path <> "\";
+    main();
+  </script>"
 }
 
 fn generate_load_arms(

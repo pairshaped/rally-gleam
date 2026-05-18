@@ -16,7 +16,7 @@ pub fn handle_request(_route: router.Route) -> response.Response(ResponseData) {
 
 fn serve_html_shell() -> response.Response(ResponseData) {
   let html =
-    "<!DOCTYPE html><html><head><meta charset='utf-8'><script>(function(){var c=document.cookie;if(c.includes('__rally_dark_mode=1')||(!c.includes('__rally_dark_mode=')&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}})()</script></head><body><div id='app'></div><script type='module' src='/client.js'></script></body></html>\n"
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><script>(function(){var c=document.cookie;if(c.includes('__rally_dark_mode=1')||(!c.includes('__rally_dark_mode=')&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}})()</script></head><body><div id='app'></div><script type=\"module\">\n    import { main } from \"/_build/client/generated/app.mjs\";\n    main();\n  </script></body></html>\n"
     <> browser_env.script()
   response.new(200)
   |> response.set_header("content-type", "text/html")
