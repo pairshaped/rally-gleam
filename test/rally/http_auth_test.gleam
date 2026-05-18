@@ -46,6 +46,7 @@ fn make_contract(
   has_page_auth has_page_auth: Bool,
   page_auth_required page_auth_required: Bool,
   has_authorize has_authorize: Bool,
+  has_fallible_init has_fallible_init: Bool,
 ) -> PageContract {
   PageContract(
     model_variants: [],
@@ -65,6 +66,7 @@ fn make_contract(
     has_page_auth:,
     page_auth_required:,
     has_authorize:,
+    has_fallible_init:,
   )
 }
 
@@ -93,6 +95,7 @@ pub fn http_auth_imports_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -119,6 +122,7 @@ pub fn http_auth_resolve_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -146,6 +150,7 @@ pub fn http_auth_500_on_error_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -173,6 +178,7 @@ pub fn http_auth_from_session_identity_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -199,6 +205,7 @@ pub fn http_auth_dispatch_gets_identity_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -230,6 +237,7 @@ pub fn http_auth_hostname_in_signature_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -258,6 +266,7 @@ pub fn http_no_auth_unchanged_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -321,6 +330,7 @@ pub fn http_auth_generates_handler_page_info_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
     #(
@@ -329,6 +339,7 @@ pub fn http_auth_generates_handler_page_info_test() {
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -382,6 +393,7 @@ pub fn http_auth_json_handler_page_info_uses_type_string_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -410,6 +422,7 @@ pub fn http_auth_required_page_returns_401_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -438,6 +451,7 @@ pub fn http_auth_optional_page_dispatches_test() {
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -469,6 +483,7 @@ pub fn http_auth_optional_page_with_authorize_returns_403_test() {
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -507,6 +522,7 @@ pub fn http_auth_mixed_required_and_optional_pages_keep_per_page_policy_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
     #(
@@ -515,6 +531,7 @@ pub fn http_auth_mixed_required_and_optional_pages_keep_per_page_policy_test() {
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -546,6 +563,7 @@ pub fn http_auth_authorize_false_returns_403_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -581,6 +599,7 @@ pub fn http_auth_unknown_variant_returns_400_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -612,6 +631,7 @@ pub fn http_auth_malformed_body_returns_400_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -640,6 +660,7 @@ pub fn http_auth_uses_rpc_identity_from_protocol_wire_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -670,6 +691,7 @@ pub fn http_auth_json_dispatches_through_protocol_wire_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -717,6 +739,7 @@ pub fn http_auth_imports_protocol_wire_facade_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -751,6 +774,7 @@ pub fn http_handler_no_auth_snapshot_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -776,6 +800,7 @@ pub fn http_handler_with_auth_required_snapshot_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -804,6 +829,7 @@ pub fn http_handler_with_auth_and_authorize_snapshot_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
     #(
@@ -812,6 +838,7 @@ pub fn http_handler_with_auth_and_authorize_snapshot_test() {
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -866,6 +893,7 @@ pub fn http_auth_distinct_hashes_for_same_name_different_modules_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
     #(
@@ -874,6 +902,7 @@ pub fn http_auth_distinct_hashes_for_same_name_different_modules_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]

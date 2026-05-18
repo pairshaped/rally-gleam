@@ -165,5 +165,9 @@ pub type PageContract {
     page_auth_required: Bool,
     /// Page exports pub fn authorize (role/permission-level access control).
     has_authorize: Bool,
+    /// init returns Result(#(Model, Effect(Msg)), Nil) instead of #(Model, Effect(Msg)).
+    /// Pages that parse route params (e.g., int.parse on an id) return Error(Nil)
+    /// for invalid params, which the generated dispatch renders as 404.
+    has_fallible_init: Bool,
   )
 }

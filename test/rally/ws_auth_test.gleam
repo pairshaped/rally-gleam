@@ -45,6 +45,7 @@ fn make_contract(
   has_page_auth has_page_auth: Bool,
   page_auth_required page_auth_required: Bool,
   has_authorize has_authorize: Bool,
+  has_fallible_init has_fallible_init: Bool,
 ) -> PageContract {
   PageContract(
     model_variants: [],
@@ -64,6 +65,7 @@ fn make_contract(
     has_page_auth:,
     page_auth_required:,
     has_authorize:,
+    has_fallible_init:,
   )
 }
 
@@ -100,6 +102,7 @@ pub fn ws_no_auth_on_init_has_hostname_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -126,6 +129,7 @@ pub fn ws_no_auth_does_not_call_resolve_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -155,6 +159,7 @@ pub fn ws_auth_on_init_resolves_identity_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -182,6 +187,7 @@ pub fn ws_auth_on_init_calls_from_session_with_identity_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -208,6 +214,7 @@ pub fn ws_auth_on_init_stores_auth_state_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -241,6 +248,7 @@ pub fn ws_page_init_required_emits_auth_redirect_error_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -271,6 +279,7 @@ pub fn ws_page_init_authorize_false_emits_forbidden_error_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -307,6 +316,7 @@ pub fn ws_page_init_optional_with_authorize_emits_forbidden_error_test() {
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -347,6 +357,7 @@ pub fn ws_auth_page_identifiers_match_page_init_variant_names_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -402,6 +413,7 @@ pub fn ws_page_init_no_auth_still_updates_state_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -435,6 +447,7 @@ pub fn ws_auth_check_page_authorize_always_defined_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -461,6 +474,7 @@ pub fn ws_auth_rpc_dispatches_with_identity_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -499,6 +513,7 @@ pub fn ws_auth_rpc_generates_handler_page_info_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -535,6 +550,7 @@ pub fn ws_auth_json_handler_page_info_uses_type_string_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -563,6 +579,7 @@ pub fn ws_auth_rpc_uses_protocol_wire_identity_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -593,6 +610,7 @@ pub fn ws_auth_rpc_enforces_required_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -624,6 +642,7 @@ pub fn ws_auth_rpc_enforces_authorize_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -663,6 +682,7 @@ pub fn ws_auth_rpc_mixed_required_and_optional_pages_keep_per_page_policy_test()
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
     #(
@@ -671,6 +691,7 @@ pub fn ws_auth_rpc_mixed_required_and_optional_pages_keep_per_page_policy_test()
         has_page_auth: True,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -701,6 +722,7 @@ pub fn ws_auth_rpc_unknown_variant_fails_closed_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -731,6 +753,7 @@ pub fn ws_auth_rpc_missing_identity_fails_before_dispatch_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -764,6 +787,7 @@ pub fn ws_auth_json_protocol_uses_protocol_wire_rpc_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -805,6 +829,7 @@ pub fn ws_auth_etf_protocol_uses_protocol_wire_rpc_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -853,6 +878,7 @@ pub fn ws_auth_checks_reauth_timestamp_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -887,6 +913,7 @@ pub fn ws_auth_reauth_reruns_resolve_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -916,6 +943,7 @@ pub fn ws_auth_reauth_stores_refreshed_state_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -948,6 +976,7 @@ pub fn ws_auth_reauth_failure_fails_closed_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -976,6 +1005,7 @@ pub fn ws_auth_no_reauth_when_fresh_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -1069,6 +1099,7 @@ pub fn ws_auth_distinct_hashes_for_same_name_different_modules_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
     #(
@@ -1077,6 +1108,7 @@ pub fn ws_auth_distinct_hashes_for_same_name_different_modules_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]

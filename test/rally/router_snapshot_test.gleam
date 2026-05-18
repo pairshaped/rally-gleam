@@ -74,6 +74,7 @@ fn basic_contracts() -> List(#(ScannedRoute, PageContract)) {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     )
   })
@@ -175,6 +176,7 @@ pub fn app_gleam_uses_nearest_layout_per_page_test() {
           has_page_auth: False,
           page_auth_required: False,
           has_authorize: False,
+          has_fallible_init: False,
         ),
       )
     })
@@ -306,6 +308,7 @@ pub fn ssr_shell_handler_marks_unused_route_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let shell =
     "<!DOCTYPE html>\n<html><head></head><body><div id='app'></div></body></html>"
@@ -523,6 +526,7 @@ pub fn client_app_uses_hydrate_context_when_init_loaded_needs_it_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let files =
     client.generate_package(
@@ -592,6 +596,7 @@ pub fn app_gleam_layout_with_client_context_uses_context_msg_mapper_test() {
           has_page_auth: False,
           page_auth_required: False,
           has_authorize: False,
+          has_fallible_init: False,
         ),
       )
     })
@@ -641,6 +646,7 @@ pub fn ssr_layout_with_client_context_uses_v3_session_contract_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let shell =
     "<!DOCTYPE html>\n<html><head></head><body><div id='app'></div></body></html>"
@@ -715,6 +721,7 @@ pub fn ssr_client_context_without_from_session_imports_client_context_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let shell =
     "<!DOCTYPE html>\n<html><head></head><body><div id='app'></div></body></html>"
@@ -905,6 +912,7 @@ pub fn app_gleam_registers_page_push_handlers_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let config = test_scan_config()
   let files =
@@ -973,6 +981,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let files = codec.generate([#(route, contract)], [], [], [], "etf")
   let assert Ok(file) =

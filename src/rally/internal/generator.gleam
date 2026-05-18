@@ -491,20 +491,38 @@ fn dispatch_init_page(
             False, "" -> "()"
             False, _ -> "(" <> string.drop_start(param_args, 2) <> ")"
           }
+          let wrap_model =
+            route.variant_name
+            <> "PageModel(model), effect.map(effects, "
+            <> route.variant_name
+            <> "PageMsg))"
+          let init_body = case contract.has_fallible_init {
+            False ->
+              "      let #(model, effects) = "
+              <> alias
+              <> ".init"
+              <> call_args
+              <> "\n"
+              <> "      #("
+              <> wrap_model
+            True ->
+              "      case "
+              <> alias
+              <> ".init"
+              <> call_args
+              <> " {\n"
+              <> "        Ok(#(model, effects)) -> #("
+              <> wrap_model
+              <> "\n"
+              <> "        Error(Nil) -> #(NoPageModel, effect.none())\n"
+              <> "      }"
+          }
           Ok(
             "    "
             <> dispatch_route_pattern(route)
             <> " -> {\n"
-            <> "      let #(model, effects) = "
-            <> alias
-            <> ".init"
-            <> call_args
+            <> init_body
             <> "\n"
-            <> "      #("
-            <> route.variant_name
-            <> "PageModel(model), effect.map(effects, "
-            <> route.variant_name
-            <> "PageMsg))\n"
             <> "    }",
           )
         }

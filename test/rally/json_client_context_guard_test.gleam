@@ -30,6 +30,7 @@ fn make_contract(source: String) -> PageContract {
     has_page_auth: False,
     page_auth_required: False,
     has_authorize: False,
+    has_fallible_init: False,
   )
 }
 

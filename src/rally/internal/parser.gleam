@@ -81,6 +81,7 @@ pub fn parse_page(
 
   let #(has_page_auth, page_auth_required) = detect_page_auth(ast.constants)
   let has_authorize = has_function(functions_list, "authorize")
+  let has_fallible_init = init_returns_result(functions_list)
 
   Ok(PageContract(
     model_variants:,
@@ -100,6 +101,7 @@ pub fn parse_page(
     has_page_auth:,
     page_auth_required:,
     has_authorize:,
+    has_fallible_init:,
   ))
 }
 
@@ -279,6 +281,23 @@ fn glance_to_string(err: glance.Error) -> String {
     glance.UnexpectedEndOfInput -> "unexpected end of input"
     glance.UnexpectedToken(token: _, position:) ->
       "unexpected token at byte offset " <> int.to_string(position.byte_offset)
+  }
+}
+
+fn init_returns_result(
+  functions: List(glance.Definition(glance.Function)),
+) -> Bool {
+  case
+    list.find(functions, fn(def) {
+      def.definition.name == "init" && def.definition.publicity == glance.Public
+    })
+  {
+    Ok(def) ->
+      case def.definition.return {
+        Some(t) -> type_contains_name(t, "Result")
+        None -> False
+      }
+    Error(Nil) -> False
   }
 }
 

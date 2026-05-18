@@ -10,6 +10,7 @@ fn make_contract(
   has_page_auth has_page_auth: Bool,
   page_auth_required page_auth_required: Bool,
   has_authorize has_authorize: Bool,
+  has_fallible_init has_fallible_init: Bool,
 ) -> PageContract {
   PageContract(
     model_variants: [],
@@ -29,6 +30,7 @@ fn make_contract(
     has_page_auth:,
     page_auth_required:,
     has_authorize:,
+    has_fallible_init:,
   )
 }
 
@@ -89,6 +91,7 @@ pub fn auth_imports_generated_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -103,6 +106,7 @@ pub fn auth_resolve_called_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -117,6 +121,7 @@ pub fn auth_required_redirect_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -131,6 +136,7 @@ pub fn auth_optional_no_redirect_test() {
       has_page_auth: True,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Login", "public/pages/auth/login")
   let output = generate_with_auth(contract, route)
@@ -145,6 +151,7 @@ pub fn auth_from_session_gets_identity_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -162,6 +169,7 @@ pub fn auth_authorize_called_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: True,
+      has_fallible_init: False,
     )
   let route = make_route("Managers", "admin/pages/settings/managers")
   let output = generate_with_auth(contract, route)
@@ -179,6 +187,7 @@ pub fn auth_no_authorize_when_not_exported_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -192,6 +201,7 @@ pub fn auth_load_receives_identity_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -205,6 +215,7 @@ pub fn auth_load_result_handling_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -220,6 +231,7 @@ pub fn auth_resolve_error_returns_500_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_with_auth(contract, route)
@@ -234,6 +246,7 @@ pub fn auth_shell_resolves_identity_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   // Add a second route without a load page so the serve_html_shell
   // fallback is generated (it is only emitted when at least one route
@@ -257,6 +270,7 @@ pub fn auth_shell_resolves_identity_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let other_route = make_route("Other", "admin/pages/other")
@@ -295,6 +309,7 @@ pub fn no_auth_unchanged_output_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_without_auth(contract, route)
@@ -316,6 +331,7 @@ pub fn auth_from_session_without_client_context_test() {
       has_page_auth: True,
       page_auth_required: True,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output =
@@ -355,6 +371,7 @@ pub fn no_auth_cookie_helpers_absent_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let route = make_route("Dashboard", "admin/pages/dashboard")
   let output = generate_without_auth(contract, route)

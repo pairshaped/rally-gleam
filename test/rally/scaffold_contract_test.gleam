@@ -303,6 +303,7 @@ pub fn ws_handler_wires_stateful_page_effects_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let output =
     ws_handler.generate(
@@ -469,6 +470,7 @@ pub fn ssr_omits_layout_import_when_no_load_arm_uses_it_test() {
       has_page_auth: False,
       page_auth_required: False,
       has_authorize: False,
+      has_fallible_init: False,
     )
   let output =
     ssr_handler.generate(
@@ -533,6 +535,7 @@ pub fn ssr_missing_app_marker_falls_back_to_shell_test() {
             has_page_auth: False,
             page_auth_required: False,
             has_authorize: False,
+            has_fallible_init: False,
           ),
         ),
       ],
@@ -584,6 +587,7 @@ pub fn ssr_app_marker_preserves_tag_order_test() {
             has_page_auth: False,
             page_auth_required: False,
             has_authorize: False,
+            has_fallible_init: False,
           ),
         ),
       ],

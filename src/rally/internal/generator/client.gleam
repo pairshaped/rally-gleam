@@ -900,21 +900,39 @@ fn generate_init_page(
               <> ")\n"
             }
           }
+          let wrap_model =
+            route.variant_name
+            <> "PageModel(m), effect.map(e, fn(msg) { PageMsg("
+            <> route.variant_name
+            <> "PageMsg(msg)) }))"
+          let init_body = case contract.has_fallible_init {
+            False ->
+              "      let #(m, e) = "
+              <> alias
+              <> ".init"
+              <> call_args
+              <> "\n"
+              <> "      #("
+              <> wrap_model
+            True ->
+              "      case "
+              <> alias
+              <> ".init"
+              <> call_args
+              <> " {\n"
+              <> "        Ok(#(m, e)) -> #("
+              <> wrap_model
+              <> "\n"
+              <> "        Error(Nil) -> #(NoPageModel, effect.none())\n"
+              <> "      }"
+          }
           Ok(
             "    "
             <> pattern
             <> " -> {\n"
             <> server_init_call
-            <> "      let #(m, e) = "
-            <> alias
-            <> ".init"
-            <> call_args
+            <> init_body
             <> "\n"
-            <> "      #("
-            <> route.variant_name
-            <> "PageModel(m), effect.map(e, fn(msg) { PageMsg("
-            <> route.variant_name
-            <> "PageMsg(msg)) }))\n"
             <> "    }",
           )
         }

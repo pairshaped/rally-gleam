@@ -65,6 +65,7 @@ fn make_contract(
   has_page_auth has_page_auth: Bool,
   page_auth_required page_auth_required: Bool,
   has_authorize has_authorize: Bool,
+  has_fallible_init has_fallible_init: Bool,
 ) -> PageContract {
   PageContract(
     model_variants: [],
@@ -84,6 +85,7 @@ fn make_contract(
     has_page_auth: has_page_auth,
     page_auth_required: page_auth_required,
     has_authorize: has_authorize,
+    has_fallible_init: has_fallible_init,
   )
 }
 
@@ -117,6 +119,7 @@ pub fn ws_no_auth_etf_has_no_runtime_asserts_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -143,6 +146,7 @@ pub fn ws_no_auth_json_has_no_runtime_asserts_test() {
         has_page_auth: False,
         page_auth_required: False,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -168,6 +172,7 @@ pub fn ws_auth_etf_with_endpoints_has_no_runtime_asserts_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -194,6 +199,7 @@ pub fn ws_auth_json_with_endpoints_has_no_runtime_asserts_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: True,
+        has_fallible_init: False,
       ),
     ),
   ]
@@ -219,6 +225,7 @@ pub fn ws_auth_no_endpoints_has_no_runtime_asserts_test() {
         has_page_auth: True,
         page_auth_required: True,
         has_authorize: False,
+        has_fallible_init: False,
       ),
     ),
   ]
