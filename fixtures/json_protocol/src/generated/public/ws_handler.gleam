@@ -65,31 +65,52 @@ pub fn handler(
         Ok(envelope) -> {
           let request_id = wire.rpc_request_id(envelope)
           debug_log("[rally:ws] RPC: request_id=" <> int.to_string(request_id))
-          let assert Ok(server_context) =
-            effect_state.get_stored_server_context()
-          let current_page = effect_state.get_ws_page()
-          let start = timestamp.system_time()
-          let #(result, new_ctx) = wire.dispatch_rpc(envelope, server_context)
-          let elapsed_ms =
-            timestamp.difference(start, timestamp.system_time())
-            |> duration.to_milliseconds()
+          case effect_state.get_stored_server_context() {
+            Error(Nil) -> {
+              io.println_error(
+                "[rally:ws] missing server_context; dropping RPC "
+                <> int.to_string(request_id),
+              )
+              let result = wire.error_result(request_id, "server_unavailable")
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+            Ok(server_context) -> {
+              let current_page = effect_state.get_ws_page()
+              let start = timestamp.system_time()
+              let #(result, new_ctx) =
+                wire.dispatch_rpc(envelope, server_context)
+              let elapsed_ms =
+                timestamp.difference(start, timestamp.system_time())
+                |> duration.to_milliseconds()
 
-          let session_id = effect_state.get_ws_session()
-          let assert Ok(db_conn) = system_db.get_conn()
-          system_db.log_to_server(
-            db: db_conn,
-            session_id: session_id,
-            user_id: Error(Nil),
-            page: current_page,
-            variant_name: wire.rpc_identity(envelope),
-            raw_payload: wire.rpc_raw_payload(envelope),
-            elapsed_ms: elapsed_ms,
-          )
+              let session_id = effect_state.get_ws_session()
+              case system_db.get_conn() {
+                Ok(db_conn) ->
+                  system_db.log_to_server(
+                    db: db_conn,
+                    session_id: session_id,
+                    user_id: Error(Nil),
+                    page: current_page,
+                    variant_name: wire.rpc_identity(envelope),
+                    raw_payload: wire.rpc_raw_payload(envelope),
+                    elapsed_ms: elapsed_ms,
+                  )
+                Error(Nil) -> {
+                  io.println_error(
+                    "[rally:ws] system_db unavailable; skipping log_to_server",
+                  )
+                  Nil
+                }
+              }
 
-          let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)
-          wire.send_rpc_result(conn, result)
-          send_pending_frames(conn)
-          mist.continue(state)
+              let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+          }
         }
         Error(Nil) -> {
           let result = wire.malformed_rpc_result()

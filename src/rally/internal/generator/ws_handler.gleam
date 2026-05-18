@@ -217,30 +217,46 @@ fn generate_frame_handler_no_auth(
         Ok(envelope) -> {
           let request_id = wire.rpc_request_id(envelope)
           debug_log(\"[rally:ws] RPC: request_id=\" <> int.to_string(request_id))
-          let assert Ok(server_context) = effect_state.get_stored_server_context()
-          let current_page = effect_state.get_ws_page()
-          let start = timestamp.system_time()
-          let #(result, new_ctx) = wire.dispatch_rpc(envelope, server_context)
-          let elapsed_ms =
-            timestamp.difference(start, timestamp.system_time())
-            |> duration.to_milliseconds()
+          case effect_state.get_stored_server_context() {
+            Error(Nil) -> {
+              io.println_error(\"[rally:ws] missing server_context; dropping RPC \" <> int.to_string(request_id))
+              let result = wire.error_result(request_id, \"server_unavailable\")
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+            Ok(server_context) -> {
+              let current_page = effect_state.get_ws_page()
+              let start = timestamp.system_time()
+              let #(result, new_ctx) = wire.dispatch_rpc(envelope, server_context)
+              let elapsed_ms =
+                timestamp.difference(start, timestamp.system_time())
+                |> duration.to_milliseconds()
 
-          let session_id = effect_state.get_ws_session()
-          let assert Ok(db_conn) = system_db.get_conn()
-          system_db.log_to_server(
-            db: db_conn,
-            session_id: session_id,
-            user_id: Error(Nil),
-            page: current_page,
-            variant_name: wire.rpc_identity(envelope),
-            raw_payload: wire.rpc_raw_payload(envelope),
-            elapsed_ms: elapsed_ms,
-          )
+              let session_id = effect_state.get_ws_session()
+              case system_db.get_conn() {
+                Ok(db_conn) ->
+                  system_db.log_to_server(
+                    db: db_conn,
+                    session_id: session_id,
+                    user_id: Error(Nil),
+                    page: current_page,
+                    variant_name: wire.rpc_identity(envelope),
+                    raw_payload: wire.rpc_raw_payload(envelope),
+                    elapsed_ms: elapsed_ms,
+                  )
+                Error(Nil) -> {
+                  io.println_error(\"[rally:ws] system_db unavailable; skipping log_to_server\")
+                  Nil
+                }
+              }
 
-          let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)
-          wire.send_rpc_result(conn, result)
-          send_pending_frames(conn)
-          mist.continue(state)
+              let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+          }
         }
         Error(Nil) -> {
           let result = wire.malformed_rpc_result()
@@ -265,73 +281,109 @@ fn generate_frame_handler_no_auth(
         Ok(envelope) -> {
           let request_id = wire.rpc_request_id(envelope)
           debug_log(\"[rally:ws] RPC: request_id=\" <> int.to_string(request_id))
-          let assert Ok(server_context) = effect_state.get_stored_server_context()
-          let current_page = effect_state.get_ws_page()
-          let start = timestamp.system_time()
-          let #(result, new_ctx) = wire.dispatch_rpc(envelope, server_context)
-          let elapsed_ms =
-            timestamp.difference(start, timestamp.system_time())
-            |> duration.to_milliseconds()
+          case effect_state.get_stored_server_context() {
+            Error(Nil) -> {
+              io.println_error(\"[rally:ws] missing server_context; dropping RPC \" <> int.to_string(request_id))
+              let result = wire.error_result(request_id, \"server_unavailable\")
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+            Ok(server_context) -> {
+              let current_page = effect_state.get_ws_page()
+              let start = timestamp.system_time()
+              let #(result, new_ctx) = wire.dispatch_rpc(envelope, server_context)
+              let elapsed_ms =
+                timestamp.difference(start, timestamp.system_time())
+                |> duration.to_milliseconds()
 
-          let session_id = effect_state.get_ws_session()
-          let assert Ok(db_conn) = system_db.get_conn()
-          system_db.log_to_server(
-            db: db_conn,
-            session_id: session_id,
-            user_id: Error(Nil),
-            page: current_page,
-            variant_name: wire.rpc_identity(envelope),
-            raw_payload: wire.rpc_raw_payload(envelope),
-            elapsed_ms: elapsed_ms,
-          )
+              let session_id = effect_state.get_ws_session()
+              case system_db.get_conn() {
+                Ok(db_conn) ->
+                  system_db.log_to_server(
+                    db: db_conn,
+                    session_id: session_id,
+                    user_id: Error(Nil),
+                    page: current_page,
+                    variant_name: wire.rpc_identity(envelope),
+                    raw_payload: wire.rpc_raw_payload(envelope),
+                    elapsed_ms: elapsed_ms,
+                  )
+                Error(Nil) -> {
+                  io.println_error(\"[rally:ws] system_db unavailable; skipping log_to_server\")
+                  Nil
+                }
+              }
 
-          let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)
-          wire.send_rpc_result(conn, result)
-          send_pending_frames(conn)
-          mist.continue(state)
+              let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+          }
         }
         Error(Nil) ->
           case wire.decode_request(data) {
             Ok(#(page, request_id, value)) if request_id == 0 -> {
               debug_log(\"[rally:ws] page_init: \" <> page)
               let old_page = effect_state.get_ws_page()
-              let assert Ok(server_context) = effect_state.get_stored_server_context()
-              let Nil = effect_state.put_ws_state(conn, server_context, page)
-              let Nil = run_server_init(page, value, server_context)
-              case old_page {
-                \"\" -> Nil
-                _ -> topics.leave(\"page:\" <> old_page)
+              case effect_state.get_stored_server_context() {
+                Error(Nil) -> {
+                  io.println_error(\"[rally:ws] missing server_context; failing page_init for \" <> page)
+                  let response_frame = wire.encode_response(request_id:, value: Error(\"server_unavailable\"))
+                  let _send_result = mist.send_binary_frame(conn, response_frame)
+                  send_pending_frames(conn)
+                  mist.continue(state)
+                }
+                Ok(server_context) -> {
+                  let Nil = effect_state.put_ws_state(conn, server_context, page)
+                  let Nil = run_server_init(page, value, server_context)
+                  case old_page {
+                    \"\" -> Nil
+                    _ -> topics.leave(\"page:\" <> old_page)
+                  }
+                  topics.join(\"page:\" <> page)
+                  let response_frame = wire.encode_response(request_id:, value: wire.page_init_ok())
+                  let _send_result = mist.send_binary_frame(conn, response_frame)
+                  send_pending_frames(conn)
+                  mist.continue(state)
+                }
               }
-              topics.join(\"page:\" <> page)
-              let response_frame = wire.encode_response(request_id:, value: wire.page_init_ok())
-              let _send_result = mist.send_binary_frame(conn, response_frame)
-              send_pending_frames(conn)
-              mist.continue(state)
             }
             Ok(#(page, request_id, value)) -> {
               debug_log(\"[rally:ws] page_update: \" <> page)
-              let assert Ok(server_context) = effect_state.get_stored_server_context()
-              let current_page = effect_state.get_ws_page()
-              case current_page != page {
-                True -> {
-                  let result = wire.error_result(request_id, \"Page mismatch\")
+              case effect_state.get_stored_server_context() {
+                Error(Nil) -> {
+                  io.println_error(\"[rally:ws] missing server_context; dropping page_update for \" <> page)
+                  let result = wire.error_result(request_id, \"server_unavailable\")
                   wire.send_rpc_result(conn, result)
                   send_pending_frames(conn)
                   mist.continue(state)
                 }
-                False -> {
-                  case run_server_update(page, value, server_context) {
+                Ok(server_context) -> {
+                  let current_page = effect_state.get_ws_page()
+                  case current_page != page {
                     True -> {
-                      let response_frame = wire.encode_response(request_id:, value: wire.page_init_ok())
-                      let _send_result = mist.send_binary_frame(conn, response_frame)
+                      let result = wire.error_result(request_id, \"Page mismatch\")
+                      wire.send_rpc_result(conn, result)
                       send_pending_frames(conn)
                       mist.continue(state)
                     }
                     False -> {
-                      let result = wire.error_result(request_id, \"Unknown page message\")
-                      wire.send_rpc_result(conn, result)
-                      send_pending_frames(conn)
-                      mist.continue(state)
+                      case run_server_update(page, value, server_context) {
+                        True -> {
+                          let response_frame = wire.encode_response(request_id:, value: wire.page_init_ok())
+                          let _send_result = mist.send_binary_frame(conn, response_frame)
+                          send_pending_frames(conn)
+                          mist.continue(state)
+                        }
+                        False -> {
+                          let result = wire.error_result(request_id, \"Unknown page message\")
+                          wire.send_rpc_result(conn, result)
+                          send_pending_frames(conn)
+                          mist.continue(state)
+                        }
+                      }
                     }
                   }
                 }
@@ -426,17 +478,26 @@ fn generate_frame_handler_with_auth(
           let session_id = effect_state.get_ws_session()
           let hostname = effect_state.get_ws_hostname()
           let current_page = effect_state.get_ws_page()
-          let assert Ok(server_context) = effect_state.get_stored_server_context()
-          case " <> auth_ref <> ".resolve(server_context, session_id) {
+          case effect_state.get_stored_server_context() {
             Error(Nil) -> {
-              effect_state.clear_ws_auth_state()
-              let Nil = effect_state.put_ws_state(conn, server_context, current_page)
+              io.println_error(\"[rally:ws] missing server_context during reauth; skipping reauth\")
+              Nil
             }
-            Ok(identity) -> {
-              let #(_, enriched_sc) = " <> from_session_ref <> ".from_session(server_context: server_context, session_id: session_id, hostname: hostname, identity: identity)
-              let Nil = effect_state.put_ws_state(conn, enriched_sc, current_page)
-              let Nil = effect_state.put_ws_identity(identity)
-              let Nil = effect_state.put_ws_auth_timestamp(now)
+            Ok(server_context) -> {
+              case " <> auth_ref <> ".resolve(server_context, session_id) {
+                Error(Nil) -> {
+                  effect_state.clear_ws_auth_state()
+                  let Nil = effect_state.put_ws_state(conn, server_context, current_page)
+                  Nil
+                }
+                Ok(identity) -> {
+                  let #(_, enriched_sc) = " <> from_session_ref <> ".from_session(server_context: server_context, session_id: session_id, hostname: hostname, identity: identity)
+                  let Nil = effect_state.put_ws_state(conn, enriched_sc, current_page)
+                  let Nil = effect_state.put_ws_identity(identity)
+                  let Nil = effect_state.put_ws_auth_timestamp(now)
+                  Nil
+                }
+              }
             }
           }
         }
@@ -448,64 +509,84 @@ fn generate_frame_handler_with_auth(
           case wire.decode_request(data) {
             Ok(#(page, request_id, value)) if request_id == 0 -> {
               debug_log(\"[rally:ws] page_init: \" <> page)
-              let assert Ok(server_context) = effect_state.get_stored_server_context()
-              let #(can_proceed, response_frame) = case check_page_access(page, server_context) {
-                Ok(Nil) -> #(True, wire.encode_response(request_id:, value: wire.page_init_ok()))
-                Error(message) -> #(False, wire.encode_response(request_id:, value: Error(message)))
-              }
-              case can_proceed {
-                True -> {
-                  let old_page = effect_state.get_ws_page()
-                  let Nil = effect_state.put_ws_state(conn, server_context, page)
-                  let Nil = run_server_init(page, value, server_context)
-                  case old_page {
-                    \"\" -> Nil
-                    _ -> topics.leave(\"page:\" <> old_page)
-                  }
-                  topics.join(\"page:\" <> page)
+              case effect_state.get_stored_server_context() {
+                Error(Nil) -> {
+                  io.println_error(\"[rally:ws] missing server_context; failing page_init for \" <> page)
+                  let response_frame = wire.encode_response(request_id:, value: Error(\"server_unavailable\"))
                   let _send_result = mist.send_binary_frame(conn, response_frame)
                   send_pending_frames(conn)
                   mist.continue(state)
                 }
-                False -> {
-                  let _send_result = mist.send_binary_frame(conn, response_frame)
-                  send_pending_frames(conn)
-                  mist.continue(state)
+                Ok(server_context) -> {
+                  let #(can_proceed, response_frame) = case check_page_access(page, server_context) {
+                    Ok(Nil) -> #(True, wire.encode_response(request_id:, value: wire.page_init_ok()))
+                    Error(message) -> #(False, wire.encode_response(request_id:, value: Error(message)))
+                  }
+                  case can_proceed {
+                    True -> {
+                      let old_page = effect_state.get_ws_page()
+                      let Nil = effect_state.put_ws_state(conn, server_context, page)
+                      let Nil = run_server_init(page, value, server_context)
+                      case old_page {
+                        \"\" -> Nil
+                        _ -> topics.leave(\"page:\" <> old_page)
+                      }
+                      topics.join(\"page:\" <> page)
+                      let _send_result = mist.send_binary_frame(conn, response_frame)
+                      send_pending_frames(conn)
+                      mist.continue(state)
+                    }
+                    False -> {
+                      let _send_result = mist.send_binary_frame(conn, response_frame)
+                      send_pending_frames(conn)
+                      mist.continue(state)
+                    }
+                  }
                 }
               }
             }
             Ok(#(page, request_id, value)) -> {
               debug_log(\"[rally:ws] page_update: \" <> page)
-              let assert Ok(server_context) = effect_state.get_stored_server_context()
-              let current_page = effect_state.get_ws_page()
-              case current_page != page {
-                True -> {
-                  let result = wire.auth_error_result(request_id, \"auth:page_mismatch\")
+              case effect_state.get_stored_server_context() {
+                Error(Nil) -> {
+                  io.println_error(\"[rally:ws] missing server_context; dropping page_update for \" <> page)
+                  let result = wire.auth_error_result(request_id, \"server_unavailable\")
                   wire.send_rpc_result(conn, result)
                   send_pending_frames(conn)
                   mist.continue(state)
                 }
-                False -> {
-                  case check_page_access(page, server_context) {
-                    Error(message) -> {
-                      let result = wire.auth_error_result(request_id, message)
+                Ok(server_context) -> {
+                  let current_page = effect_state.get_ws_page()
+                  case current_page != page {
+                    True -> {
+                      let result = wire.auth_error_result(request_id, \"auth:page_mismatch\")
                       wire.send_rpc_result(conn, result)
                       send_pending_frames(conn)
                       mist.continue(state)
                     }
-                    Ok(Nil) -> {
-                      case run_server_update(page, value, server_context) {
-                        True -> {
-                          let response_frame = wire.encode_response(request_id:, value: wire.page_init_ok())
-                          let _send_result = mist.send_binary_frame(conn, response_frame)
-                          send_pending_frames(conn)
-                          mist.continue(state)
-                        }
-                        False -> {
-                          let result = wire.error_result(request_id, \"Unknown page message\")
+                    False -> {
+                      case check_page_access(page, server_context) {
+                        Error(message) -> {
+                          let result = wire.auth_error_result(request_id, message)
                           wire.send_rpc_result(conn, result)
                           send_pending_frames(conn)
                           mist.continue(state)
+                        }
+                        Ok(Nil) -> {
+                          case run_server_update(page, value, server_context) {
+                            True -> {
+                              let response_frame = wire.encode_response(request_id:, value: wire.page_init_ok())
+                              let _send_result = mist.send_binary_frame(conn, response_frame)
+                              send_pending_frames(conn)
+                              mist.continue(state)
+                            }
+                            False -> {
+                              let result = wire.error_result(request_id, \"Unknown page message\")
+                              wire.send_rpc_result(conn, result)
+                              send_pending_frames(conn)
+                              mist.continue(state)
+                            }
+                          }
                         }
                       }
                     }
@@ -533,17 +614,26 @@ fn generate_frame_handler_with_auth(
           let session_id = effect_state.get_ws_session()
           let hostname = effect_state.get_ws_hostname()
           let current_page = effect_state.get_ws_page()
-          let assert Ok(server_context) = effect_state.get_stored_server_context()
-          case " <> auth_ref <> ".resolve(server_context, session_id) {
+          case effect_state.get_stored_server_context() {
             Error(Nil) -> {
-              effect_state.clear_ws_auth_state()
-              let Nil = effect_state.put_ws_state(conn, server_context, current_page)
+              io.println_error(\"[rally:ws] missing server_context during reauth; skipping reauth\")
+              Nil
             }
-            Ok(identity) -> {
-              let #(_, enriched_sc) = " <> from_session_ref <> ".from_session(server_context: server_context, session_id: session_id, hostname: hostname, identity: identity)
-              let Nil = effect_state.put_ws_state(conn, enriched_sc, current_page)
-              let Nil = effect_state.put_ws_identity(identity)
-              let Nil = effect_state.put_ws_auth_timestamp(now)
+            Ok(server_context) -> {
+              case " <> auth_ref <> ".resolve(server_context, session_id) {
+                Error(Nil) -> {
+                  effect_state.clear_ws_auth_state()
+                  let Nil = effect_state.put_ws_state(conn, server_context, current_page)
+                  Nil
+                }
+                Ok(identity) -> {
+                  let #(_, enriched_sc) = " <> from_session_ref <> ".from_session(server_context: server_context, session_id: session_id, hostname: hostname, identity: identity)
+                  let Nil = effect_state.put_ws_state(conn, enriched_sc, current_page)
+                  let Nil = effect_state.put_ws_identity(identity)
+                  let Nil = effect_state.put_ws_auth_timestamp(now)
+                  Nil
+                }
+              }
             }
           }
         }
@@ -622,7 +712,15 @@ fn rpc_body(has_endpoints: Bool, auth_ref: String) -> String {
       "            Ok(envelope) -> {\n"
       <> "          let request_id = wire.rpc_request_id(envelope)\n"
       <> "          debug_log(\"[rally:ws] RPC: request_id=\" <> int.to_string(request_id))\n"
-      <> "          let assert Ok(server_context) = effect_state.get_stored_server_context()\n"
+      <> "          case effect_state.get_stored_server_context() {\n"
+      <> "            Error(Nil) -> {\n"
+      <> "              io.println_error(\"[rally:ws] missing server_context; dropping RPC \" <> int.to_string(request_id))\n"
+      <> "              let result = wire.error_result(request_id, \"server_unavailable\")\n"
+      <> "              wire.send_rpc_result(conn, result)\n"
+      <> "              send_pending_frames(conn)\n"
+      <> "              mist.continue(state)\n"
+      <> "            }\n"
+      <> "            Ok(server_context) -> {\n"
       <> "          let current_page = effect_state.get_ws_page()\n"
       <> "          case effect_state.get_ws_identity() {\n"
       <> "            Error(Nil) -> {\n"
@@ -678,8 +776,13 @@ fn rpc_body(has_endpoints: Bool, auth_ref: String) -> String {
       <> "                                |> duration.to_milliseconds()\n"
       <> "\n"
       <> "                              let session_id = effect_state.get_ws_session()\n"
-      <> "                              let assert Ok(db_conn) = system_db.get_conn()\n"
-      <> "                              system_db.log_to_server(db: db_conn, session_id: session_id, user_id: Error(Nil), page: current_page, variant_name: wire.rpc_identity(envelope), raw_payload: wire.rpc_raw_payload(envelope), elapsed_ms: elapsed_ms)\n"
+      <> "                              case system_db.get_conn() {\n"
+      <> "                                Ok(db_conn) -> system_db.log_to_server(db: db_conn, session_id: session_id, user_id: Error(Nil), page: current_page, variant_name: wire.rpc_identity(envelope), raw_payload: wire.rpc_raw_payload(envelope), elapsed_ms: elapsed_ms)\n"
+      <> "                                Error(Nil) -> {\n"
+      <> "                                  io.println_error(\"[rally:ws] system_db unavailable; skipping log_to_server\")\n"
+      <> "                                  Nil\n"
+      <> "                                }\n"
+      <> "                              }\n"
       <> "\n"
       <> "                              let Nil = effect_state.put_ws_state(conn, new_ctx, current_page)\n"
       <> "                              wire.send_rpc_result(conn, result)\n"
@@ -693,6 +796,8 @@ fn rpc_body(has_endpoints: Bool, auth_ref: String) -> String {
       <> "                      }\n"
       <> "                    }\n"
       <> "              }\n"
+      <> "            }\n"
+      <> "          }\n"
       <> "            }\n"
       <> "          }\n"
       <> "        }"
