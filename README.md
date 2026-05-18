@@ -181,6 +181,8 @@ Rally depends on [Libero](https://hexdocs.pm/libero/). App projects should add b
 
 Rally currently depends on [Argus](https://hexdocs.pm/argus/) for auth secret hashing. Argus depends on Jargon, which builds an Erlang NIF. That means every Rally app may build Jargon as part of `gleam build`. On macOS, fresh builds can fail if your shell already has `LDFLAGS` set, because Jargon may skip the linker flags Erlang NIFs need.
 
+A fix is open in [Pevensie/jargon#7](https://github.com/Pevensie/jargon/pull/7). Until that lands in a Jargon release, Rally apps on macOS may need to add the missing NIF linker flag themselves.
+
 The error usually mentions unresolved `enif_*` symbols:
 
 ```text
@@ -190,25 +192,36 @@ Undefined symbols for architecture arm64:
   "_enif_get_uint", referenced from:
 ```
 
-Workaround:
+For one-off commands, append `-undefined dynamic_lookup` to `LDFLAGS`:
 
 ```sh
 LDFLAGS="-undefined dynamic_lookup" gleam build
 ```
 
-For test runs:
+For test runs, use the same flag:
 
 ```sh
 LDFLAGS="-undefined dynamic_lookup" gleam test
 ```
 
-If you need your existing linker flags too, include them:
+If your app already needs linker flags, keep them and append the Jargon workaround:
 
 ```sh
 LDFLAGS="-L/opt/homebrew/opt/postgresql@16/lib -undefined dynamic_lookup" gleam build
 ```
 
-This is tracked upstream in [Pevensie/jargon#8](https://github.com/Pevensie/jargon/issues/8).
+For project scripts, load your `.env` first, then add the workaround only on macOS:
+
+```sh
+if [ "$(uname -s)" = "Darwin" ]; then
+  case " ${LDFLAGS:-} " in
+    *" -undefined dynamic_lookup "*) ;;
+    *) export LDFLAGS="${LDFLAGS:+$LDFLAGS }-undefined dynamic_lookup" ;;
+  esac
+fi
+```
+
+This bug is also tracked in [Pevensie/jargon#8](https://github.com/Pevensie/jargon/issues/8).
 
 ## Influences
 
