@@ -53,3 +53,10 @@ pub fn login_code_verify_rejects_wrong_scope_test() {
   auth.verify_login_code(stored:, scope: "second@example.com", code: "abc23")
   |> should.be_false
 }
+
+pub fn login_code_verify_rejects_wrong_code_test() {
+  let stored = auth.hash_login_code(scope: "test@example.com", code: "abc23")
+
+  auth.verify_login_code(stored:, scope: "test@example.com", code: "xyz89")
+  |> should.be_false
+}

@@ -125,12 +125,18 @@ Most Rally apps use only a few modules directly:
 | `rally_runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
 | `rally_runtime/system` | App startup and background jobs |
 | `rally_runtime/session` | Session cookie generation, parsing, response headers |
-| `rally_runtime/auth` | Auth policy and load result types |
+| `rally_runtime/auth` | Auth policy types, load result types, secret hashing, login codes |
 | `rally_runtime/env` | `APP_ENV` parsing and production cookie policy |
 | `rally_runtime/migrate` | Numbered SQLite migrations |
 | `rally_runtime/test_db` | Fast in-memory SQLite for tests |
 
 The `rally/internal/...` modules are codegen implementation. App code should treat them as private. The generated files under `src/generated/` are the boundary Rally presents to your app.
+
+### Auth helpers
+
+`rally_runtime/auth` contains the shared types Rally expects for page auth, plus helpers for common auth flows. `auth.hash` stores passwords or other submitted secrets with Argus. `auth.verify` checks a submitted secret against a stored hash.
+
+For short login-code flows, use `auth.generate_login_code`, then store `auth.hash_login_code(scope:, code:)`. Later, check the submitted code with `auth.verify_login_code(stored:, scope:, code:)`. The scope is usually an email address or another app-owned lookup value. Rally trims and lowercases both the scope and the code before hashing.
 
 ## Generated files
 

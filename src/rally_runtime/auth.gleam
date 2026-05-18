@@ -1,8 +1,12 @@
-//// Types for Rally's auth framework. These are used in page modules
-//// (via `pub const page_auth = auth.Required`) and in SSR load functions
-//// (via `LoadResult` return types). The auth module itself (resolve,
-//// is_authenticated, authorize) is defined per-namespace by the app;
-//// these types are the contract Rally expects.
+//// Auth types and helpers.
+////
+//// Page modules use `AuthPolicy` values with `pub const page_auth`, and SSR
+//// load functions return `LoadResult` values when auth is enabled.
+//// App-specific identity functions such as resolve, is_authenticated, and
+//// authorize are still defined per namespace by the app.
+////
+//// Rally also provides auth secret helpers for hashing and verifying stored
+//// secrets, plus short login-code helpers for passwordless sign-in flows.
 
 import argus
 import gleam/crypto
