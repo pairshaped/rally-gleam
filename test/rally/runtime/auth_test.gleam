@@ -1,7 +1,7 @@
 import gleam/list
 import gleam/string
 import gleeunit/should
-import rally_runtime/auth
+import rally/runtime/auth
 
 const login_code_alphabet = "23456789abcdefghjkmnpqrstuvwxyz"
 

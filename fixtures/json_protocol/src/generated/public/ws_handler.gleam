@@ -11,10 +11,10 @@ import gleam/time/duration
 import gleam/time/timestamp
 import libero/json/error.{JsonError}
 import mist.{type WebsocketConnection, type WebsocketMessage}
-import rally_runtime/env
-import rally_runtime/internal/effect_state
-import rally_runtime/internal/system_db
-import rally_runtime/topics
+import rally/runtime/env
+import rally/runtime/internal/effect_state
+import rally/runtime/internal/system_db
+import rally/runtime/topics
 import server_context.{type ServerContext}
 
 @external(erlang, "generated@public@rpc_atoms", "ensure")

@@ -1,6 +1,6 @@
 import gleam/dynamic/decode
 import gleeunit/should
-import rally_runtime/migrate
+import rally/runtime/migrate
 import simplifile
 import sqlight
 

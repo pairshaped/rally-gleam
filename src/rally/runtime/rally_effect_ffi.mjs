@@ -1,4 +1,4 @@
-// Browser-side effect FFI for rally_runtime/effect.gleam
+// Browser-side effect FFI for rally/runtime/effect.gleam
 
 export function navigate(path) {
   globalThis.history?.pushState(null, "", path);

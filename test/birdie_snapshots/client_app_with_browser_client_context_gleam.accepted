@@ -15,7 +15,7 @@ import modem
 import generated/codec
 import generated/router
 import generated/transport
-import rally_runtime/effect as rally_effect
+import rally/runtime/effect as rally_effect
 
 @external(javascript, "../generated/codec_ffi.mjs", "ensure_decoders")
 fn ensure_decoders() -> Nil

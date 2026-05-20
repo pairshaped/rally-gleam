@@ -1,17 +1,17 @@
 # Runtime modules
 
-Most Rally apps import only a few `rally_runtime/*` modules directly. Generated code uses more of them behind the scenes.
+Most Rally apps import only a few `rally/runtime/*` modules directly. Generated code uses more of them behind the scenes.
 
 | Module | Use it for |
 | --- | --- |
-| `rally_runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
-| `rally_runtime/db` | SQLite open, timed query wrapper, nested transactions, SQL value helpers |
-| `rally_runtime/system` | App startup and background jobs |
-| `rally_runtime/session` | Session IDs and session cookie headers |
-| `rally_runtime/auth` | Auth policy and load result types used by page modules |
-| `rally_runtime/env` | `APP_ENV` parsing and production cookie policy |
-| `rally_runtime/migrate` | Numbered SQLite migrations |
-| `rally_runtime/test_db` | In-memory SQLite setup for tests |
+| `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
+| `rally/runtime/db` | SQLite open, timed query wrapper, nested transactions, SQL value helpers |
+| `rally/runtime/system` | App startup and background jobs |
+| `rally/runtime/session` | Session IDs and session cookie headers |
+| `rally/runtime/auth` | Auth policy and load result types used by page modules |
+| `rally/runtime/env` | `APP_ENV` parsing and production cookie policy |
+| `rally/runtime/migrate` | Numbered SQLite migrations |
+| `rally/runtime/test_db` | In-memory SQLite setup for tests |
 
 ## `effect`
 

@@ -445,7 +445,7 @@ fn app_gleam(
   }
 
   let rally_effect_import = case needs_rally_effect {
-    True -> "import rally_runtime/effect as rally_effect\n\n"
+    True -> "import rally/runtime/effect as rally_effect\n\n"
     False -> "\n"
   }
 

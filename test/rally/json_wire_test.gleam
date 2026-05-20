@@ -313,7 +313,7 @@ pub fn json_wire_ws_handler_no_etf_imports_test() {
   ws |> string.contains("gleam/time/duration") |> should.be_true()
   ws |> string.contains("gleam/time/timestamp") |> should.be_true()
   ws |> string.contains("rpc_dispatch") |> should.be_false()
-  ws |> string.contains("rally_runtime/internal/system_db") |> should.be_true()
+  ws |> string.contains("rally/runtime/internal/system_db") |> should.be_true()
 }
 
 pub fn json_wire_ws_handler_auth_has_timestamp_imports_test() {
@@ -703,7 +703,7 @@ pub fn json_wire_js_decode_not_import_custom_type_test() {
 pub fn json_wire_push_via_broadcast_is_generic_test() {
   // topics.broadcast must accept generic frame types, not just BitArray
   let topics_src =
-    simplifile.read("src/rally_runtime/topics.gleam")
+    simplifile.read("src/rally/runtime/topics.gleam")
     |> result.unwrap("")
 
   topics_src

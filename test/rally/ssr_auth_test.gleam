@@ -94,7 +94,7 @@ pub fn auth_imports_generated_test() {
   let output = generate_with_auth(contract, route)
 
   let assert True = string.contains(output, "import admin/auth")
-  let assert True = string.contains(output, "import rally_runtime/auth")
+  let assert True = string.contains(output, "import rally/runtime/auth")
 }
 
 pub fn auth_resolve_called_test() {
@@ -300,7 +300,7 @@ pub fn no_auth_unchanged_output_test() {
   let output = generate_without_auth(contract, route)
 
   let assert False = string.contains(output, "auth.resolve")
-  let assert False = string.contains(output, "rally_runtime/auth")
+  let assert False = string.contains(output, "rally/runtime/auth")
   let assert False = string.contains(output, "identity")
   let assert True =
     string.contains(

@@ -99,7 +99,7 @@ cat > "$APP_DIR/src/admin/pages/dashboard.gleam" <<'GLEAM'
 import admin/auth
 import lustre/element
 import lustre/effect
-import rally_runtime/auth as rally_auth
+import rally/runtime/auth as rally_auth
 import server_context.{type ServerContext}
 
 pub const page_auth = rally_auth.Required
@@ -138,7 +138,7 @@ cat > "$APP_DIR/src/admin/pages/about.gleam" <<'GLEAM'
 import admin/auth
 import lustre/element
 import lustre/effect
-import rally_runtime/auth as rally_auth
+import rally/runtime/auth as rally_auth
 import server_context.{type ServerContext}
 
 pub const page_auth = rally_auth.Optional

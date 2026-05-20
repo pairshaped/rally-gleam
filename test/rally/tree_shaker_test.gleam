@@ -346,7 +346,7 @@ fn maybe_count(model: Model) {
 pub fn drops_import_matching_client_record_field_test() {
   let source =
     "import password
-import rally_runtime/effect as rally_effect
+import rally/runtime/effect as rally_effect
 import server_context.{type ServerContext}
 
 pub type Model {
@@ -465,7 +465,7 @@ pub fn view(model: Model) -> Element(Msg) {
 
 pub fn keeps_handler_type_used_by_client_rpc_test() {
   let source =
-    "import rally_runtime/effect as rally_effect
+    "import rally/runtime/effect as rally_effect
 import server_context.{type ServerContext}
 
 pub type Model { Model(name: String) }
@@ -551,7 +551,7 @@ pub fn server_lookup(msg: ServerLookup, server_context: ServerContext) -> String
 
 pub fn drops_rpc_import_used_only_by_removed_server_functions_test() {
   let source =
-    "import rally_runtime/effect as rally_effect
+    "import rally/runtime/effect as rally_effect
 import server_context.{type ServerContext}
 
 pub type Model { Model(name: String) }
@@ -570,7 +570,7 @@ pub fn server_notify(server_context: ServerContext) -> Result(Nil, Nil) {
   let result = tree_shaker.shake(source, server_symbols: ["ServerContext"])
 
   result
-  |> string.contains("import rally_runtime/effect as rally_effect")
+  |> string.contains("import rally/runtime/effect as rally_effect")
   |> should.be_false()
 }
 

@@ -1,5 +1,5 @@
 import gleeunit/should
-import rally_runtime/codec
+import rally/runtime/codec
 
 pub type TestModel {
   TestModel(name: String, count: Int)

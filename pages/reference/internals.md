@@ -63,7 +63,7 @@ src/
       ws_handler.gleam           # WebSocket handler codegen
       http_handler.gleam         # HTTP RPC handler codegen
       json_rpc_dispatch.gleam    # JSON-specific RPC dispatch codegen
-  rally_runtime/
+  rally/runtime/
     effect.gleam                 # rpc, broadcast, navigate
     db.gleam                     # SQLite helpers
     system.gleam                 # System DB, job queue
@@ -73,4 +73,4 @@ src/
 
 ## Testing
 
-Tests live under `test/rally/` (scanner, parser, generator, codec, auth tests) and `test/rally_runtime/` (wire, session, broadcast, jobs tests). Fixture apps live under `fixtures/`. Run with `gleam test`. Snapshot tests use Birdie.
+Tests live under `test/rally/` (scanner, parser, generator, codec, auth tests) and `test/rally/runtime/` (wire, session, broadcast, jobs tests). Fixture apps live under `fixtures/`. Run with `gleam test`. Snapshot tests use Birdie.

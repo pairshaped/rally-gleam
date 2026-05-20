@@ -4,7 +4,7 @@
 
 import gleam/bit_array
 import gleam/result
-import rally_runtime/wire
+import rally/runtime/wire
 
 /// Encode any Gleam value to a base64 ETF string for embedding in HTML.
 /// Used server-side during SSR to serialize the page model into flags.

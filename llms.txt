@@ -104,7 +104,7 @@ Broadcast uses OTP pg process groups. Connections auto-subscribe on WebSocket co
 
 ### Effect primitives
 
-From `rally_runtime/effect`:
+From `rally/runtime/effect`:
 
 - `rpc(msg, on_response: callback)`: stateless server call via WebSocket
 - `send_to_server(msg)`: stateful ToServer message
@@ -118,18 +118,18 @@ From `rally_runtime/effect`:
 
 ## Runtime modules
 
-Most Rally apps import only a few `rally_runtime/*` modules:
+Most Rally apps import only a few `rally/runtime/*` modules:
 
 | Module | Use it for |
 |---|---|
-| `rally_runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
-| `rally_runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
-| `rally_runtime/system` | App startup and background jobs |
-| `rally_runtime/session` | Session cookie generation, parsing, response headers |
-| `rally_runtime/auth` | Auth policy and load result types |
-| `rally_runtime/env` | `APP_ENV` parsing, production cookie policy |
-| `rally_runtime/migrate` | Numbered SQLite migrations |
-| `rally_runtime/test_db` | Fast in-memory SQLite for tests |
+| `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
+| `rally/runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
+| `rally/runtime/system` | App startup and background jobs |
+| `rally/runtime/session` | Session cookie generation, parsing, response headers |
+| `rally/runtime/auth` | Auth policy and load result types |
+| `rally/runtime/env` | `APP_ENV` parsing, production cookie policy |
+| `rally/runtime/migrate` | Numbered SQLite migrations |
+| `rally/runtime/test_db` | Fast in-memory SQLite for tests |
 
 Generated code also imports internal runtime modules for wire encoding, SSR,
 topic fan-out, background jobs, and WebSocket process state. App code should
@@ -179,7 +179,7 @@ Running `gleam run -m rally` produces:
 | `src/generated/types.gleam` | ClientMsg type mirroring server dispatch variants |
 | `src/generated/codec.gleam` | SSR flag decoding for hydration |
 | `src/<namespace>/pages/*.gleam` | Tree-shaken page modules (server code stripped) |
-| `src/rally_runtime/effect.gleam` | Client-side effect shim |
+| `src/rally/runtime/effect.gleam` | Client-side effect shim |
 
 The client package is a standalone Gleam project. The server project is the input to codegen.
 
@@ -225,9 +225,9 @@ Auth activates when `src/<namespace>/auth.gleam` exists. Required exports:
 | `is_authenticated` | `fn(Identity) -> Bool` | Whether identity is logged in |
 | `redirect_url` | `String` | Where to redirect unauthenticated users |
 
-Pages declare auth via `pub const page_auth = auth.Required` or `auth.Optional` after importing `rally_runtime/auth`. Pages can also export `pub fn authorize(server_context, identity) -> Bool`.
+Pages declare auth via `pub const page_auth = auth.Required` or `auth.Optional` after importing `rally/runtime/auth`. Pages can also export `pub fn authorize(server_context, identity) -> Bool`.
 
-Auth-enabled pages return `LoadResult(data)` instead of bare `data`, supporting `Page(data, cookies)` and `Redirect(url, cookies)` variants. Types live in `rally_runtime/auth.gleam`.
+Auth-enabled pages return `LoadResult(data)` instead of bare `data`, supporting `Page(data, cookies)` and `Redirect(url, cookies)` variants. Types live in `rally/runtime/auth.gleam`.
 
 Identity is excluded from the client-facing contract. Rally tells Libero's scanner to strip Identity params before message-type resolution. Server handlers still receive `identity: auth.Identity` as their last argument.
 

@@ -41,8 +41,8 @@ A page file in `src/<namespace>/pages/` is a Lustre component with server calls:
 import gleam/int
 import lustre/element.{type Element, text}
 import lustre/element/html
-import rally_runtime/effect.{type Effect}
-import rally_runtime/effect
+import rally/runtime/effect.{type Effect}
+import rally/runtime/effect
 import server_context.{type ServerContext}
 
 // MODEL -- client state for this page.
@@ -121,20 +121,20 @@ Most Rally apps use only a few modules directly:
 
 | Module | Use it for |
 |---|---|
-| `rally_runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
-| `rally_runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
-| `rally_runtime/system` | App startup and background jobs |
-| `rally_runtime/session` | Session cookie generation, parsing, response headers |
-| `rally_runtime/auth` | Auth policy types, load result types, secret hashing, login codes |
-| `rally_runtime/env` | `APP_ENV` parsing and production cookie policy |
-| `rally_runtime/migrate` | Numbered SQLite migrations |
-| `rally_runtime/test_db` | Fast in-memory SQLite for tests |
+| `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
+| `rally/runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
+| `rally/runtime/system` | App startup and background jobs |
+| `rally/runtime/session` | Session cookie generation, parsing, response headers |
+| `rally/runtime/auth` | Auth policy types, load result types, secret hashing, login codes |
+| `rally/runtime/env` | `APP_ENV` parsing and production cookie policy |
+| `rally/runtime/migrate` | Numbered SQLite migrations |
+| `rally/runtime/test_db` | Fast in-memory SQLite for tests |
 
 The `rally/internal/...` modules are codegen implementation. App code should treat them as private. The generated files under `src/generated/` are the boundary Rally presents to your app.
 
 ### Auth helpers
 
-`rally_runtime/auth` contains the shared types Rally expects for page auth, plus helpers for common auth flows. `auth.hash` stores passwords or other submitted secrets with PBKDF2-SHA256 using Erlang/OTP crypto. `auth.verify` checks a submitted secret against a stored hash.
+`rally/runtime/auth` contains the shared types Rally expects for page auth, plus helpers for common auth flows. `auth.hash` stores passwords or other submitted secrets with PBKDF2-SHA256 using Erlang/OTP crypto. `auth.verify` checks a submitted secret against a stored hash.
 
 For short login-code flows, use `auth.generate_login_code`, then store `auth.hash_login_code(scope:, code:, secret_key:)`. Later, check the submitted code with `auth.verify_login_code(stored:, scope:, code:, secret_key:)`. The scope is usually an email address or another app-owned lookup value. Rally trims and lowercases both the scope and the code before hashing. The `secret_key` should be a stable app secret that is not stored in the database.
 
@@ -156,7 +156,7 @@ The client package is a standalone Gleam project. The server project is the inpu
 
 - [Pages](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/pages.md): routing, page lifecycle, SSR loading, and layouts
 - [Server messaging](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/server-messaging.md): RPC, stateful server pages, and broadcast
-- [Runtime](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/runtime.md): the `rally_runtime/*` modules app code imports
+- [Runtime](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/runtime.md): the `rally/runtime/*` modules app code imports
 - [Configuration](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/configuration.md): `gleam.toml`, generated paths, and protocols
 - [Comparisons](https://github.com/pairshaped/rally-gleam/blob/master/pages/reference/comparisons.md): Rally, Lustre server components, and Lamdera-style apps
 - [Internals](https://github.com/pairshaped/rally-gleam/blob/master/pages/reference/internals.md): codegen pipeline and contributor reading order

@@ -2,7 +2,7 @@
 ////
 //// Generated handlers use this module to coordinate connection state,
 //// auth state, and outgoing frames. Page modules should import
-//// rally_runtime/effect instead.
+//// rally/runtime/effect instead.
 
 /// Store the WS connection handle, server context, and current page name.
 @external(erlang, "rally_runtime_ffi", "put_ws_state")

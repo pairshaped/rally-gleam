@@ -32,8 +32,8 @@ import rally/internal/parser
 import rally/internal/scanner
 import rally/internal/tree_shaker
 import rally/internal/types.{type ScanConfig, ScanConfig}
-import rally_runtime/db
-import rally_runtime/migrate
+import rally/runtime/db
+import rally/runtime/migrate
 import simplifile
 import tom
 
@@ -519,7 +519,7 @@ fn generate_for_config(config: ScanConfig) -> Result(Nil, RallyError) {
   use _ <- result.try(result)
 
   let transport_ffi_path =
-    config.rally_package_path <> "/src/rally_runtime/transport_ffi.mjs"
+    config.rally_package_path <> "/src/rally/runtime/transport_ffi.mjs"
   use transport_ffi_content <- result.try(
     simplifile.read(transport_ffi_path)
     |> result.map_error(fn(e) {
@@ -1261,7 +1261,7 @@ fn last_module_segment(module_path: String) -> String {
 /// Refuse to generate a JSON-protocol client when any page references
 /// `send_to_client_context`. The JSON encoding path is not implemented yet
 /// (tracked in rally-au0s) and the runtime panic shim in the generated
-/// `rally_runtime/effect` is a backstop, not an acceptable failure mode.
+/// `rally/runtime/effect` is a backstop, not an acceptable failure mode.
 fn check_json_client_context_compatibility(
   contracts: List(#(types.ScannedRoute, types.PageContract)),
   protocol: String,

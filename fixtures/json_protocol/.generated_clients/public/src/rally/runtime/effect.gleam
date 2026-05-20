@@ -1,6 +1,6 @@
 ////
 //// Client-side effect shim. Provides the same API as
-//// rally_runtime/effect but backed by the client transport.
+//// rally/runtime/effect but backed by the client transport.
 
 import generated/transport
 import generated/types

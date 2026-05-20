@@ -7,7 +7,7 @@
 import gleam/dict
 import gleam/dynamic.{type Dynamic}
 import gleam/option.{None, Some}
-import rally_runtime/wire
+import rally/runtime/wire
 
 // ============================================================================
 // Helpers

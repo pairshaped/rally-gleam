@@ -10,8 +10,8 @@ import gleam/otp/actor
 import gleam/otp/supervision
 import global_value
 import logging
-import rally_runtime/internal/system_db
-import rally_runtime/jobs
+import rally/runtime/internal/system_db
+import rally/runtime/jobs
 import sqlight
 
 pub type JobHandler =

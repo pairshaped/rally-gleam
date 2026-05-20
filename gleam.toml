@@ -7,13 +7,13 @@ internal_modules = [
   "rally",
   "rally/internal",
   "rally/internal/*",
-  "rally_runtime/internal",
-  "rally_runtime/internal/*",
-  "rally_runtime/codec",
-  "rally_runtime/jobs",
-  "rally_runtime/ssr",
-  "rally_runtime/topics",
-  "rally_runtime/wire",
+  "rally/runtime/internal",
+  "rally/runtime/internal/*",
+  "rally/runtime/codec",
+  "rally/runtime/jobs",
+  "rally/runtime/ssr",
+  "rally/runtime/topics",
+  "rally/runtime/wire",
 ]
 repository = { type = "github", user = "pairshaped", repo = "rally-gleam" }
 links = [
@@ -82,8 +82,8 @@ warnings_as_errors = false
 exclude = ["tmp/**", "examples/**"]
 
 [tools.glinter.ignore]
-"src/rally_runtime/*.gleam" = ["unused_exports"]
-"src/rally_runtime/internal/*.gleam" = ["unused_exports"]
+"src/rally/runtime/*.gleam" = ["unused_exports"]
+"src/rally/runtime/internal/*.gleam" = ["unused_exports"]
 "src/**/*.gleam" = [
   "deep_nesting",
   "label_possible",

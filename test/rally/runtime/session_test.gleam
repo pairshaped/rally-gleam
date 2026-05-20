@@ -1,6 +1,6 @@
 import gleam/string
 import gleeunit/should
-import rally_runtime/session
+import rally/runtime/session
 
 pub fn generate_session_id_test() {
   let id = session.generate_id()

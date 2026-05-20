@@ -51,10 +51,10 @@ pub fn generate(
 
   let system_import = case has_auth && !has_endpoints {
     True -> ""
-    False -> "import rally_runtime/internal/system_db\n"
+    False -> "import rally/runtime/internal/system_db\n"
   }
   let effect_runner_import = case has_server_effects {
-    True -> "import rally_runtime/internal/effect_runner\n"
+    True -> "import rally/runtime/internal/effect_runner\n"
     False -> ""
   }
   let dynamic_import = case has_server_effects {
@@ -98,12 +98,12 @@ pub fn generate(
     <> time_imports
     <> "import gleam/int\nimport gleam/io\nimport gleam/list\n"
     <> option_import
-    <> "import gleam/erlang/process\nimport rally_runtime/internal/effect_state\nimport rally_runtime/env\n"
+    <> "import gleam/erlang/process\nimport rally/runtime/internal/effect_state\nimport rally/runtime/env\n"
     <> import_as(wire_import_module, "wire")
     <> "\n"
     <> effect_runner_import
     <> page_imports
-    <> "import rally_runtime/topics\n"
+    <> "import rally/runtime/topics\n"
     <> system_import
     <> "import server_context.{type ServerContext}\nimport mist.{type WebsocketConnection, type WebsocketMessage}\n"
     <> auth_imports
@@ -833,7 +833,7 @@ fn generate_page_auth_policy(
     |> string.join("\n")
     |> fn(s) { s <> "\n    _ -> rally_auth.Optional" }
 
-  "import rally_runtime/auth as rally_auth
+  "import rally/runtime/auth as rally_auth
 
 fn page_auth_policy(page: String) -> rally_auth.AuthPolicy {
   case page {

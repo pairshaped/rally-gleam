@@ -1,4 +1,4 @@
-//// Wire-format tests for rally_runtime/wire (ETF).
+//// Wire-format tests for rally/runtime/wire (ETF).
 ////
 //// Encode→decode roundtrips live in wire_roundtrip_test.gleam.
 //// This file covers decode_request envelope parsing, error handling,
@@ -7,7 +7,7 @@
 import gleam/dynamic.{type Dynamic}
 import gleam/option.{None, Some}
 import libero/error.{DecodeError}
-import rally_runtime/wire
+import rally/runtime/wire
 
 // ---------- Call envelope decoding (call envelope format: {module, request_id, value}) ----------
 

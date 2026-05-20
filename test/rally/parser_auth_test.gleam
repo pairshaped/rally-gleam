@@ -3,7 +3,7 @@ import rally/internal/parser
 pub fn parse_page_auth_required_test() {
   let source =
     "
-import rally_runtime/auth
+import rally/runtime/auth
 
 pub const page_auth = auth.Required
 
@@ -23,7 +23,7 @@ pub fn update(ctx, model, msg) { #(model, []) }
 pub fn parse_page_auth_optional_test() {
   let source =
     "
-import rally_runtime/auth
+import rally/runtime/auth
 
 pub const page_auth = auth.Optional
 
@@ -57,7 +57,7 @@ pub fn update(ctx, model, msg) { #(model, []) }
 pub fn parse_authorize_test() {
   let source =
     "
-import rally_runtime/auth
+import rally/runtime/auth
 
 pub const page_auth = auth.Required
 

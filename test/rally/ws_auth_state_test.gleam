@@ -1,4 +1,4 @@
-import rally_runtime/internal/effect_state as effect
+import rally/runtime/internal/effect_state as effect
 
 pub fn put_get_identity_roundtrip_test() {
   effect.put_ws_identity(42)

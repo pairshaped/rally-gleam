@@ -14,11 +14,11 @@ import gleam/list
 import gleam/result
 import gleam/string
 import mist.{type Connection, type ResponseData}
-import rally_runtime/db
-import rally_runtime/env
+import rally/runtime/db
+import rally/runtime/env
 
-import rally_runtime/session
-import rally_runtime/system
+import rally/runtime/session
+import rally/runtime/system
 import server_context.{ServerContext}
 import simplifile
 import sqlight

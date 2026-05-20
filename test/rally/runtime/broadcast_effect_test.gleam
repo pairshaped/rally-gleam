@@ -1,9 +1,9 @@
 import gleam/list
 import gleeunit/should
-import rally_runtime/effect
-import rally_runtime/internal/effect_runner
-import rally_runtime/internal/effect_state
-import rally_runtime/topics
+import rally/runtime/effect
+import rally/runtime/internal/effect_runner
+import rally/runtime/internal/effect_state
+import rally/runtime/topics
 
 @external(erlang, "rally_test_wire_stub", "register")
 fn ensure_test_wire_module() -> Nil

@@ -26,7 +26,7 @@ mkdir -p "$TEST_DIR/src/generated"
 mkdir -p "$TEST_DIR/gleam_stdlib/gleam"
 mkdir -p "$TEST_DIR/libero/libero"
 
-cp "$RALLY_ROOT/src/rally_runtime/transport_ffi.mjs" "$TEST_DIR/src/generated/"
+cp "$RALLY_ROOT/src/rally/runtime/transport_ffi.mjs" "$TEST_DIR/src/generated/"
 
 # --- gleam_stdlib stubs ---
 

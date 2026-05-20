@@ -632,7 +632,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/effect.{type Effect}
 import lustre/event
-import rally_runtime/effect as rally_effect
+import rally/runtime/effect as rally_effect
 import server_context.{type ServerContext}
 
 pub type Model {
@@ -731,10 +731,10 @@ import generated/public/http_handler as http_handler
 import generated/public/router as router
 import generated/public/ssr_handler as ssr_handler
 import generated/public/ws_handler as ws_handler
-import rally_runtime/db
-import rally_runtime/env
-import rally_runtime/session
-import rally_runtime/system
+import rally/runtime/db
+import rally/runtime/env
+import rally/runtime/session
+import rally/runtime/system
 import server_context.{type ServerContext, ServerContext}
 import simplifile
 import sqlight

@@ -4,7 +4,7 @@ import generated/public/router
 import gleam/bytes_tree
 import gleam/http/response
 import mist.{type ResponseData}
-import rally_runtime/internal/browser_env
+import rally/runtime/internal/browser_env
 
 @external(erlang, "generated@public@rpc_atoms", "ensure")
 fn ensure_atoms() -> Nil

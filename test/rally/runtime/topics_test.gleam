@@ -1,6 +1,6 @@
 import gleam/erlang/process
 import gleam/list
-import rally_runtime/topics
+import rally/runtime/topics
 
 pub fn start_is_idempotent_test() {
   topics.start()

@@ -9,7 +9,7 @@ test_name: http_handler_with_auth_and_authorize_snapshot_test
 import gleam/bytes_tree
 import gleam/http/response.{type Response}
 import mist.{type ResponseData}
-import rally_runtime/internal/effect_state
+import rally/runtime/internal/effect_state
 import server_context.{type ServerContext}
 import admin/auth
 import generated/admin/protocol_wire as wire

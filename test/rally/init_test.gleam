@@ -83,7 +83,7 @@ pub fn init_project_writes_hex_scaffold_test() {
   app
   |> string.contains("case string.starts_with(path, \"/_build/\")")
   |> should.be_true()
-  app |> string.contains("import rally_runtime/migrate") |> should.be_false()
+  app |> string.contains("import rally/runtime/migrate") |> should.be_false()
 
   simplifile.read(dir <> "/src/app.gleam")
   |> should.be_error()

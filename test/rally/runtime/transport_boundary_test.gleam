@@ -11,7 +11,7 @@ import simplifile
 
 pub fn transport_ffi_has_no_byte_level_frame_awareness_test() {
   let assert Ok(content) =
-    simplifile.read("src/rally_runtime/transport_ffi.mjs")
+    simplifile.read("src/rally/runtime/transport_ffi.mjs")
 
   // Must NOT inspect frame tag bytes
   let assert False = string.contains(content, "0x00")
@@ -43,7 +43,7 @@ pub fn transport_ffi_has_no_byte_level_frame_awareness_test() {
 
 pub fn transport_ffi_sends_gleam_bit_array_as_browser_binary_test() {
   let assert Ok(content) =
-    simplifile.read("src/rally_runtime/transport_ffi.mjs")
+    simplifile.read("src/rally/runtime/transport_ffi.mjs")
 
   let assert True =
     string.contains(content, "function toWebSocketPayload(payload)")

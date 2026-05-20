@@ -731,11 +731,11 @@ pub fn http_auth_imports_protocol_wire_facade_test() {
       protocol: "etf",
     )
 
-  // Must import the protocol_wire facade, not rally_runtime/wire
+  // Must import the protocol_wire facade, not rally/runtime/wire
   let assert True =
     string.contains(output, "import generated/admin/protocol_wire as wire")
-  // Must NOT import rally_runtime/wire directly
-  let assert False = string.contains(output, "import rally_runtime/wire")
+  // Must NOT import rally/runtime/wire directly
+  let assert False = string.contains(output, "import rally/runtime/wire")
   // Must NOT import an Erlang module as wire
   let assert False = string.contains(output, "generated@")
 }

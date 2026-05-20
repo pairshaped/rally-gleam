@@ -386,7 +386,7 @@ pub fn client_app_syncs_browser_client_context_fields_test() {
     })
 
   file.content
-  |> string.contains("import rally_runtime/effect as rally_effect")
+  |> string.contains("import rally/runtime/effect as rally_effect")
   |> should.equal(True)
 
   file.content
@@ -441,7 +441,7 @@ pub fn client_app_omits_unused_effect_import_and_record_updates_test() {
     })
 
   file.content
-  |> string.contains("import rally_runtime/effect as rally_effect")
+  |> string.contains("import rally/runtime/effect as rally_effect")
   |> should.equal(False)
 
   file.content
@@ -951,7 +951,7 @@ pub fn client_page_drops_effect_import_after_send_to_server_rewrite_test() {
       updates_client_context: False,
       param_names: [],
       source: "import lustre/effect.{type Effect}
-import rally_runtime/effect as rally_effect
+import rally/runtime/effect as rally_effect
 
 pub type Model { Model(count: Int) }
 pub type Msg { Clicked }
@@ -981,7 +981,7 @@ pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     })
 
   file.content
-  |> string.contains("import rally_runtime/effect as rally_effect")
+  |> string.contains("import rally/runtime/effect as rally_effect")
   |> should.equal(False)
 
   file.content

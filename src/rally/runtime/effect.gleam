@@ -4,7 +4,7 @@
 //// This module has a split personality by design. Each function has two
 //// implementations: the server-side version here (which queues push frames
 //// via the process dictionary or is a no-op), and a client-side version
-//// in the generated rally_runtime/effect.gleam shim (which calls the
+//// in the generated rally/runtime/effect.gleam shim (which calls the
 //// browser WebSocket transport). The codegen rewrites imports so the
 //// client package uses the shim, not this file.
 ////
@@ -22,8 +22,8 @@
 ////                             Use when the server needs state between calls.
 
 import lustre/effect
-import rally_runtime/internal/effect_state
-import rally_runtime/topics
+import rally/runtime/internal/effect_state
+import rally/runtime/topics
 
 pub type Effect(a) =
   effect.Effect(a)

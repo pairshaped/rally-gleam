@@ -16,7 +16,7 @@ import lustre/element.{type Element}
 import lustre/element/html
 import lustre/event
 import public/client_context.{type ClientContext}
-import rally_runtime/effect as rally_effect
+import rally/runtime/effect as rally_effect
 import server_context.{type ServerContext}
 import sqlight
 

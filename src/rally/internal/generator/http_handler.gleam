@@ -60,7 +60,7 @@ fn generate_no_auth(
 import gleam/bytes_tree
 import gleam/http/response.{type Response}
 import mist.{type ResponseData}
-" <> import_as(wire_import_module, "wire") <> "\n" <> "import rally_runtime/internal/effect_state
+" <> import_as(wire_import_module, "wire") <> "\n" <> "import rally/runtime/internal/effect_state
 import server_context.{type ServerContext}
 
 pub fn handle(
@@ -124,7 +124,7 @@ fn generate_with_auth(
 import gleam/bytes_tree
 import gleam/http/response.{type Response}
 import mist.{type ResponseData}
-import rally_runtime/internal/effect_state
+import rally/runtime/internal/effect_state
 import server_context.{type ServerContext}
 " <> auth_import <> "
 " <> import_as(wire_import_module, "wire") <> "

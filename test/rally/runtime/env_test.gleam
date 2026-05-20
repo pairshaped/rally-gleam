@@ -1,5 +1,5 @@
 import gleeunit/should
-import rally_runtime/env
+import rally/runtime/env
 
 pub fn app_env_from_string_defaults_to_dev_test() {
   env.app_env_from_string("")

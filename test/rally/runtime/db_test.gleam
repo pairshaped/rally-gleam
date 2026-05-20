@@ -1,6 +1,6 @@
 import gleam/dynamic/decode
 import gleeunit/should
-import rally_runtime/db
+import rally/runtime/db
 import sqlight
 
 pub fn transaction_rolls_back_failed_body_test() {

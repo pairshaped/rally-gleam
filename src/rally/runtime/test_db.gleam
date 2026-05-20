@@ -1,5 +1,5 @@
 import gleam/result
-import rally_runtime/migrate
+import rally/runtime/migrate
 import sqlight
 
 @external(erlang, "rally_runtime_test_db_ffi", "clone_db")

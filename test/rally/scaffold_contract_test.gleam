@@ -95,7 +95,7 @@ pub fn scaffold_uses_app_env_and_no_client_context_page_arity_test() {
   |> should.equal(True)
 
   script
-  |> string.contains("import rally_runtime/env")
+  |> string.contains("import rally/runtime/env")
   |> should.equal(True)
 
   script
@@ -169,7 +169,7 @@ pub fn scaffold_uses_app_env_and_no_client_context_page_arity_test() {
   |> should.equal(True)
 
   script
-  |> string.contains("import rally_runtime/migrate")
+  |> string.contains("import rally/runtime/migrate")
   |> should.equal(False)
 
   script
@@ -317,7 +317,7 @@ pub fn ws_handler_wires_stateful_page_effects_test() {
     )
 
   output
-  |> string.contains("import rally_runtime/internal/effect_runner")
+  |> string.contains("import rally/runtime/internal/effect_runner")
   |> should.equal(True)
 
   output
@@ -687,4 +687,30 @@ fn test_scan_config() -> ScanConfig {
     server_deps: dict.new(),
     protocol: "etf",
   )
+}
+
+pub fn scaffold_does_not_import_rally_runtime_test() {
+  let script = scaffold_source()
+
+  script
+  |> string.contains("import rally_runtime/")
+  |> should.equal(False)
+}
+
+pub fn generated_ws_handler_does_not_import_rally_runtime_test() {
+  let output =
+    ws_handler.generate(
+      [],
+      "generated@rpc_atoms",
+      "generated/rpc_dispatch",
+      option.None,
+      from_session_module: "client_context_server",
+      endpoints: [],
+      wire_import_module: "generated/protocol_wire",
+      protocol: "etf",
+    )
+
+  output
+  |> string.contains("import rally_runtime/")
+  |> should.equal(False)
 }

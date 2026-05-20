@@ -4,7 +4,7 @@ import generated/public/protocol_wire as wire
 import gleam/bytes_tree
 import gleam/http/response.{type Response}
 import mist.{type ResponseData}
-import rally_runtime/internal/effect_state
+import rally/runtime/internal/effect_state
 import server_context.{type ServerContext}
 
 pub fn handle(

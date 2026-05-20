@@ -65,7 +65,7 @@ Current protocol boundary:
 - Generated `transport.gleam` exposes framework send, register, and read
   helpers instead of raw frame parsing.
 - Generated app code uses generated codec and hydration helpers.
-- `rally_runtime/wire.gleam` remains as a small ETF wrapper for legacy and
+- `rally/runtime/wire.gleam` remains as a small ETF wrapper for legacy and
   direct runtime helpers.
 
 ## Boundary Shape
@@ -123,15 +123,15 @@ typed contract.
 The migration checklist below is retained as historical context.
 
 1. Add higher-level protocol facade functions to Libero while keeping ETF.
-2. Update `rally_runtime/transport_ffi.mjs` to call Libero frame helpers instead
+2. Update `rally/runtime/transport_ffi.mjs` to call Libero frame helpers instead
    of parsing frame bytes.
 3. Update generated `transport.gleam` so raw decode helpers are not part of the
    public generated surface.
 4. Move SSR flag typed decoding behind generated Libero helpers.
 5. Update generated app code to call typed hydration helpers instead of
    `transport.apply_typed_decoder`.
-6. Update `rally_runtime/effect.gleam` and push delivery to call Libero push
-   helpers through `rally_runtime/wire.gleam`.
+6. Update `rally/runtime/effect.gleam` and push delivery to call Libero push
+   helpers through `rally/runtime/wire.gleam`.
 7. Update the RealWorld CLI to use Libero request/response helpers.
 8. Regenerate snapshots and update tests to assert Rally does not inspect frame
    bytes.
