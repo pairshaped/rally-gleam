@@ -1,8 +1,10 @@
 import gleam/bool
+import gleam/dict.{type Dict}
 import gleam/list
 import gleam/result
 import gleam/string
 import simplifile
+import tom.{type Toml}
 
 pub type ScaffoldFile {
   ScaffoldFile(path: String, contents: String)
@@ -15,16 +17,16 @@ pub fn init_project(root: String) -> Result(Nil, String) {
   use Nil <- result.try(ensure_safe_to_write(root, name, scaffold_files))
   use Nil <- result.try(create_dirs(root))
   use Nil <- result.try(write_files(root, scaffold_files))
+  use Nil <- result.try(merge_gleam_toml(root, name))
+  use Nil <- result.try(merge_gitignore(root))
   write_readme_if_missing(root, name)
   Ok(Nil)
 }
 
 pub fn files(project_name: String) -> List(ScaffoldFile) {
   [
-    ScaffoldFile(".gitignore", gitignore()),
     ScaffoldFile(".env", env_example()),
     ScaffoldFile(".env.example", env_example()),
-    ScaffoldFile("gleam.toml", gleam_toml(project_name)),
     ScaffoldFile("migrations/001_create_counter.sql", migration_001()),
     ScaffoldFile("src/sql/counter/get.sql", counter_get_sql()),
     ScaffoldFile("src/sql/counter/increment.sql", counter_increment_sql()),
@@ -152,77 +154,279 @@ fn is_default_gleam_new_file(
   project_name: String,
   existing: String,
 ) -> Bool {
-  case path {
-    ".gitignore" -> existing == "*.beam
-*.ez
-/build
-erl_crash.dump
-"
-    "gleam.toml" -> is_default_gleam_toml(existing, project_name)
-    _ -> {
-      case path == "src/" <> project_name <> ".gleam" {
-        True -> existing == "import gleam/io
+  case path == "src/" <> project_name <> ".gleam" {
+    True -> existing == "import gleam/io
 
 pub fn main() -> Nil {
   io.println(\"Hello from " <> project_name <> "!\")
 }
 "
-        False -> False
+    False -> False
+  }
+}
+
+fn merge_gleam_toml(root: String, project_name: String) -> Result(Nil, String) {
+  let path = join(root, "gleam.toml")
+  use content <- result.try(case simplifile.read(path) {
+    Ok(existing) -> merge_into_gleam_toml(existing, project_name)
+    Error(_) -> Ok(gleam_toml(project_name))
+  })
+  simplifile.write(to: path, contents: content)
+  |> result.map_error(fn(e) {
+    "Failed to write gleam.toml: " <> simplifile.describe_error(e)
+  })
+}
+
+fn merge_into_gleam_toml(
+  existing: String,
+  project_name: String,
+) -> Result(String, String) {
+  use parsed <- result.try(
+    tom.parse(existing)
+    |> result.map_error(fn(_) {
+      "gleam.toml has syntax errors. Fix them and try again."
+    }),
+  )
+
+  let missing_deps =
+    required_deps()
+    |> list.filter_map(fn(dep) {
+      let #(name, version) = dep
+      case tom.get(parsed, ["dependencies", name]) {
+        Ok(_) -> Error(Nil)
+        Error(_) -> Ok(name <> " = \"" <> version <> "\"")
+      }
+    })
+
+  let missing_dev_deps =
+    required_dev_deps()
+    |> list.filter_map(fn(dep) {
+      let #(name, version) = dep
+      let exists =
+        result.is_ok(tom.get(parsed, ["dev-dependencies", name]))
+        || result.is_ok(tom.get(parsed, ["dev_dependencies", name]))
+      case exists {
+        True -> Error(Nil)
+        False -> Ok(name <> " = \"" <> version <> "\"")
+      }
+    })
+
+  existing
+  |> ensure_target(parsed)
+  |> add_entries_to_section("[dependencies]", missing_deps)
+  |> add_entries_to_section(dev_deps_section_header(existing), missing_dev_deps)
+  |> ensure_tool_sections(parsed, project_name)
+  |> Ok
+}
+
+fn ensure_target(content: String, parsed: Dict(String, Toml)) -> String {
+  case tom.get(parsed, ["target"]) {
+    Ok(_) -> content
+    Error(_) -> {
+      let lines = string.split(content, "\n")
+      string.join(
+        insert_line_after(lines, "version = ", "target = \"erlang\""),
+        "\n",
+      )
+    }
+  }
+}
+
+fn insert_line_after(
+  lines: List(String),
+  prefix: String,
+  new_line: String,
+) -> List(String) {
+  case lines {
+    [] -> [new_line]
+    [line, ..rest] ->
+      case string.starts_with(string.trim(line), prefix) {
+        True -> [line, new_line, ..rest]
+        False -> [line, ..insert_line_after(rest, prefix, new_line)]
+      }
+  }
+}
+
+fn add_entries_to_section(
+  content: String,
+  section_header: String,
+  entries: List(String),
+) -> String {
+  case entries {
+    [] -> content
+    _ -> {
+      let entries_text = string.join(entries, "\n")
+      case string.split_once(content, section_header <> "\n") {
+        Ok(#(before, after_header)) ->
+          case split_at_next_section(after_header) {
+            Ok(#(section_body, rest)) ->
+              before
+              <> section_header
+              <> "\n"
+              <> string.trim_end(section_body)
+              <> "\n"
+              <> entries_text
+              <> "\n\n"
+              <> rest
+            Error(Nil) ->
+              before
+              <> section_header
+              <> "\n"
+              <> string.trim_end(after_header)
+              <> "\n"
+              <> entries_text
+              <> "\n"
+          }
+        Error(Nil) ->
+          string.trim_end(content)
+          <> "\n\n"
+          <> section_header
+          <> "\n"
+          <> entries_text
+          <> "\n"
       }
     }
   }
 }
 
-fn is_default_gleam_toml(existing: String, project_name: String) -> Bool {
-  let header = "name = \"" <> project_name <> "\"
-version = \"1.0.0\"
+fn split_at_next_section(content: String) -> Result(#(String, String), Nil) {
+  do_split_at_next_section(string.split(content, "\n"), [])
+}
 
-# Fill out these fields if you intend to generate HTML documentation or publish
-# your project to the Hex package manager.
-#
-# description = \"\"
-# licences = [\"Apache-2.0\"]
-# repository = { type = \"github\", user = \"\", repo = \"\" }
-# links = [{ title = \"Website\", href = \"\" }]
-#
-# For a full reference of all the available options, you can have a look at
-# https://gleam.run/writing-gleam/gleam-toml/.
-
-[dependencies]
-"
-
-  let footer =
-    "
-[dev_dependencies]
-gleeunit = \">= 1.0.0 and < 2.0.0\"
-"
-
-  case
-    string.starts_with(existing, header) && string.ends_with(existing, footer)
-  {
-    False -> False
-    True -> {
-      existing
-      |> string.drop_start(string.length(header))
-      |> string.drop_end(string.length(footer))
-      |> string.split("\n")
-      |> list.map(string.trim)
-      |> list.filter(fn(line) { line != "" })
-      |> is_default_dependency_lines
-    }
+fn do_split_at_next_section(
+  lines: List(String),
+  acc: List(String),
+) -> Result(#(String, String), Nil) {
+  case lines {
+    [] -> Error(Nil)
+    [line, ..rest] ->
+      case string.starts_with(string.trim_start(line), "[") {
+        True ->
+          Ok(#(
+            string.join(list.reverse(acc), "\n"),
+            string.join([line, ..rest], "\n"),
+          ))
+        False -> do_split_at_next_section(rest, [line, ..acc])
+      }
   }
 }
 
-fn is_default_dependency_lines(lines: List(String)) -> Bool {
-  let stdlib = "gleam_stdlib = \">= 1.0.0 and < 2.0.0\""
-  lines |> list.contains(stdlib)
-  && list.length(lines) <= 3
-  && lines
-  |> list.all(fn(line) {
-    line == stdlib
-    || string.starts_with(line, "rally = ")
-    || string.starts_with(line, "libero = ")
-  })
+fn dev_deps_section_header(content: String) -> String {
+  case string.contains(content, "[dev-dependencies]") {
+    True -> "[dev-dependencies]"
+    False ->
+      case string.contains(content, "[dev_dependencies]") {
+        True -> "[dev_dependencies]"
+        False -> "[dev-dependencies]"
+      }
+  }
+}
+
+fn ensure_tool_sections(
+  content: String,
+  parsed: Dict(String, Toml),
+  project_name: String,
+) -> String {
+  content
+  |> ensure_glinter_section(parsed)
+  |> ensure_rally_section(parsed)
+  |> ensure_marmot_section(parsed, project_name)
+}
+
+fn ensure_glinter_section(
+  content: String,
+  parsed: Dict(String, Toml),
+) -> String {
+  case tom.get(parsed, ["tools", "glinter"]) {
+    Ok(_) -> content
+    Error(_) ->
+      string.trim_end(content)
+      <> "\n\n[tools.glinter]\nstats = true\nwarnings_as_errors = true\nexclude = [\"src/generated/\"]\n"
+  }
+}
+
+fn ensure_rally_section(content: String, parsed: Dict(String, Toml)) -> String {
+  case tom.get(parsed, ["tools", "rally"]) {
+    Ok(_) -> content
+    Error(_) ->
+      string.trim_end(content)
+      <> "\n\n[[tools.rally.clients]]\nnamespace = \"public\"\nroute_root = \"/\"\n"
+  }
+}
+
+fn ensure_marmot_section(
+  content: String,
+  parsed: Dict(String, Toml),
+  project_name: String,
+) -> String {
+  case tom.get(parsed, ["tools", "marmot"]) {
+    Ok(_) -> content
+    Error(_) ->
+      string.trim_end(content)
+      <> "\n\n[tools.marmot]\ndatabase = \"db/"
+      <> project_name
+      <> ".db\"\nsql_dir = \"src/sql\"\noutput = \"src/generated/sql\"\n"
+  }
+}
+
+fn required_deps() -> List(#(String, String)) {
+  [
+    #("envoy", ">= 1.2.0 and < 2.0.0"),
+    #("gleam_erlang", ">= 1.0.0 and < 2.0.0"),
+    #("gleam_http", ">= 4.0.0 and < 5.0.0"),
+    #("gleam_stdlib", ">= 0.60.0 and < 2.0.0"),
+    #("rally", ">= 1.0.0 and < 2.0.0"),
+    #("libero", ">= 6.0.0 and < 7.0.0"),
+    #("lustre", ">= 5.7.0 and < 7.0.0"),
+    #("marmot", ">= 1.3.0 and < 2.0.0"),
+    #("mist", ">= 6.0.0 and < 7.0.0"),
+    #("sqlight", ">= 1.0.0 and < 2.0.0"),
+    #("simplifile", ">= 2.0.0 and < 3.0.0"),
+    #("gleam_time", ">= 1.7.0 and < 2.0.0"),
+  ]
+}
+
+fn required_dev_deps() -> List(#(String, String)) {
+  [
+    #("gleeunit", ">= 1.0.0 and < 2.0.0"),
+    #("birdie", ">= 2.0.0 and < 3.0.0"),
+    #("glinter", ">= 2.16.0 and < 3.0.0"),
+  ]
+}
+
+fn merge_gitignore(root: String) -> Result(Nil, String) {
+  let path = join(root, ".gitignore")
+  let existing = simplifile.read(path) |> result.unwrap("")
+  let existing_lines =
+    existing
+    |> string.split("\n")
+    |> list.map(string.trim)
+
+  let required = [
+    "build/", ".env", "db/", "erl_crash.dump", "*.bak", ".DS_Store",
+    ".generated_clients/",
+  ]
+  let missing =
+    required
+    |> list.filter(fn(line) { !list.contains(existing_lines, line) })
+
+  case missing {
+    [] -> Ok(Nil)
+    _ -> {
+      let content = case existing {
+        "" -> string.join(missing, "\n") <> "\n"
+        _ ->
+          string.trim_end(existing)
+          <> "\n"
+          <> string.join(missing, "\n")
+          <> "\n"
+      }
+      simplifile.write(to: path, contents: content)
+      |> result.map_error(fn(e) {
+        "Failed to write .gitignore: " <> simplifile.describe_error(e)
+      })
+    }
+  }
 }
 
 fn project_name(root: String) -> String {
@@ -307,17 +511,6 @@ fn join(root: String, path: String) -> String {
     "." -> path
     _ -> root <> "/" <> path
   }
-}
-
-fn gitignore() -> String {
-  "build/
-.env
-db/
-erl_crash.dump
-*.bak
-.DS_Store
-.generated_clients/
-"
 }
 
 fn env_example() -> String {

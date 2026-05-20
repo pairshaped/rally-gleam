@@ -178,27 +178,22 @@ pub fn scaffold_uses_app_env_and_no_client_context_page_arity_test() {
 }
 
 pub fn scaffold_uses_namespaced_client_config_test() {
+  let dir = "/tmp/rally_scaffold_contract_ns"
+  let _ = simplifile.delete(file_or_dir_at: dir)
+  let assert Ok(Nil) = simplifile.create_directory_all(dir)
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  toml |> string.contains("[[tools.rally.clients]]") |> should.equal(True)
+  toml |> string.contains("namespace = \"public\"") |> should.equal(True)
+  toml |> string.contains("route_root = \"/\"") |> should.equal(True)
+
   let script = scaffold_source()
+  script |> string.contains("src/public/pages") |> should.equal(True)
+  script |> string.contains(".generated_clients/public") |> should.equal(True)
 
-  script
-  |> string.contains("[[tools.rally.clients]]")
-  |> should.equal(True)
-
-  script
-  |> string.contains("namespace = \"public\"")
-  |> should.equal(True)
-
-  script
-  |> string.contains("route_root = \"/\"")
-  |> should.equal(True)
-
-  script
-  |> string.contains("src/public/pages")
-  |> should.equal(True)
-
-  script
-  |> string.contains(".generated_clients/public")
-  |> should.equal(True)
+  let _ = simplifile.delete(file_or_dir_at: dir)
+  Nil
 }
 
 pub fn scaffold_routes_http_rpc_test() {

@@ -397,3 +397,121 @@ pub fn init_project_refuses_existing_layout_test() {
 
   cleanup(dir)
 }
+
+pub fn init_project_merges_into_existing_gleam_toml_test() {
+  let dir = make_temp_dir("merge_toml")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_merge_toml\"
+version = \"1.0.0\"
+
+[dependencies]
+gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
+rally = \">= 1.2.0 and < 2.0.0\"
+
+[dev_dependencies]
+gleeunit = \">= 1.0.0 and < 2.0.0\"
+",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  toml |> string.contains("target = \"erlang\"") |> should.be_true()
+  toml |> string.contains("version = \"1.0.0\"") |> should.be_true()
+  toml
+  |> string.contains("gleam_stdlib = \">= 1.0.0 and < 2.0.0\"")
+  |> should.be_true()
+  toml
+  |> string.contains("rally = \">= 1.2.0 and < 2.0.0\"")
+  |> should.be_true()
+  toml |> string.contains("envoy = ") |> should.be_true()
+  toml |> string.contains("mist = ") |> should.be_true()
+  toml |> string.contains("sqlight = ") |> should.be_true()
+  toml |> string.contains("lustre = ") |> should.be_true()
+  toml |> string.contains("marmot = ") |> should.be_true()
+  toml |> string.contains("[[tools.rally.clients]]") |> should.be_true()
+  toml
+  |> string.contains("database = \"db/rally_init_test_merge_toml.db\"")
+  |> should.be_true()
+  toml |> string.contains("[tools.glinter]") |> should.be_true()
+  toml |> string.contains("birdie = ") |> should.be_true()
+  toml |> string.contains("glinter = ") |> should.be_true()
+
+  cleanup(dir)
+}
+
+pub fn init_project_merges_gleam_toml_with_different_comments_test() {
+  let dir = make_temp_dir("merge_toml_alt")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_merge_toml_alt\"
+version = \"2.0.0\"
+
+# Some totally different comment block
+
+[dependencies]
+gleam_stdlib = \">= 0.50.0 and < 1.0.0\"
+
+[dev-dependencies]
+gleeunit = \">= 1.0.0 and < 2.0.0\"
+",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  toml |> string.contains("target = \"erlang\"") |> should.be_true()
+  toml |> string.contains("version = \"2.0.0\"") |> should.be_true()
+  toml
+  |> string.contains("# Some totally different comment block")
+  |> should.be_true()
+  toml
+  |> string.contains("gleam_stdlib = \">= 0.50.0 and < 1.0.0\"")
+  |> should.be_true()
+  toml |> string.contains("envoy = ") |> should.be_true()
+  toml |> string.contains("[tools.marmot]") |> should.be_true()
+
+  cleanup(dir)
+}
+
+pub fn init_project_merges_gitignore_test() {
+  let dir = make_temp_dir("merge_gitignore")
+  let assert Ok(Nil) =
+    simplifile.write(dir <> "/.gitignore", "*.beam\n*.ez\n/build\n")
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(gitignore) = simplifile.read(dir <> "/.gitignore")
+  gitignore |> string.contains("*.beam") |> should.be_true()
+  gitignore |> string.contains("/build") |> should.be_true()
+  gitignore |> string.contains(".env") |> should.be_true()
+  gitignore |> string.contains("db/") |> should.be_true()
+  gitignore |> string.contains(".generated_clients/") |> should.be_true()
+  gitignore |> string.contains(".DS_Store") |> should.be_true()
+
+  cleanup(dir)
+}
+
+pub fn init_project_idempotent_gleam_toml_test() {
+  let dir = make_temp_dir("idempotent_toml")
+  let assert Ok(Nil) = init.init_project(dir)
+  let assert Ok(first_toml) = simplifile.read(dir <> "/gleam.toml")
+  let assert Ok(first_gitignore) = simplifile.read(dir <> "/.gitignore")
+
+  let _ = simplifile.delete(file_or_dir_at: dir)
+  let assert Ok(Nil) = simplifile.create_directory_all(dir)
+  let assert Ok(Nil) = simplifile.write(dir <> "/gleam.toml", first_toml)
+  let assert Ok(Nil) = simplifile.write(dir <> "/.gitignore", first_gitignore)
+
+  let assert Ok(Nil) = init.init_project(dir)
+  let assert Ok(second_toml) = simplifile.read(dir <> "/gleam.toml")
+  let assert Ok(second_gitignore) = simplifile.read(dir <> "/.gitignore")
+
+  first_toml |> should.equal(second_toml)
+  first_gitignore |> should.equal(second_gitignore)
+
+  cleanup(dir)
+}
