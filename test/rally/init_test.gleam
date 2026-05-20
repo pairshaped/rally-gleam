@@ -1,7 +1,9 @@
+import gleam/list
 import gleam/string
 import gleeunit/should
 import rally/internal/init
 import simplifile
+import tom
 
 fn make_temp_dir(name: String) -> String {
   let path = "/tmp/rally_init_test_" <> name
@@ -439,6 +441,8 @@ gleeunit = \">= 1.0.0 and < 2.0.0\"
   toml |> string.contains("birdie = ") |> should.be_true()
   toml |> string.contains("glinter = ") |> should.be_true()
 
+  tom.parse(toml) |> should.be_ok()
+
   cleanup(dir)
 }
 
@@ -473,6 +477,192 @@ gleeunit = \">= 1.0.0 and < 2.0.0\"
   |> should.be_true()
   toml |> string.contains("envoy = ") |> should.be_true()
   toml |> string.contains("[tools.marmot]") |> should.be_true()
+
+  tom.parse(toml) |> should.be_ok()
+
+  cleanup(dir)
+}
+
+pub fn init_project_merges_gleam_toml_with_trailing_spaces_test() {
+  let dir = make_temp_dir("merge_toml_spaces")
+  let dep_header = "[dependencies]   "
+  let dev_dep_header = "[dev_dependencies]  "
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_merge_toml_spaces\"\nversion = \"1.0.0\"\n\n"
+        <> dep_header
+        <> "\ngleam_stdlib = \">= 1.0.0 and < 2.0.0\"\n\n"
+        <> dev_dep_header
+        <> "\ngleeunit = \">= 1.0.0 and < 2.0.0\"\n",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  toml |> string.contains("envoy = ") |> should.be_true()
+  toml |> string.contains("birdie = ") |> should.be_true()
+  tom.parse(toml) |> should.be_ok()
+
+  cleanup(dir)
+}
+
+pub fn init_project_merges_gleam_toml_with_crlf_test() {
+  let dir = make_temp_dir("merge_toml_crlf")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_merge_toml_crlf\"\r\nversion = \"1.0.0\"\r\n\r\n[dependencies]\r\ngleam_stdlib = \">= 1.0.0 and < 2.0.0\"\r\n\r\n[dev_dependencies]\r\ngleeunit = \">= 1.0.0 and < 2.0.0\"\r\n",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  toml |> string.contains("envoy = ") |> should.be_true()
+  toml |> string.contains("target = \"erlang\"") |> should.be_true()
+  tom.parse(toml) |> should.be_ok()
+
+  cleanup(dir)
+}
+
+pub fn init_project_refuses_invalid_gleam_toml_without_writing_test() {
+  let dir = make_temp_dir("invalid_toml")
+  let assert Ok(Nil) =
+    simplifile.write(dir <> "/gleam.toml", "this is not [ valid toml")
+
+  case init.init_project(dir) {
+    Ok(_) -> should.fail()
+    Error(message) -> {
+      message |> string.contains("syntax errors") |> should.be_true()
+    }
+  }
+
+  simplifile.read(dir <> "/.env") |> should.be_error()
+
+  cleanup(dir)
+}
+
+pub fn init_project_refuses_inline_dep_tables_without_writing_test() {
+  let dir = make_temp_dir("inline_deps")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_inline_deps\"
+version = \"1.0.0\"
+dependencies = { gleam_stdlib = \">= 1.0.0 and < 2.0.0\" }
+
+[dev_dependencies]
+gleeunit = \">= 1.0.0 and < 2.0.0\"
+",
+    )
+
+  case init.init_project(dir) {
+    Ok(_) -> should.fail()
+    Error(message) -> {
+      message |> string.contains("inline dependency tables") |> should.be_true()
+    }
+  }
+
+  simplifile.read(dir <> "/.env") |> should.be_error()
+
+  cleanup(dir)
+}
+
+pub fn init_project_adds_public_client_when_other_namespace_exists_test() {
+  let dir = make_temp_dir("non_public_client")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_non_public_client\"
+version = \"1.0.0\"
+
+[dependencies]
+gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
+
+[dev_dependencies]
+gleeunit = \">= 1.0.0 and < 2.0.0\"
+
+[[tools.rally.clients]]
+namespace = \"admin\"
+route_root = \"/admin\"
+",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  toml
+  |> string.contains("namespace = \"admin\"")
+  |> should.be_true()
+  toml
+  |> string.contains("namespace = \"public\"")
+  |> should.be_true()
+  tom.parse(toml) |> should.be_ok()
+
+  cleanup(dir)
+}
+
+pub fn init_project_skips_public_client_when_already_exists_test() {
+  let dir = make_temp_dir("has_public_client")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_has_public_client\"
+version = \"1.0.0\"
+
+[dependencies]
+gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
+
+[dev_dependencies]
+gleeunit = \">= 1.0.0 and < 2.0.0\"
+
+[[tools.rally.clients]]
+namespace = \"public\"
+route_root = \"/\"
+",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  let public_count =
+    toml
+    |> string.split("namespace = \"public\"")
+    |> list.length
+  public_count |> should.equal(2)
+  tom.parse(toml) |> should.be_ok()
+
+  cleanup(dir)
+}
+
+pub fn init_project_skips_public_client_when_inline_test() {
+  let dir = make_temp_dir("inline_public_client")
+  let assert Ok(Nil) =
+    simplifile.write(
+      dir <> "/gleam.toml",
+      "name = \"rally_init_test_inline_public_client\"
+version = \"1.0.0\"
+
+[dependencies]
+gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
+
+[dev_dependencies]
+gleeunit = \">= 1.0.0 and < 2.0.0\"
+
+[tools.rally]
+clients = [{ namespace = \"public\", route_root = \"/\" }]
+",
+    )
+
+  let assert Ok(Nil) = init.init_project(dir)
+
+  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
+  let public_count =
+    toml
+    |> string.split("namespace = \"public\"")
+    |> list.length
+  public_count |> should.equal(2)
+  tom.parse(toml) |> should.be_ok()
 
   cleanup(dir)
 }
@@ -512,6 +702,7 @@ pub fn init_project_idempotent_gleam_toml_test() {
 
   first_toml |> should.equal(second_toml)
   first_gitignore |> should.equal(second_gitignore)
+  tom.parse(second_toml) |> should.be_ok()
 
   cleanup(dir)
 }

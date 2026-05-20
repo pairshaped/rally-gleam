@@ -14,10 +14,11 @@ pub fn init_project(root: String) -> Result(Nil, String) {
   let name = project_name(root)
   let scaffold_files = files(name)
 
+  use toml_content <- result.try(prepare_gleam_toml(root, name))
   use Nil <- result.try(ensure_safe_to_write(root, name, scaffold_files))
   use Nil <- result.try(create_dirs(root))
   use Nil <- result.try(write_files(root, scaffold_files))
-  use Nil <- result.try(merge_gleam_toml(root, name))
+  use Nil <- result.try(write_gleam_toml(root, toml_content))
   use Nil <- result.try(merge_gitignore(root))
   write_readme_if_missing(root, name)
   Ok(Nil)
@@ -165,12 +166,26 @@ pub fn main() -> Nil {
   }
 }
 
-fn merge_gleam_toml(root: String, project_name: String) -> Result(Nil, String) {
+fn prepare_gleam_toml(
+  root: String,
+  project_name: String,
+) -> Result(String, String) {
   let path = join(root, "gleam.toml")
   use content <- result.try(case simplifile.read(path) {
     Ok(existing) -> merge_into_gleam_toml(existing, project_name)
     Error(_) -> Ok(gleam_toml(project_name))
   })
+  use _ <- result.try(
+    tom.parse(content)
+    |> result.map_error(fn(_) {
+      "Rally produced an invalid gleam.toml merge. This can happen if the existing file uses inline dependency tables. Restructure gleam.toml to use [dependencies] and [dev-dependencies] section headers, then retry."
+    }),
+  )
+  Ok(content)
+}
+
+fn write_gleam_toml(root: String, content: String) -> Result(Nil, String) {
+  let path = join(root, "gleam.toml")
   simplifile.write(to: path, contents: content)
   |> result.map_error(fn(e) {
     "Failed to write gleam.toml: " <> simplifile.describe_error(e)
@@ -212,6 +227,7 @@ fn merge_into_gleam_toml(
     })
 
   existing
+  |> string.replace("\r\n", "\n")
   |> ensure_target(parsed)
   |> add_entries_to_section("[dependencies]", missing_deps)
   |> add_entries_to_section(dev_deps_section_header(existing), missing_dev_deps)
@@ -255,60 +271,90 @@ fn add_entries_to_section(
   case entries {
     [] -> content
     _ -> {
-      let entries_text = string.join(entries, "\n")
-      case string.split_once(content, section_header <> "\n") {
-        Ok(#(before, after_header)) ->
-          case split_at_next_section(after_header) {
-            Ok(#(section_body, rest)) ->
-              before
-              <> section_header
-              <> "\n"
-              <> string.trim_end(section_body)
-              <> "\n"
-              <> entries_text
-              <> "\n\n"
-              <> rest
-            Error(Nil) ->
-              before
-              <> section_header
-              <> "\n"
-              <> string.trim_end(after_header)
-              <> "\n"
-              <> entries_text
-              <> "\n"
-          }
-        Error(Nil) ->
+      let lines = string.split(content, "\n")
+      case do_insert_in_section(lines, section_header, entries, []) {
+        Ok(new_lines) -> string.join(new_lines, "\n")
+        Error(Nil) -> {
+          let entries_text = string.join(entries, "\n")
           string.trim_end(content)
           <> "\n\n"
           <> section_header
           <> "\n"
           <> entries_text
           <> "\n"
+        }
       }
     }
   }
 }
 
-fn split_at_next_section(content: String) -> Result(#(String, String), Nil) {
-  do_split_at_next_section(string.split(content, "\n"), [])
-}
-
-fn do_split_at_next_section(
+fn do_insert_in_section(
   lines: List(String),
+  section_header: String,
+  entries: List(String),
   acc: List(String),
-) -> Result(#(String, String), Nil) {
+) -> Result(List(String), Nil) {
   case lines {
     [] -> Error(Nil)
     [line, ..rest] ->
-      case string.starts_with(string.trim_start(line), "[") {
-        True ->
-          Ok(#(
-            string.join(list.reverse(acc), "\n"),
-            string.join([line, ..rest], "\n"),
-          ))
-        False -> do_split_at_next_section(rest, [line, ..acc])
+      case is_section_header(line, section_header) {
+        True -> {
+          let #(body, remaining) = take_section_body(rest)
+          let trimmed = drop_trailing_blanks(body)
+          Ok(
+            list.flatten([
+              list.reverse(acc),
+              [line],
+              trimmed,
+              entries,
+              [""],
+              remaining,
+            ]),
+          )
+        }
+        False ->
+          do_insert_in_section(rest, section_header, entries, [line, ..acc])
       }
   }
+}
+
+fn is_section_header(line: String, expected: String) -> Bool {
+  let trimmed = string.trim(line)
+  trimmed == expected
+  || {
+    string.starts_with(trimmed, expected)
+    && {
+      let rest = string.drop_start(trimmed, string.length(expected))
+      string.starts_with(rest, " ")
+      || string.starts_with(rest, "\t")
+      || string.starts_with(rest, "#")
+    }
+  }
+}
+
+fn take_section_body(lines: List(String)) -> #(List(String), List(String)) {
+  do_take_section_body(lines, [])
+}
+
+fn do_take_section_body(
+  lines: List(String),
+  acc: List(String),
+) -> #(List(String), List(String)) {
+  case lines {
+    [] -> #(list.reverse(acc), [])
+    [line, ..rest] ->
+      case string.starts_with(string.trim_start(line), "[") {
+        True -> #(list.reverse(acc), [line, ..rest])
+        False -> do_take_section_body(rest, [line, ..acc])
+      }
+  }
+}
+
+fn drop_trailing_blanks(lines: List(String)) -> List(String) {
+  lines
+  |> list.reverse
+  |> list.drop_while(fn(line) { string.trim(line) == "" })
+  |> list.reverse
 }
 
 fn dev_deps_section_header(content: String) -> String {
@@ -346,11 +392,29 @@ fn ensure_glinter_section(
 }
 
 fn ensure_rally_section(content: String, parsed: Dict(String, Toml)) -> String {
-  case tom.get(parsed, ["tools", "rally"]) {
-    Ok(_) -> content
-    Error(_) ->
+  case has_public_client(parsed) {
+    True -> content
+    False ->
       string.trim_end(content)
       <> "\n\n[[tools.rally.clients]]\nnamespace = \"public\"\nroute_root = \"/\"\n"
+  }
+}
+
+fn has_public_client(parsed: Dict(String, Toml)) -> Bool {
+  case tom.get(parsed, ["tools", "rally", "clients"]) {
+    Ok(tom.ArrayOfTables(clients)) ->
+      list.any(clients, fn(client) {
+        dict.get(client, "namespace") == Ok(tom.String("public"))
+      })
+    Ok(tom.Array(items)) ->
+      list.any(items, fn(item) {
+        case item {
+          tom.InlineTable(client) ->
+            dict.get(client, "namespace") == Ok(tom.String("public"))
+          _ -> False
+        }
+      })
+    _ -> False
   }
 }
 
