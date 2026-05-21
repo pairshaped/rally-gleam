@@ -1,3 +1,5 @@
+**THIS PROJECT IS NOT MAINTAINED**
+
 ![Rally](https://github.com/pairshaped/rally/blob/master/rally.png?raw=true)
 
 # Rally
