@@ -9,7 +9,7 @@ gleam_http = ">= 4.0.0 and < 5.0.0"
 gleam_stdlib = ">= 0.60.0 and < 2.0.0"
 rally = { path = "../.." }
 libero = ">= 6.0.0 and < 7.0.0"
-lustre = ">= 5.7.0 and < 7.0.0"
+lustre = ">= 5.7.0 and < 6.0.0"
 marmot = ">= 1.4.1 and < 2.0.0"
 mist = ">= 6.0.0 and < 7.0.0"
 sqlight = ">= 1.0.0 and < 2.0.0"

@@ -81,6 +81,20 @@ pub fn excludes_browser_impossible_deps_even_if_imported_test() {
   result.content |> string.contains("sqlight") |> should.be_false()
 }
 
+pub fn generated_client_keeps_lustre_5_bound_test() {
+  let result =
+    client.generate_gleam_toml(
+      all_client_files: [],
+      server_deps: dict.new(),
+      client_root: "test_client",
+      protocol: "etf",
+    )
+
+  result.content
+  |> string.contains("lustre = \">= 5.7.0 and < 6.0.0\"")
+  |> should.be_true()
+}
+
 pub fn includes_json_protocol_deps_test() {
   let files = [
     client.GeneratedFile(
