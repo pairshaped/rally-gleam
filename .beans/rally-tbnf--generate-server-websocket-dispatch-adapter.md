@@ -1,14 +1,14 @@
 ---
 # rally-tbnf
 title: Generate server websocket dispatch adapter
-status: todo
+status: completed
 type: task
 priority: high
 tags:
     - codegen
     - websocket
 created_at: 2026-06-04T23:18:08Z
-updated_at: 2026-06-04T23:18:08Z
+updated_at: 2026-06-04T23:47:11Z
 parent: rally-oymv
 ---
 
@@ -38,3 +38,11 @@ Acceptance:
 - Generated code is under `src/generated/rally/**`.
 - Targeted tests cover request dispatch, error result generation, and self-excluded broadcast behavior.
 - Scoreboard builds for Erlang and JavaScript after regeneration.
+
+
+
+Completion notes:
+- Generated `src/generated/rally/server_ws.gleam` from Rally load-RPC metadata.
+- Scoreboard now delegates page request decode, request/result correlation, result encoding, and Mist result sends to generated Rally code.
+- App callbacks still own auth checks, DB/domain mapping, and after-save broadcast policy.
+- Validation passed: Rally `gleam build`, Rally load-RPC snapshot test, Scoreboard Erlang/JS builds, Scoreboard Erlang tests, boundary `rg` checks, and browser smoke covering ack payload plus peer-only broadcast.

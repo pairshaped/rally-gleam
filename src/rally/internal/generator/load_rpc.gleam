@@ -72,6 +72,10 @@ pub fn generate(
       page_server(loads:, to_client_module:, to_server_module:),
     ),
     GeneratedFile(
+      "src/generated/rally/server_ws.gleam",
+      server_ws(loads:, to_client_module:, to_server_module:),
+    ),
+    GeneratedFile(
       "src/generated/rally/hydration.gleam",
       hydration(loads:, to_client_module:),
     ),
@@ -347,6 +351,85 @@ fn map_save_result(
     Error(errors) -> Error(list.map(errors, fn(error) {
       let transport_result.ApiSaveError(field:, message:) = error
       SaveError(field:, message:)
+    }))
+  }
+}
+"
+}
+
+pub fn server_ws(
+  loads loads: List(LoadRpc),
+  to_client_module _to_client_module: String,
+  to_server_module _to_server_module: String,
+) -> String {
+  "@target(erlang)
+import generated/rally/result as transport_result
+@target(erlang)
+import generated/rally/server_protocol
+@target(erlang)
+import gleam/list
+@target(erlang)
+import gleam/option.{type Option}
+@target(erlang)
+import mist.{type WebsocketConnection}
+" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+@target(erlang)
+pub type LoadError {
+  LoadError(message: String)
+}
+
+@target(erlang)
+pub type SaveError {
+  SaveError(field: Option(String), message: String)
+}
+
+@target(erlang)
+pub type Handlers(state) {
+  Handlers(
+" <> server_ws_handler_fields(loads) <> "
+  )
+}
+
+@target(erlang)
+pub fn handle_client_frame(
+  state state: state,
+  conn conn: WebsocketConnection,
+  data data: BitArray,
+  handlers handlers: Handlers(state),
+) -> Nil {
+  server_protocol.ensure()
+  " <> server_ws_dispatch_cases(loads) <> "
+}
+
+" <> string.join(list.map(loads, server_ws_try_request), "\n") <> "
+" <> string.join(list.map(loads, server_ws_send_load_result), "\n") <> "
+" <> string.join(
+    option.values(list.map(loads, server_ws_send_save_result)),
+    "\n",
+  ) <> "
+
+@target(erlang)
+fn map_load_result(
+  result: Result(a, List(LoadError)),
+) -> Result(a, List(transport_result.ApiLoadError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) -> Error(list.map(errors, fn(error) {
+      let LoadError(message:) = error
+      transport_result.ApiLoadError(message:)
+    }))
+  }
+}
+
+@target(erlang)
+fn map_save_result(
+  result: Result(a, List(SaveError)),
+) -> Result(a, List(transport_result.ApiSaveError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) -> Error(list.map(errors, fn(error) {
+      let SaveError(field:, message:) = error
+      transport_result.ApiSaveError(field:, message:)
     }))
   }
 }
@@ -859,6 +942,231 @@ pub fn save_" <> load.name <> "(
 }
 ")
   }
+}
+
+fn server_ws_handler_fields(loads: List(LoadRpc)) -> String {
+  let load_fields = list.map(loads, server_ws_load_handler_field)
+  let save_fields =
+    option.values(list.map(loads, server_ws_save_handler_fields))
+
+  list.append(load_fields, save_fields)
+  |> string.join("\n")
+}
+
+fn server_ws_load_handler_field(load: LoadRpc) -> String {
+  "    "
+  <> load.name
+  <> "_load: fn("
+  <> server_ws_handler_args_type(load)
+  <> ") -> Result("
+  <> wire_alias(load)
+  <> ".LoadResult, List(LoadError)),"
+}
+
+fn server_ws_save_handler_fields(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(save_result_type) ->
+      Some(
+        "    "
+        <> load.name
+        <> "_save: fn(state, "
+        <> wire_alias(load)
+        <> ".ServerMsg) -> Result("
+        <> wire_alias(load)
+        <> "."
+        <> save_result_type
+        <> ", List(SaveError)),\n"
+        <> "    after_"
+        <> load.name
+        <> "_save: fn(state, "
+        <> wire_alias(load)
+        <> ".ServerMsg, "
+        <> wire_alias(load)
+        <> "."
+        <> save_result_type
+        <> ") -> Nil,",
+      )
+  }
+}
+
+fn server_ws_dispatch_cases(loads: List(LoadRpc)) -> String {
+  case loads {
+    [] -> "Nil"
+    [first, ..rest] -> server_ws_dispatch_case(first, rest)
+  }
+}
+
+fn server_ws_dispatch_case(load: LoadRpc, rest: List(LoadRpc)) -> String {
+  "case try_"
+  <> load.name
+  <> "_request(state: state, conn: conn, data: data, handlers: handlers) {
+    Ok(Nil) -> Nil
+    Error(Nil) -> "
+  <> server_ws_dispatch_cases(rest)
+  <> "
+  }"
+}
+
+fn server_ws_try_request(load: LoadRpc) -> String {
+  "@target(erlang)
+fn try_" <> load.name <> "_request(
+  state state: state,
+  conn conn: WebsocketConnection,
+  data data: BitArray,
+  handlers handlers: Handlers(state),
+) -> Result(Nil, Nil) {
+  case server_protocol.decode_" <> load.name <> "_request(data) {
+    Ok(server_protocol." <> pascal_name(load) <> "ClientRequest(
+      request_id: request_id,
+      module: \"" <> load.module_path <> "\",
+      message: " <> server_ws_load_pattern(load) <> ",
+    )) -> {
+      send_" <> load.name <> "_load_result(
+        state: state,
+        conn: conn,
+        request_id: request_id,
+        handlers: handlers" <> server_ws_pass_args(load.args) <> ",
+      )
+      Ok(Nil)
+    }
+" <> server_ws_try_save_case(load) <> "
+    _ -> Error(Nil)
+  }
+}
+"
+}
+
+fn server_ws_try_save_case(load: LoadRpc) -> String {
+  case load.save_result_type {
+    None -> ""
+    Some(_) -> "    Ok(server_protocol." <> pascal_name(load) <> "ClientRequest(
+      request_id: request_id,
+      module: \"" <> load.module_path <> "\",
+      message: message,
+    )) ->
+      case message {
+" <> server_ws_module_load_patterns(load) <> "        _ -> {
+          send_" <> load.name <> "_save_result(
+            state: state,
+            conn: conn,
+            request_id: request_id,
+            message: message,
+            handlers: handlers,
+          )
+          Ok(Nil)
+        }
+      }
+"
+  }
+}
+
+fn server_ws_send_load_result(load: LoadRpc) -> String {
+  "@target(erlang)
+fn send_" <> load.name <> "_load_result(
+  state state: state,
+  conn conn: WebsocketConnection,
+  request_id request_id: Int,
+  handlers handlers: Handlers(state)" <> server_ws_arg_params(load.args) <> ",
+) -> Nil {
+  let result =
+    handlers." <> load.name <> "_load(" <> server_ws_handler_args_call(load) <> ")
+    |> map_load_result
+
+  let _sent =
+    mist.send_binary_frame(
+      conn,
+      server_protocol.encode_" <> load.name <> "_load_result(
+        request_id: request_id,
+        result: result,
+      ),
+    )
+  Nil
+}
+"
+}
+
+fn server_ws_send_save_result(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(_) -> Some("@target(erlang)
+fn send_" <> load.name <> "_save_result(
+  state state: state,
+  conn conn: WebsocketConnection,
+  request_id request_id: Int,
+  message message: " <> wire_alias(load) <> ".ServerMsg,
+  handlers handlers: Handlers(state),
+) -> Nil {
+  let result = handlers." <> load.name <> "_save(state, message)
+
+  let _sent =
+    mist.send_binary_frame(
+      conn,
+      server_protocol.encode_" <> load.name <> "_save_result(
+        request_id: request_id,
+        result: map_save_result(result),
+      ),
+    )
+
+  case result {
+    Ok(value) -> handlers.after_" <> load.name <> "_save(state, message, value)
+    Error(_) -> Nil
+  }
+}
+")
+  }
+}
+
+fn server_ws_handler_args_type(load: LoadRpc) -> String {
+  let arg_types =
+    load.args
+    |> list.map(fn(arg) { arg.type_ref })
+    |> string.join(", ")
+
+  case arg_types {
+    "" -> "state"
+    _ -> "state, " <> arg_types
+  }
+}
+
+fn server_ws_handler_args_call(load: LoadRpc) -> String {
+  let args = call_args(load.args)
+
+  case args {
+    "" -> "state"
+    _ -> "state, " <> args
+  }
+}
+
+fn server_ws_arg_params(args: List(LoadArg)) -> String {
+  args
+  |> list.map(fn(arg) {
+    ",\n  " <> arg.label <> " " <> arg.label <> ": " <> arg.type_ref
+  })
+  |> string.join("")
+}
+
+fn server_ws_pass_args(args: List(LoadArg)) -> String {
+  args
+  |> list.map(fn(arg) { ",\n        " <> arg.label <> ": " <> arg.label })
+  |> string.join("")
+}
+
+fn server_ws_load_pattern(load: LoadRpc) -> String {
+  case load.args {
+    [] -> wire_alias(load) <> "." <> load.request_constructor
+    args ->
+      wire_alias(load)
+      <> "."
+      <> load.request_constructor
+      <> "("
+      <> arg_labels(args)
+      <> ")"
+  }
+}
+
+fn server_ws_module_load_patterns(load: LoadRpc) -> String {
+  "        " <> server_ws_load_pattern(load) <> " -> Error(Nil)\n"
 }
 
 fn hydration_load_result(load: LoadRpc) -> String {
