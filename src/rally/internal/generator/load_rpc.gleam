@@ -146,7 +146,7 @@ pub fn decode_load_result(
 @target(javascript)
 pub fn decode_save_result(
   bytes: BitArray,
-) -> Result(#(Int, Result(Nil, List(ApiSaveError))), Nil) {
+) -> Result(#(Int, Result(ToClient, List(ApiSaveError))), Nil) {
   decode_result_envelope(bytes)
 }
 
@@ -235,7 +235,7 @@ pub fn encode_load_result(
 @target(erlang)
 pub fn encode_save_result(
   request_id request_id: Int,
-  result result: Result(Nil, List(ApiSaveError)),
+  result result: Result(ToClient, List(ApiSaveError)),
 ) -> BitArray {
   encode_result_frame(request_id, result)
 }
@@ -321,7 +321,7 @@ pub fn send_load(
 pub fn send_save(
   module module: String,
   message message: ToServer,
-  on_result on_result: fn(Result(Nil, List(ApiSaveError))) -> msg,
+  on_result on_result: fn(Result(ToClient, List(ApiSaveError))) -> msg,
 ) -> Effect(msg) {
   effect.from(fn(dispatch) {
     let request_id = next_request_id()
@@ -358,7 +358,7 @@ fn send_load_frame(
 fn send_save_frame(
   _request_id: Int,
   _frame: BitArray,
-  _on_result: fn(Result(Nil, List(ApiSaveError))) -> msg,
+  _on_result: fn(Result(ToClient, List(ApiSaveError))) -> msg,
   _dispatch: fn(msg) -> Nil,
 ) -> Nil {
   Nil

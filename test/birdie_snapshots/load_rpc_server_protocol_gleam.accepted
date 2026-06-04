@@ -120,7 +120,7 @@ pub fn encode_public_game_detail_load_result(
 @target(erlang)
 pub fn encode_save_result(
   request_id request_id: Int,
-  result result: Result(Nil, List(ApiSaveError)),
+  result result: Result(ToClient, List(ApiSaveError)),
 ) -> BitArray {
   encode_result_frame(request_id, result)
 }
