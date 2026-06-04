@@ -84,7 +84,7 @@ pub fn view(model: Model) -> Element(Msg) {
 }
 
 // SERVER -- message type and handler.
-// Libero scans the handler signature to generate the wire contract.
+// Rally scans the handler signature to generate the wire contract.
 
 pub type ServerIncrement {
   ServerIncrement(amount: Int)
@@ -100,7 +100,7 @@ pub fn server_increment(
 
 `Model`, `Msg`, `init`, `update`, and `view` are normal Lustre TEA. `ServerIncrement` and `server_increment` define the server call. The client sends the typed message with `effect.rpc`.
 
-There is no separate API schema. [Libero](https://hexdocs.pm/libero/) scans the handler signature and Rally wires it into the generated client and server code.
+There is no separate API schema. Rally scans the handler signature and wires it into the generated client and server code. Rally uses [Libero](https://hexdocs.pm/libero/) as its lower-level wire codec library, the same way Marmot-generated SQL access code uses SQLite underneath.
 
 ## File-based routing
 
@@ -173,14 +173,14 @@ gleam build
 gleam test
 ```
 
-Rally depends on [Libero](https://hexdocs.pm/libero/). App projects should add both packages with `gleam add rally libero`.
+Rally depends on [Libero](https://hexdocs.pm/libero/) for wire encoding and decoding. Rally-generated code consumes Libero runtime modules directly, so Rally-managed apps list Libero as a runtime dependency. Projects that use Libero directly, or other frameworks built on Libero, can use Libero without Rally.
 
 ## Influences
 
 - [Lamdera](https://lamdera.com): explicit server handler types as the contract, TEA on both sides
 - [Lustre](https://lustre.build/): TEA, effects, and the client-side UI runtime
 - [elm-land](https://elm.land): file-based routing conventions
-- [Libero](https://hexdocs.pm/libero/): wire protocol and RPC contract layer
+- [Libero](https://hexdocs.pm/libero/): lower-level wire codec library used by Rally-generated code
 - [Marmot](https://hexdocs.pm/marmot/): SQL-first codegen with live SQLite introspection
 
 ## License

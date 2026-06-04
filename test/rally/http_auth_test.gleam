@@ -9,11 +9,11 @@ import birdie
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
-import libero
 import libero/field_type
 import libero/scanner
 import libero/wire_identity
 import rally/internal/generator/http_handler
+import rally/internal/generator/rpc_dispatch
 import rally/internal/types.{
   type PageContract, type ScannedRoute, AuthConfig, PageContract, ScannedRoute,
   StaticSegment,
@@ -306,12 +306,12 @@ pub fn http_no_auth_unchanged_test() {
 pub fn wire_tag_matches_server_prefix_test() {
   let endpoint = make_endpoint("admin/pages/dashboard", "load_data")
   let dispatch =
-    libero.generate_dispatch(
+    rpc_dispatch.generate(
       [endpoint],
-      option.Some("generated@rpc_atoms"),
-      option.Some("generated@rpc_wire"),
+      atoms_module: Some("generated@rpc_atoms"),
+      wire_module: Some("generated@rpc_wire"),
     )
-  // Libero's fn_name is "load_data" (without server_ prefix).
+  // Handler fn_name is "load_data" (without server_ prefix).
   // The wire variant tag should be "server_load_data".
   let assert True = string.contains(dispatch, "\"server_load_data\"")
 }

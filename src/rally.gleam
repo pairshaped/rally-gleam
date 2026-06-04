@@ -12,7 +12,6 @@ import gleam/option
 import gleam/result
 import gleam/string
 import libero
-import libero/codegen_dispatch.{ExtraParam}
 import libero/etf/codegen_erl
 import libero/field_type
 import libero/gen_error
@@ -26,6 +25,7 @@ import rally/internal/generator/client
 import rally/internal/generator/codec
 import rally/internal/generator/http_handler
 import rally/internal/generator/load_rpc
+import rally/internal/generator/rpc_dispatch.{ExtraParam}
 import rally/internal/generator/ssr_handler
 import rally/internal/generator/ws_handler
 import rally/internal/init as rally_init
@@ -1083,7 +1083,7 @@ fn resolve_from_session(pages_root: String) -> #(Bool, String) {
   }
 }
 
-/// Generate the RPC dispatch source via libero, with auth identity threading
+/// Generate Rally-owned RPC dispatch source, with auth identity threading
 /// when auth is configured.
 fn generate_rpc_dispatch_source(
   ns_endpoints: List(libero_scanner.HandlerEndpoint),
@@ -1112,17 +1112,17 @@ fn generate_rpc_dispatch_source(
     _ ->
       case extra_dispatch_params {
         [] ->
-          libero.generate_dispatch(
+          rpc_dispatch.generate(
             ns_endpoints,
-            option.Some(config.atoms_module),
-            option.Some(config.wire_module),
+            atoms_module: option.Some(config.atoms_module),
+            wire_module: option.Some(config.wire_module),
           )
         params ->
-          libero.generate_dispatch_with_extra_params(
+          rpc_dispatch.generate_with_extra_params(
             ns_endpoints,
-            option.Some(config.atoms_module),
-            option.Some(config.wire_module),
-            params,
+            atoms_module: option.Some(config.atoms_module),
+            wire_module: option.Some(config.wire_module),
+            extra_params: params,
           )
       }
   }

@@ -147,19 +147,23 @@ pub fn generate_gleam_toml(
   let depth = list.length(string.split(client_root, "/"))
   let prefix = string.repeat("../", depth)
 
+  let client_imports = collect_client_imports(all_client_files)
   let json_deps = case protocol {
-    "json" ->
-      "gleam_json = \">= 3.1.0 and < 4.0.0\"\nlibero = \">= 6.0.0 and < 7.0.0\"\n"
+    "json" -> "gleam_json = \">= 3.1.0 and < 4.0.0\"\n"
     _ -> ""
   }
-
-  let client_imports = collect_client_imports(all_client_files)
+  let libero_dep = case
+    protocol == "json" || package_needed("libero", client_imports)
+  {
+    True -> "libero = \">= 6.0.0 and < 7.0.0\"\n"
+    False -> ""
+  }
   let baseline =
     set.from_list([
-      "gleam_stdlib", "lustre", "modem", "rally", "marmot", "gleeunit",
+      "gleam_stdlib", "lustre", "modem", "rally", "marmot", "gleeunit", "libero",
     ])
   let json_baseline = case protocol {
-    "json" -> set.from_list(["libero", "gleam_json"])
+    "json" -> set.from_list(["gleam_json"])
     _ -> set.new()
   }
   let exclude = set.union(baseline, json_baseline)
@@ -178,7 +182,10 @@ pub fn generate_gleam_toml(
     })
     |> string.join("")
 
-  GeneratedFile(client_root <> "/gleam.toml", header <> json_deps <> extra_deps)
+  GeneratedFile(
+    client_root <> "/gleam.toml",
+    header <> json_deps <> libero_dep <> extra_deps,
+  )
 }
 
 fn collect_client_imports(files: List(GeneratedFile)) -> set.Set(String) {
