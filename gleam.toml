@@ -88,5 +88,4 @@ exclude = ["tmp/**", "examples/**"]
   "deep_nesting",
   "label_possible",
   "stringly_typed_error",
-  "unnecessary_string_concatenation",
 ]

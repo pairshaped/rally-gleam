@@ -527,35 +527,43 @@ pub fn client_context_seeds(
 fn emit_rally_effect_shim(protocol: String) -> String {
   let rpc_fn = case protocol {
     "json" ->
-      "\npub fn rpc(msg: a, on_response on_response: fn(b) -> msg) -> Effect(msg) {\n"
-      <> "  effect.from(fn(dispatch) {\n"
-      <> "    transport.send_rpc(types.json_encode_client_msg(transport.coerce(msg)), fn(response) {\n"
-      <> "      dispatch(on_response(transport.coerce(response)))\n"
-      <> "    })\n"
-      <> "  })\n"
-      <> "}\n"
+      "
+pub fn rpc(msg: a, on_response on_response: fn(b) -> msg) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    transport.send_rpc(types.json_encode_client_msg(transport.coerce(msg)), fn(response) {
+      dispatch(on_response(transport.coerce(response)))
+    })
+  })
+}
+"
     _ ->
-      "\npub fn rpc(msg: a, on_response on_response: fn(b) -> msg) -> Effect(msg) {\n"
-      <> "  effect.from(fn(dispatch) {\n"
-      <> "    transport.send_rpc(msg, fn(response) {\n"
-      <> "      dispatch(on_response(response))\n"
-      <> "    })\n"
-      <> "  })\n"
-      <> "}\n"
+      "
+pub fn rpc(msg: a, on_response on_response: fn(b) -> msg) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    transport.send_rpc(msg, fn(response) {
+      dispatch(on_response(response))
+    })
+  })
+}
+"
   }
 
   let client_context_fn = case protocol {
     "json" ->
-      "\npub fn send_to_client_context(_msg: a) -> Effect(b) {\n"
-      <> "  panic as \"send_to_client_context: JSON client context encoding is not yet implemented\"\n"
-      <> "}\n"
+      "
+pub fn send_to_client_context(_msg: a) -> Effect(b) {
+  panic as \"send_to_client_context: JSON client context encoding is not yet implemented\"
+}
+"
     _ ->
-      "\npub fn send_to_client_context(msg: a) -> Effect(b) {\n"
-      <> "  effect.from(fn(_dispatch) {\n"
-      <> "    transport.send_to_server(\"__ClientContext__\", msg)\n"
-      <> "    Nil\n"
-      <> "  })\n"
-      <> "}\n"
+      "
+pub fn send_to_client_context(msg: a) -> Effect(b) {
+  effect.from(fn(_dispatch) {
+    transport.send_to_server(\"__ClientContext__\", msg)
+    Nil
+  })
+}
+"
   }
 
   let imports = case protocol {

@@ -141,7 +141,7 @@ pub fn hash_login_code(
   secret_key secret_key: String,
 ) -> String {
   let digest = login_code_digest(scope:, code:, secret_key:)
-  encode_login_code_hash(digest)
+  encode_login_code_hash(hash: digest)
 }
 
 /// Hash a scoped login code, returning an error shape compatible with
@@ -161,7 +161,7 @@ pub fn verify_login_code(
   code code: String,
   secret_key secret_key: String,
 ) -> Bool {
-  case parse_login_code_hash(stored) {
+  case parse_login_code_hash(stored:) {
     Ok(expected) -> {
       let actual = login_code_digest(scope:, code:, secret_key:)
       crypto.secure_compare(actual, expected)
@@ -171,7 +171,7 @@ pub fn verify_login_code(
 }
 
 fn login_code_input(scope scope: String, code code: String) -> String {
-  normalize(scope) <> ":" <> normalize(code)
+  normalize(value: scope) <> ":" <> normalize(value: code)
 }
 
 fn login_code_digest(

@@ -41,7 +41,7 @@ pub type LoadRpc {
 }
 
 pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
-  use files <- result.try(walk_directory(src_root))
+  use files <- result.try(walk_directory(path: src_root))
   files
   |> list.try_fold([], fn(loads, path) {
     use discovered <- result.try(discover_file(src_root, path))
@@ -57,19 +57,19 @@ pub fn generate(
   [
     GeneratedFile(
       "src/generated/rally/client_protocol.gleam",
-      client_protocol(loads, to_client_module:, to_server_module:),
+      client_protocol(loads:, to_client_module:, to_server_module:),
     ),
     GeneratedFile(
       "src/generated/rally/server_protocol.gleam",
-      server_protocol(loads, to_client_module:, to_server_module:),
+      server_protocol(loads:, to_client_module:, to_server_module:),
     ),
     GeneratedFile(
       "src/generated/rally/client_transport.gleam",
-      client_transport(loads, to_client_module:, to_server_module:),
+      client_transport(loads:, to_client_module:, to_server_module:),
     ),
     GeneratedFile(
       "src/generated/rally/hydration.gleam",
-      hydration(loads, to_client_module:),
+      hydration(loads:, to_client_module:),
     ),
   ]
 }
@@ -288,7 +288,7 @@ fn discover_file(
     False -> source_module
   }
   discover_source(
-    source,
+    source:,
     module_path:,
     wire_module: source_module,
     import_on_client: is_wire,
@@ -409,7 +409,7 @@ fn walk_directory(path path: String) -> Result(List(String), String) {
     case is_dir {
       True -> {
         use <- bool.guard(when: entry == "generated", return: Ok(acc))
-        use nested <- result.try(walk_directory(child))
+        use nested <- result.try(walk_directory(path: child))
         Ok(list.append(acc, nested))
       }
       False -> {
@@ -751,10 +751,8 @@ fn decode_" <> load.name <> "_load_result(
 }
 
 fn client_load_result_type(load: LoadRpc) -> String {
-  case load.import_on_client {
-    True -> wire_alias(load) <> ".LoadResult"
-    False -> "load_result"
-  }
+  use <- bool.guard(when: !load.import_on_client, return: "load_result")
+  wire_alias(load) <> ".LoadResult"
 }
 
 fn client_save_result_type(load: LoadRpc) -> String {
