@@ -7,6 +7,7 @@
 import glance
 import gleam/bool
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import libero/field_type
@@ -29,16 +30,19 @@ pub type LoadRpc {
     module_path: String,
     /// Page-local wire module that defines ServerMsg and LoadResult.
     wire_module: String,
+    /// False when the contract lives in the page module, because importing the
+    /// page from client transport would create a cycle.
+    import_on_client: Bool,
     /// ServerMsg constructor used to request the page load.
     request_constructor: String,
     args: List(LoadArg),
+    save_result_type: Option(String),
   )
 }
 
 pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   use files <- result.try(walk_directory(src_root))
   files
-  |> list.filter(fn(path) { string.ends_with(path, "/wire.gleam") })
   |> list.try_fold([], fn(loads, path) {
     use discovered <- result.try(discover_file(src_root, path))
     Ok(list.append(loads, discovered))
@@ -85,11 +89,14 @@ import generated/libero/result.{type ApiLoadError, type ApiSaveError}
 import generated/libero/to_client_codec
 @target(javascript)
 import generated/libero/to_server_codec
-" <> wire_imports(loads, "@target(javascript)") <> "
+" <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
+@target(javascript)
+import broadcasts
+
 @target(javascript)
 pub type ServerFrame {
   Response(message: ToClient)
-  Push(module: String, message: ToClient)
+  Push(module: String, message: broadcasts.Event)
 }
 
 @target(javascript)
@@ -149,6 +156,10 @@ pub fn decode_save_result(
 ) -> Result(#(Int, Result(ToClient, List(ApiSaveError))), Nil) {
   decode_result_envelope(bytes)
 }
+" <> string.join(
+    option.values(list.map(loads, client_decode_save_result)),
+    "\n",
+  ) <> "
 
 @target(javascript)
 pub fn decode_result_envelope(bytes: BitArray) -> Result(#(Int, a), Nil) {
@@ -187,7 +198,10 @@ import generated/libero/result.{type ApiLoadError, type ApiSaveError}
 import generated/libero/to_client_codec
 @target(erlang)
 import generated/libero/to_server_codec
-" <> wire_imports(loads, "@target(erlang)") <> "
+" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+@target(erlang)
+import broadcasts
+
 @target(erlang)
 pub type ClientRequest {
   ClientRequest(request_id: Int, module: String, message: ToServer)
@@ -239,6 +253,10 @@ pub fn encode_save_result(
 ) -> BitArray {
   encode_result_frame(request_id, result)
 }
+" <> string.join(
+    option.values(list.map(loads, server_encode_save_result)),
+    "\n",
+  ) <> "
 
 @target(erlang)
 fn encode_result_frame(request_id: Int, result: a) -> BitArray {
@@ -249,7 +267,7 @@ fn encode_result_frame(request_id: Int, result: a) -> BitArray {
 @target(erlang)
 pub fn encode_push(
   module module: String,
-  message message: ToClient,
+  message message: broadcasts.Event,
 ) -> BitArray {
   let payload = encode_any(#(module, message))
   <<1, payload:bits>>
@@ -284,7 +302,7 @@ import generated/rally/client_protocol
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
 import lustre/effect.{type Effect}
-" <> wire_imports(loads, "@target(javascript)") <> "
+" <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
 @target(javascript)
 pub fn connect(
   url url: String,
@@ -329,6 +347,7 @@ pub fn send_save(
     send_save_frame(request_id, frame, on_result, dispatch)
   })
 }
+" <> string.join(option.values(list.map(loads, transport_send_save)), "\n") <> "
 
 @target(javascript)
 @external(javascript, \"./client_transport_ffi.mjs\", \"connect\")
@@ -363,6 +382,7 @@ fn send_save_frame(
 ) -> Nil {
   Nil
 }
+" <> string.join(option.values(list.map(loads, transport_save_external)), "\n") <> "
 
 @target(javascript)
 @external(javascript, \"./client_transport_ffi.mjs\", \"next_request_id\")
@@ -392,7 +412,7 @@ import gleam/bit_array
 import gleam/list
 @target(javascript)
 import gleam/string
-" <> wire_imports(loads, "@target(javascript)") <> "
+" <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
 @target(javascript)
 pub fn messages() -> Result(List(ToClient), Nil) {
   case browser.take_boot_string(\"hydration\") {
@@ -436,15 +456,25 @@ fn discover_file(
       "Cannot read " <> path <> ": " <> simplifile.describe_error(e)
     }),
   )
-  let wire_module = module_from_path(src_root, path)
-  let module_path = string.drop_end(wire_module, string.length("/wire"))
-  discover_source(source, module_path:, wire_module:)
+  let source_module = module_from_path(src_root, path)
+  let is_wire = string.ends_with(source_module, "/wire")
+  let module_path = case is_wire {
+    True -> string.drop_end(source_module, string.length("/wire"))
+    False -> source_module
+  }
+  discover_source(
+    source,
+    module_path:,
+    wire_module: source_module,
+    import_on_client: is_wire,
+  )
 }
 
 fn discover_source(
   source source: String,
   module_path module_path: String,
   wire_module wire_module: String,
+  import_on_client import_on_client: Bool,
 ) -> Result(List(LoadRpc), String) {
   use ast <- result.try(
     glance.module(source)
@@ -457,6 +487,13 @@ fn discover_source(
   case has_custom_type(ast.custom_types, "LoadResult") {
     False -> Ok([])
     True -> {
+      let save_result_type = case
+        import_on_client,
+        has_custom_type(ast.custom_types, "GameUpdate")
+      {
+        False, True -> Some("GameUpdate")
+        _, _ -> None
+      }
       case
         list.find(ast.custom_types, fn(def) {
           def.definition.name == "ServerMsg"
@@ -481,8 +518,10 @@ fn discover_source(
               name:,
               module_path:,
               wire_module:,
+              import_on_client:,
               request_constructor: variant.name,
               args:,
+              save_result_type:,
             ))
           })
       }
@@ -565,8 +604,13 @@ fn module_from_path(src_root: String, path: String) -> String {
   |> string.drop_end(string.length(".gleam"))
 }
 
-fn wire_imports(loads: List(LoadRpc), target: String) -> String {
+fn wire_imports(
+  loads: List(LoadRpc),
+  target: String,
+  client_only client_only: Bool,
+) -> String {
   loads
+  |> list.filter(fn(load) { !client_only || load.import_on_client })
   |> list.map(fn(load) {
     target <> "\nimport " <> load.wire_module <> " as " <> wire_alias(load)
   })
@@ -617,9 +661,10 @@ fn call_args(args: List(LoadArg)) -> String {
 }
 
 fn constructor(load: LoadRpc) -> String {
-  case load.args {
-    [] -> wire_alias(load) <> "." <> load.request_constructor
-    args ->
+  case load.import_on_client, load.args {
+    False, _ -> "message"
+    True, [] -> wire_alias(load) <> "." <> load.request_constructor
+    True, args ->
       wire_alias(load)
       <> "."
       <> load.request_constructor
@@ -630,9 +675,14 @@ fn constructor(load: LoadRpc) -> String {
 }
 
 fn client_encode_request(load: LoadRpc) -> String {
+  let signature = case load.import_on_client {
+    True -> arg_signature(load.args)
+    False -> "\n  message message: a,"
+  }
+
   "@target(javascript)
 pub fn encode_" <> load.name <> "_request(
-  request_id request_id: Int," <> arg_signature(load.args) <> "
+  request_id request_id: Int," <> signature <> "
 ) -> BitArray {
   encode_any(#(
     request_id,
@@ -648,12 +698,25 @@ fn client_decode_load_result(load: LoadRpc) -> String {
 pub fn decode_" <> load.name <> "_load_result(
   bytes: BitArray,
 ) -> Result(
-  #(Int, Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError))),
+  #(Int, Result(" <> client_load_result_type(load) <> ", List(ApiLoadError))),
   Nil,
 ) {
   decode_result_envelope(bytes)
 }
 "
+}
+
+fn client_decode_save_result(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(_) -> Some("@target(javascript)
+pub fn decode_" <> load.name <> "_save_result(
+  bytes: BitArray,
+) -> Result(#(Int, Result(" <> client_save_result_type(load) <> ", List(ApiSaveError))), Nil) {
+  decode_result_envelope(bytes)
+}
+")
+  }
 }
 
 fn server_request_type(load: LoadRpc) -> String {
@@ -693,25 +756,62 @@ pub fn encode_" <> load.name <> "_load_result(
 "
 }
 
+fn server_encode_save_result(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(save_result_type) -> Some("@target(erlang)
+pub fn encode_" <> load.name <> "_save_result(
+  request_id request_id: Int,
+  result result: Result(" <> wire_alias(load) <> "." <> save_result_type <> ", List(ApiSaveError)),
+) -> BitArray {
+  encode_result_frame(request_id, result)
+}
+")
+  }
+}
+
 fn transport_send_load(load: LoadRpc) -> String {
+  let signature = case load.import_on_client {
+    True -> arg_signature(load.args)
+    False -> "\n  message message: a,"
+  }
+  let call_args = case load.import_on_client, load.args {
+    False, _ -> ", message"
+    True, [] -> ""
+    True, args -> ", " <> call_args(args)
+  }
+
   "@target(javascript)
-pub fn send_" <> load.name <> "_load(" <> arg_signature(load.args) <> "
+pub fn send_" <> load.name <> "_load(" <> signature <> "
   on_result on_result: fn(
-    Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError)),
+    Result(" <> client_load_result_type(load) <> ", List(ApiLoadError)),
   ) -> msg,
 ) -> Effect(msg) {
   effect.from(fn(dispatch) {
     let request_id = next_request_id()
-    let frame = client_protocol.encode_" <> load.name <> "_request(request_id" <> case
-    load.args
-  {
-    [] -> ""
-    args -> ", " <> call_args(args)
-  } <> ")
+    let frame = client_protocol.encode_" <> load.name <> "_request(request_id" <> call_args <> ")
     send_" <> load.name <> "_load_frame(request_id, frame, on_result, dispatch)
   })
 }
 "
+}
+
+fn transport_send_save(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(_) -> Some("@target(javascript)
+pub fn send_" <> load.name <> "_save(
+  message message: a,
+  on_result on_result: fn(Result(" <> client_save_result_type(load) <> ", List(ApiSaveError))) -> msg,
+) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    let request_id = next_request_id()
+    let frame = client_protocol.encode_" <> load.name <> "_request(request_id, message)
+    send_" <> load.name <> "_save_frame(request_id, frame, on_result, dispatch)
+  })
+}
+")
+  }
 }
 
 fn transport_external(load: LoadRpc) -> String {
@@ -720,7 +820,7 @@ fn transport_external(load: LoadRpc) -> String {
 fn send_" <> load.name <> "_load_frame(
   _request_id: Int,
   _frame: BitArray,
-  _on_result: fn(Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError))) -> msg,
+  _on_result: fn(Result(" <> client_load_result_type(load) <> ", List(ApiLoadError))) -> msg,
   _dispatch: fn(msg) -> Nil,
 ) -> Nil {
   Nil
@@ -728,10 +828,27 @@ fn send_" <> load.name <> "_load_frame(
 "
 }
 
+fn transport_save_external(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(_) -> Some("@target(javascript)
+@external(javascript, \"./client_transport_ffi.mjs\", \"send_save_frame\")
+fn send_" <> load.name <> "_save_frame(
+  _request_id: Int,
+  _frame: BitArray,
+  _on_result: fn(Result(" <> client_save_result_type(load) <> ", List(ApiSaveError))) -> msg,
+  _dispatch: fn(msg) -> Nil,
+) -> Nil {
+  Nil
+}
+")
+  }
+}
+
 fn hydration_load_result(load: LoadRpc) -> String {
   "@target(javascript)
 pub fn " <> load.name <> "_load_result() -> Result(
-  Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError)),
+  Result(" <> client_load_result_type(load) <> ", List(ApiLoadError)),
   Nil,
 ) {
   case browser.take_boot_string(\"hydration\") {
@@ -750,7 +867,7 @@ fn hydration_decode_result(load: LoadRpc) -> String {
   "@target(javascript)
 fn decode_" <> load.name <> "_load_result(
   encoded: String,
-) -> Result(Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError)), Nil) {
+) -> Result(Result(" <> client_load_result_type(load) <> ", List(ApiLoadError)), Nil) {
   case bit_array.base64_url_decode(encoded) {
     Ok(bytes) ->
       case client_protocol.decode_" <> load.name <> "_load_result(bytes) {
@@ -761,6 +878,20 @@ fn decode_" <> load.name <> "_load_result(
   }
 }
 "
+}
+
+fn client_load_result_type(load: LoadRpc) -> String {
+  case load.import_on_client {
+    True -> wire_alias(load) <> ".LoadResult"
+    False -> "load_result"
+  }
+}
+
+fn client_save_result_type(load: LoadRpc) -> String {
+  case load.import_on_client, load.save_result_type {
+    True, Some(save_result_type) -> wire_alias(load) <> "." <> save_result_type
+    _, _ -> "save_result"
+  }
 }
 
 fn has_custom_type(

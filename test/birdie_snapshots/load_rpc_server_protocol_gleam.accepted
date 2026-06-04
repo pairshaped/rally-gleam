@@ -3,6 +3,8 @@ version: 2.0.0
 title: load_rpc_server_protocol_gleam
 ---
 @target(erlang)
+import admin/pages/games as admin_games_wire
+@target(erlang)
 import api/to_client.{type ToClient}
 @target(erlang)
 import api/to_server.{type ToServer}
@@ -18,8 +20,20 @@ import public/pages/games/id_/wire as public_game_detail_wire
 import public/pages/games/wire as public_games_wire
 
 @target(erlang)
+import broadcasts
+
+@target(erlang)
 pub type ClientRequest {
   ClientRequest(request_id: Int, module: String, message: ToServer)
+}
+
+@target(erlang)
+pub type AdminGamesClientRequest {
+  AdminGamesClientRequest(
+    request_id: Int,
+    module: String,
+    message: admin_games_wire.ServerMsg,
+  )
 }
 
 @target(erlang)
@@ -56,6 +70,17 @@ pub fn decode_request(bytes: BitArray) -> Result(ClientRequest, Nil) {
   case decode_any(bytes) {
     Ok(#(request_id, module, message)) ->
       Ok(ClientRequest(request_id:, module:, message:))
+    _ -> Error(Nil)
+  }
+}
+
+@target(erlang)
+pub fn decode_admin_games_request(
+  bytes: BitArray,
+) -> Result(AdminGamesClientRequest, Nil) {
+  case decode_any(bytes) {
+    Ok(#(request_id, module, message)) ->
+      Ok(AdminGamesClientRequest(request_id:, module:, message:))
     _ -> Error(Nil)
   }
 }
@@ -102,6 +127,14 @@ pub fn encode_load_result(
 }
 
 @target(erlang)
+pub fn encode_admin_games_load_result(
+  request_id request_id: Int,
+  result result: Result(admin_games_wire.LoadResult, List(ApiLoadError)),
+) -> BitArray {
+  encode_result_frame(request_id, result)
+}
+
+@target(erlang)
 pub fn encode_public_games_load_result(
   request_id request_id: Int,
   result result: Result(public_games_wire.LoadResult, List(ApiLoadError)),
@@ -126,6 +159,14 @@ pub fn encode_save_result(
 }
 
 @target(erlang)
+pub fn encode_admin_games_save_result(
+  request_id request_id: Int,
+  result result: Result(admin_games_wire.GameUpdate, List(ApiSaveError)),
+) -> BitArray {
+  encode_result_frame(request_id, result)
+}
+
+@target(erlang)
 fn encode_result_frame(request_id: Int, result: a) -> BitArray {
   let payload = encode_any(#(request_id, result))
   <<2, payload:bits>>
@@ -134,7 +175,7 @@ fn encode_result_frame(request_id: Int, result: a) -> BitArray {
 @target(erlang)
 pub fn encode_push(
   module module: String,
-  message message: ToClient,
+  message message: broadcasts.Event,
 ) -> BitArray {
   let payload = encode_any(#(module, message))
   <<1, payload:bits>>

@@ -1,5 +1,6 @@
 import birdie
 import gleam/list
+import gleam/option.{None, Some}
 import gleam/string
 import gleeunit/should
 import rally/internal/format
@@ -14,8 +15,10 @@ fn public_games_load() -> LoadRpc {
     name: "public_games",
     module_path: "public/pages/games",
     wire_module: "public/pages/games/wire",
+    import_on_client: True,
     request_constructor: "PublicGamesLoad",
     args: [],
+    save_result_type: None,
   )
 }
 
@@ -24,13 +27,27 @@ fn public_game_detail_load() -> LoadRpc {
     name: "public_game_detail",
     module_path: "public/pages/games/id_",
     wire_module: "public/pages/games/id_/wire",
+    import_on_client: True,
     request_constructor: "PublicGameDetailLoad",
     args: [LoadArg(label: "game_id", type_ref: "Int")],
+    save_result_type: None,
+  )
+}
+
+fn admin_games_load() -> LoadRpc {
+  LoadRpc(
+    name: "admin_games",
+    module_path: "admin/pages/games",
+    wire_module: "admin/pages/games",
+    import_on_client: False,
+    request_constructor: "AdminGamesLoad",
+    args: [],
+    save_result_type: Some("GameUpdate"),
   )
 }
 
 fn loads() -> List(LoadRpc) {
-  [public_games_load(), public_game_detail_load()]
+  [admin_games_load(), public_games_load(), public_game_detail_load()]
 }
 
 fn generated_files() -> List(GeneratedFile) {
@@ -86,6 +103,28 @@ pub fn load_rpc_discover_finds_page_local_wire_loads_test() {
   let _ = simplifile.delete(file_or_dir_at: root)
   let assert Ok(Nil) =
     simplifile.create_directory_all(src <> "/public/pages/games/id_")
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/admin/pages")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/admin/pages/games.gleam",
+      "pub type ServerMsg {
+  AdminGamesLoad
+  AdminGamesUpdateScore(game_id: Int)
+}
+
+pub type LoadResult {
+  AdminGamesLoaded(games: List(GameSummary))
+}
+
+pub type GameUpdate {
+  AdminGamesUpdated(game: GameSummary)
+}
+
+pub type GameSummary {
+  GameSummary(id: Int)
+}
+",
+    )
   let assert Ok(Nil) =
     simplifile.write(
       src <> "/public/pages/games/wire.gleam",
@@ -121,17 +160,31 @@ pub type LoadResult {
     name: "public_games",
     module_path: "public/pages/games",
     wire_module: "public/pages/games/wire",
+    import_on_client: True,
     request_constructor: "PublicGamesLoad",
     args: [],
+    save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
 
   let assert Ok(LoadRpc(
     name: "public_game_detail",
     module_path: "public/pages/games/id_",
     wire_module: "public/pages/games/id_/wire",
+    import_on_client: True,
     request_constructor: "PublicGameDetailLoad",
     args: [LoadArg(label: "game_id", type_ref: "Int")],
+    save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
+
+  let assert Ok(LoadRpc(
+    name: "admin_games",
+    module_path: "admin/pages/games",
+    wire_module: "admin/pages/games",
+    import_on_client: False,
+    request_constructor: "AdminGamesLoad",
+    args: [],
+    save_result_type: Some("GameUpdate"),
+  )) = list.find(discovered, fn(load) { load.name == "admin_games" })
 }
 
 fn content_for(path: String) -> String {
