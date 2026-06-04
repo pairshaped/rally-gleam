@@ -68,6 +68,10 @@ pub fn generate(
       client_transport(loads:, to_client_module:, to_server_module:),
     ),
     GeneratedFile(
+      "src/generated/rally/server.gleam",
+      page_server(loads:, to_client_module:, to_server_module:),
+    ),
+    GeneratedFile(
       "src/generated/rally/hydration.gleam",
       hydration(loads:, to_client_module:),
     ),
@@ -283,6 +287,68 @@ fn connect_socket(_url: String, _on_frame: fn(BitArray) -> Nil) -> Nil {
 @external(javascript, \"./client_transport_ffi.mjs\", \"next_request_id\")
 fn next_request_id() -> Int {
   0
+}
+"
+}
+
+pub fn page_server(
+  loads loads: List(LoadRpc),
+  to_client_module _to_client_module: String,
+  to_server_module _to_server_module: String,
+) -> String {
+  "@target(javascript)
+import generated/rally/client_transport
+@target(javascript)
+import generated/rally/result as transport_result
+@target(javascript)
+import gleam/list
+@target(javascript)
+import gleam/option.{type Option}
+@target(javascript)
+import lustre/effect.{type Effect}
+" <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+pub type LoadError {
+  LoadError(message: String)
+}
+
+@target(javascript)
+pub type SaveError {
+  SaveError(field: Option(String), message: String)
+}
+
+" <> string.join(list.map(loads, page_server_load), "\n") <> "
+" <> string.join(option.values(list.map(loads, page_server_save)), "\n") <> "
+
+@target(javascript)
+fn map_load_result(
+  result: Result(a, List(transport_result.ApiLoadError)),
+) -> Result(a, List(LoadError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) -> Error(list.map(errors, fn(error) {
+      let transport_result.ApiLoadError(message:) = error
+      LoadError(message:)
+    }))
+  }
+}
+
+@target(javascript)
+fn map_save_result(
+  result: Result(a, List(transport_result.ApiSaveError)),
+) -> Result(a, List(SaveError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) -> Error(list.map(errors, fn(error) {
+      let transport_result.ApiSaveError(field:, message:) = error
+      SaveError(field:, message:)
+    }))
+  }
 }
 "
 }
@@ -745,6 +811,51 @@ fn send_" <> load.name <> "_save_frame(
   _dispatch: fn(msg) -> Nil,
 ) -> Nil {
   Nil
+}
+")
+  }
+}
+
+fn page_server_load(load: LoadRpc) -> String {
+  let signature = case load.import_on_client {
+    True -> arg_signature(load.args)
+    False -> "\n  message message: a,"
+  }
+  let call_args = case load.import_on_client, load.args {
+    False, _ -> "message: message, "
+    True, [] -> ""
+    True, args -> arg_labels(args) <> ", "
+  }
+
+  "@target(javascript)
+pub fn load_" <> load.name <> "(" <> signature <> "
+  on_result on_result: fn(
+    Result(" <> client_load_result_type(load) <> ", List(LoadError)),
+  ) -> msg,
+) -> Effect(msg) {
+  client_transport.send_" <> load.name <> "_load(
+    " <> call_args <> "on_result: fn(result) {
+      on_result(map_load_result(result))
+    },
+  )
+}
+"
+}
+
+fn page_server_save(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(_) -> Some("@target(javascript)
+pub fn save_" <> load.name <> "(
+  message message: a,
+  on_result on_result: fn(Result(" <> client_save_result_type(load) <> ", List(SaveError))) -> msg,
+) -> Effect(msg) {
+  client_transport.send_" <> load.name <> "_save(
+    message: message,
+    on_result: fn(result) {
+      on_result(map_save_result(result))
+    },
+  )
 }
 ")
   }

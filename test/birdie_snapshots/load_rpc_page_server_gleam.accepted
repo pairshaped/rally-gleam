@@ -1,0 +1,112 @@
+---
+version: 2.0.0
+title: load_rpc_page_server_gleam
+file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
+test_name: load_rpc_page_server_snapshot_test
+---
+@target(javascript)
+import generated/rally/client_transport
+@target(javascript)
+import generated/rally/result as transport_result
+@target(javascript)
+import gleam/list
+@target(javascript)
+import gleam/option.{type Option}
+@target(javascript)
+import lustre/effect.{type Effect}
+@target(javascript)
+import public/pages/games/id_/wire as public_game_detail_wire
+@target(javascript)
+import public/pages/games/wire as public_games_wire
+
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+pub type LoadError {
+  LoadError(message: String)
+}
+
+@target(javascript)
+pub type SaveError {
+  SaveError(field: Option(String), message: String)
+}
+
+@target(javascript)
+pub fn load_admin_games(
+  message message: a,
+  on_result on_result: fn(Result(load_result, List(LoadError))) -> msg,
+) -> Effect(msg) {
+  client_transport.send_admin_games_load(
+    message: message,
+    on_result: fn(result) { on_result(map_load_result(result)) },
+  )
+}
+
+@target(javascript)
+pub fn load_public_games(
+  on_result on_result: fn(Result(public_games_wire.LoadResult, List(LoadError))) ->
+    msg,
+) -> Effect(msg) {
+  client_transport.send_public_games_load(on_result: fn(result) {
+    on_result(map_load_result(result))
+  })
+}
+
+@target(javascript)
+pub fn load_public_game_detail(
+  game_id game_id: Int,
+  on_result on_result: fn(
+    Result(public_game_detail_wire.LoadResult, List(LoadError)),
+  ) -> msg,
+) -> Effect(msg) {
+  client_transport.send_public_game_detail_load(game_id:, on_result: fn(result) {
+    on_result(map_load_result(result))
+  })
+}
+
+@target(javascript)
+pub fn save_admin_games(
+  message message: a,
+  on_result on_result: fn(Result(save_result, List(SaveError))) -> msg,
+) -> Effect(msg) {
+  client_transport.send_admin_games_save(
+    message: message,
+    on_result: fn(result) { on_result(map_save_result(result)) },
+  )
+}
+
+@target(javascript)
+fn map_load_result(
+  result: Result(a, List(transport_result.ApiLoadError)),
+) -> Result(a, List(LoadError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) ->
+      Error(
+        list.map(errors, fn(error) {
+          let transport_result.ApiLoadError(message:) = error
+          LoadError(message:)
+        }),
+      )
+  }
+}
+
+@target(javascript)
+fn map_save_result(
+  result: Result(a, List(transport_result.ApiSaveError)),
+) -> Result(a, List(SaveError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) ->
+      Error(
+        list.map(errors, fn(error) {
+          let transport_result.ApiSaveError(field:, message:) = error
+          SaveError(field:, message:)
+        }),
+      )
+  }
+}
+

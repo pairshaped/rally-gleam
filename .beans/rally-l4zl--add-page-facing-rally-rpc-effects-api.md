@@ -1,14 +1,14 @@
 ---
 # rally-l4zl
 title: Add page-facing Rally RPC effects API
-status: todo
+status: completed
 type: task
 priority: high
 tags:
     - codegen
     - api
 created_at: 2026-06-04T23:18:28Z
-updated_at: 2026-06-04T23:18:28Z
+updated_at: 2026-06-04T23:31:35Z
 parent: rally-oymv
 ---
 
@@ -35,3 +35,23 @@ Acceptance:
 - Page code can request load/save/update effects through a stable Rally-facing API.
 - Existing page behavior is unchanged.
 - Tests or guard assertions cover the public API shape and prevent direct generated transport imports in authored page code.
+
+
+## Completion notes
+
+Generated a page-facing `src/generated/rally/server.gleam` wrapper for load RPC effects:
+
+- The wrapper exposes `load_*` and `save_*` functions for page modules.
+- Authored pages no longer need to import `generated/rally/client_transport` or `generated/rally/result` directly.
+- The wrapper maps transport-level `ApiLoadError` and `ApiSaveError` into page-facing `server.LoadError` and `server.SaveError` values.
+- Generated transport/protocol/result modules remain internal generated plumbing and may still consume Libero/Rally internals.
+- Added snapshot coverage for the generated page-facing server module.
+- Regenerated Scoreboard load RPC output and migrated all authored page modules to `generated/rally/server`.
+
+Validation:
+
+- Rally `gleam build`
+- Rally `gleam test --target erlang -- --module rally/codegen_load_rpc_snapshot_test` (426 passed)
+- Scoreboard `gleam build --target javascript`
+- Scoreboard `gleam build --target erlang`
+- Scoreboard authored pages search for `generated/rally/client_transport`, `generated/rally/result`, `api_client`, `wire_result`, and `ApiLoadError`/`ApiSaveError` returned no matches.
