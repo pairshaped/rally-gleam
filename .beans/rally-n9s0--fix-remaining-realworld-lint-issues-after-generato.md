@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-05-09T13:52:32Z
-updated_at: 2026-06-04T22:01:38Z
+updated_at: 2026-06-04T22:04:24Z
 ---
 
 Context: After fixing 39 mechanical lint issues, 166 remain in realworld user code. Most need coordinated fixes in generators first.
@@ -38,3 +38,8 @@ Progress 2026-06-04 after fc09881:
 - Cleaned settings.gleam validation/update/logout flow.
 - Remaining settings warnings are generated-usage unused_exports only.
 - RealWorld lint is now 167 errors.
+
+Progress 2026-06-04 after 2d12303:
+- Cleaned editor.gleam publish/tag-saving flow.
+- Remaining editor warnings are generated-usage unused_exports only.
+- RealWorld lint is now 160 errors.

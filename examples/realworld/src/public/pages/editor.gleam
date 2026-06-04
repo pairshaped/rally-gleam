@@ -1,7 +1,9 @@
 import generated/sql/articles_sql
 import generated/sql/auth_sql
 import generated/sql/tags_sql
+import gleam/bool
 import gleam/list
+import gleam/result
 import gleam/string
 import helpers/datetime
 import helpers/slug
@@ -201,48 +203,49 @@ pub fn server_publish_article(
   msg msg: ServerPublishArticle,
   server_context server_context: ServerContext,
 ) -> Result(String, List(String)) {
-  let errors = validate_article(msg.title, msg.body)
-  case errors {
-    [] -> {
-      let session_id = rally_effect.get_ws_session()
+  let errors = validate_article(title: msg.title, body: msg.body)
+  use <- bool.guard(when: errors != [], return: Error(errors))
+
+  let session_id = rally_effect.get_ws_session()
+  case
+    auth_sql.find_user_by_session(
+      db: server_context.db,
+      session_id: session_id,
+      now: datetime.now_unix(),
+    )
+  {
+    Ok([user]) -> {
+      let now = datetime.now_unix()
+      let article_slug =
+        slug.unique_from_title(db: server_context.db, title: msg.title)
       case
-        auth_sql.find_user_by_session(
+        articles_sql.create(
           db: server_context.db,
-          session_id: session_id,
-          now: datetime.now_unix(),
+          slug: article_slug,
+          title: msg.title,
+          description: msg.description,
+          body: msg.body,
+          author_id: user.id,
+          created_at: now,
+          updated_at: now,
         )
       {
-        Ok([user]) -> {
-          let now = datetime.now_unix()
-          let article_slug =
-            slug.unique_from_title(db: server_context.db, title: msg.title)
-          case
-            articles_sql.create(
-              db: server_context.db,
-              slug: article_slug,
-              title: msg.title,
-              description: msg.description,
-              body: msg.body,
-              author_id: user.id,
-              created_at: now,
-              updated_at: now,
-            )
-          {
-            Ok([row]) -> {
-              save_tags(server_context.db, row.id, msg.tags)
-              Ok(row.slug)
-            }
-            _ -> Error(["Failed to create article"])
-          }
+        Ok([row]) -> {
+          use Nil <- result.try(save_tags(
+            db: server_context.db,
+            article_id: row.id,
+            tags: msg.tags,
+          ))
+          Ok(row.slug)
         }
-        _ -> Error(["You must be logged in to publish"])
+        _ -> Error(["Failed to create article"])
       }
     }
-    _ -> Error(errors)
+    _ -> Error(["You must be logged in to publish"])
   }
 }
 
-fn validate_article(title: String, body: String) -> List(String) {
+fn validate_article(title title: String, body body: String) -> List(String) {
   let errors = []
   let errors = case string.is_empty(string.trim(title)) {
     True -> ["Title can't be blank", ..errors]
@@ -255,14 +258,45 @@ fn validate_article(title: String, body: String) -> List(String) {
 }
 
 fn save_tags(
-  db: sqlight.Connection,
-  article_id: Int,
-  tags: List(String),
-) -> Nil {
-  list.each(tags, fn(tag) {
-    let assert Ok(_) = tags_sql.create_or_ignore(db:, name: tag)
-    let assert Ok([row]) = tags_sql.get_id_by_name(db:, name: tag)
-    let assert Ok(_) =
-      tags_sql.link_to_article(db:, article_id:, tag_id: row.id)
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  tags tags: List(String),
+) -> Result(Nil, List(String)) {
+  case tags {
+    [] -> Ok(Nil)
+    [tag, ..rest] -> {
+      use Nil <- result.try(save_tag(db: db, article_id: article_id, tag: tag))
+      save_tags(db: db, article_id: article_id, tags: rest)
+    }
+  }
+}
+
+fn save_tag(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  tag tag: String,
+) -> Result(Nil, List(String)) {
+  use _created <- result.try(
+    tags_sql.create_or_ignore(db: db, name: tag)
+    |> tag_sql_result_to_app_error,
+  )
+  use row <- result.try(case tags_sql.get_id_by_name(db: db, name: tag) {
+    Ok([row]) -> Ok(row)
+    _ -> Error(["Failed to save tags"])
   })
+  case
+    tags_sql.link_to_article(db: db, article_id: article_id, tag_id: row.id)
+  {
+    Ok(_) -> Ok(Nil)
+    Error(_) -> Error(["Failed to save tags"])
+  }
+}
+
+fn tag_sql_result_to_app_error(
+  result result: Result(a, b),
+) -> Result(a, List(String)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(_) -> Error(["Failed to save tags"])
+  }
 }
