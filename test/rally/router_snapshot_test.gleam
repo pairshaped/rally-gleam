@@ -278,6 +278,43 @@ pub fn ssr_handler_with_client_context_snapshot_test() {
   birdie.snap(output, "ssr_handler_with_client_context_gleam")
 }
 
+pub fn ssr_handler_uses_protocol_wire_flags_without_etf_wrappers_test() {
+  let contracts = basic_contracts()
+  let shell =
+    "<!DOCTYPE html>\n<html>\n<head><meta charset='utf-8'></head>\n<body><div id='app'></div><script type='module' src='/_build/client/generated/app.mjs'></script></body>\n</html>"
+  let output =
+    ssr_handler.generate(
+      contracts,
+      True,
+      True,
+      "server_context",
+      "generated/router",
+      shell,
+      "generated/public/rpc_atoms",
+      Some("generated@rpc_wire"),
+      Some("public/client_context"),
+      option.None,
+      wire_import_module: "generated/public/protocol_wire",
+      protocol: "etf",
+    )
+
+  output
+  |> string.contains("let flags = libero_wire.encode_flags(model)")
+  |> should.equal(True)
+
+  output
+  |> string.contains("let encoded = libero_wire.encode_flags(client_context)")
+  |> should.equal(True)
+
+  output
+  |> string.contains("wire_encode_")
+  |> should.equal(False)
+
+  output
+  |> string.contains("@external(erlang, \"generated@rpc_wire\"")
+  |> should.equal(False)
+}
+
 pub fn ssr_shell_handler_marks_unused_route_test() {
   let route =
     ScannedRoute(
