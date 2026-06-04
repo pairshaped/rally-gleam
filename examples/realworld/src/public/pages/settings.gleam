@@ -1,4 +1,5 @@
 import generated/sql/auth_sql
+import gleam/bool
 import gleam/list
 import gleam/string
 import helpers/datetime
@@ -11,6 +12,7 @@ import public/client_context.{type ClientContext, SignedIn, SignedOut, User}
 import rally/runtime/auth
 import rally/runtime/effect as rally_effect
 import server_context.{type ServerContext}
+import sqlight
 
 // MODEL
 
@@ -207,54 +209,14 @@ pub fn server_update_settings(
     )
   {
     Ok([user]) -> {
-      let errors = validate_settings(msg.username, msg.email)
-      case errors {
-        [] -> {
-          let now = datetime.now_unix()
-          case string.is_empty(string.trim(msg.password)) {
-            True -> {
-              case
-                auth_sql.update_user(
-                  db: server_context.db,
-                  image: msg.image,
-                  username: msg.username,
-                  bio: msg.bio,
-                  email: msg.email,
-                  now:,
-                  user_id: user.id,
-                )
-              {
-                Ok(_) -> Ok(#(msg.username, msg.image))
-                Error(_error) -> Error(["Username or email already taken"])
-              }
-            }
-            False -> {
-              case string.length(msg.password) < 8 {
-                True -> Error(["Password must be at least 8 characters"])
-                False -> {
-                  let hash = auth.hash(secret: msg.password)
-                  case
-                    auth_sql.update_user_with_password(
-                      db: server_context.db,
-                      image: msg.image,
-                      username: msg.username,
-                      bio: msg.bio,
-                      email: msg.email,
-                      password_hash: hash,
-                      now:,
-                      user_id: user.id,
-                    )
-                  {
-                    Ok(_) -> Ok(#(msg.username, msg.image))
-                    Error(_error) -> Error(["Username or email already taken"])
-                  }
-                }
-              }
-            }
-          }
-        }
-        _ -> Error(errors)
-      }
+      let errors = validate_settings(username: msg.username, email: msg.email)
+      use <- bool.guard(when: errors != [], return: Error(errors))
+      update_user_settings(
+        msg: msg,
+        user_id: user.id,
+        now: datetime.now_unix(),
+        db: server_context.db,
+      )
     }
     _ -> Error(["You must be logged in"])
   }
@@ -265,12 +227,73 @@ pub fn server_logout(
   server_context server_context: ServerContext,
 ) -> Result(Nil, Nil) {
   let session_id = rally_effect.get_ws_session()
-  let assert Ok(_) =
-    auth_sql.delete_session(db: server_context.db, session_id: session_id)
-  Ok(Nil)
+  case auth_sql.delete_session(db: server_context.db, session_id: session_id) {
+    Ok(_) -> Ok(Nil)
+    Error(_) -> Error(Nil)
+  }
 }
 
-fn validate_settings(username: String, email: String) -> List(String) {
+fn update_user_settings(
+  msg msg: ServerUpdateSettings,
+  user_id user_id: Int,
+  now now: Int,
+  db db: sqlight.Connection,
+) -> Result(#(String, String), List(String)) {
+  case string.is_empty(string.trim(msg.password)) {
+    True ->
+      auth_sql.update_user(
+        db: db,
+        image: msg.image,
+        username: msg.username,
+        bio: msg.bio,
+        email: msg.email,
+        now:,
+        user_id:,
+      )
+      |> result_to_settings_response(
+        result: _,
+        username: msg.username,
+        image: msg.image,
+      )
+    False -> {
+      case string.length(msg.password) < 8 {
+        True -> Error(["Password must be at least 8 characters"])
+        False ->
+          auth_sql.update_user_with_password(
+            db: db,
+            image: msg.image,
+            username: msg.username,
+            bio: msg.bio,
+            email: msg.email,
+            password_hash: auth.hash(secret: msg.password),
+            now:,
+            user_id:,
+          )
+          |> result_to_settings_response(
+            result: _,
+            username: msg.username,
+            image: msg.image,
+          )
+      }
+    }
+  }
+}
+
+fn result_to_settings_response(
+  result result: Result(a, b),
+  username username: String,
+  image image: String,
+) -> Result(#(String, String), List(String)) {
+  case result {
+    Ok(_) -> Ok(#(username, image))
+    Error(_) -> Error(["Username or email already taken"])
+  }
+}
+
+fn validate_settings(
+  username username: String,
+  email email: String,
+) -> List(String) {
   let errors = []
   let errors = case string.is_empty(string.trim(username)) {
     True -> ["Username can't be blank", ..errors]
