@@ -1,11 +1,11 @@
 ---
 # rally-n9s0
 title: Fix remaining realworld lint issues after generator cleanup
-status: in-progress
+status: completed
 type: task
 priority: high
 created_at: 2026-05-09T13:52:32Z
-updated_at: 2026-06-04T22:20:28Z
+updated_at: 2026-06-04T22:34:56Z
 ---
 
 Context: After fixing 39 mechanical lint issues, 166 remain in realworld user code. Most need coordinated fixes in generators first.
@@ -62,3 +62,23 @@ Progress 2026-06-04 continued after article cleanup:
 • Remaining home warnings are generated-usage unused_exports only.
 • RealWorld lint is now 72 errors.
 • Validation: RealWorld build passes; RealWorld view_test and slug_test pass; git diff --check passes; beans check passes.
+
+
+
+Progress 2026-06-04 after 03d60ce:
+
+• Cleaned profile/username_.gleam profile load/follow/tab flows with page-local typed errors.
+• Preserved current behavior where profile server errors are not surfaced to the client.
+• Remaining profile warnings are generated-usage unused_exports only.
+• RealWorld lint is now 51 errors.
+• Validation: RealWorld build passes; RealWorld view_test and slug_test pass.
+
+
+
+Progress 2026-06-04 final cleanup:
+
+• Cleaned profile/username_.gleam profile load/follow/tab flows.
+• Cleaned realworld.gleam app startup, request routing helpers, session cookie handling, dotenv parsing, static serving, and startup error handling.
+• RealWorld lint is now 34 warnings, all generated-usage unused_exports.
+• No assert_ok_pattern, thrown_away_error, deep_nesting, label_possible, avoid_panic, or prefer_guard_clause warnings remain.
+• Validation: RealWorld build passes; RealWorld view_test and slug_test pass.
