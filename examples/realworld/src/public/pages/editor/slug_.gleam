@@ -316,9 +316,9 @@ pub fn server_update(
           let now = datetime.now_unix()
           let new_slug =
             slug.unique_from_title_excluding(
-              server_context.db,
-              title,
-              article_id,
+              db: server_context.db,
+              title: title,
+              article_id: article_id,
             )
           let assert Ok(_) =
             articles_sql.update(

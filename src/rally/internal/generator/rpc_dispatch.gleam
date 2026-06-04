@@ -347,7 +347,7 @@ fn variant_pattern(
     _ -> {
       let labels =
         params
-        |> list.map(fn(param) { param.0 <> ":" })
+        |> list.map(fn(param) { param.0 <> ": " <> param.0 })
         |> string.join(", ")
       variant_name <> "(" <> labels <> ")"
     }

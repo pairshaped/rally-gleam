@@ -3,6 +3,8 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 import gleeunit/should
+import libero/field_type
+import libero/scanner
 import rally/internal/generator
 import rally/internal/generator/client
 import rally/internal/generator/rpc_dispatch
@@ -55,6 +57,40 @@ pub fn empty_rpc_dispatch_with_identity_extra_param_test() {
   // Must include identity in the handle signature
   output
   |> string.contains("identity _identity: auth.Identity")
+  |> should.equal(True)
+}
+
+pub fn rpc_dispatch_binds_labeled_payload_fields_test() {
+  let endpoint =
+    scanner.HandlerEndpoint(
+      module_path: "public/pages/editor",
+      fn_name: "publish_article",
+      return_ok: field_type.IntField,
+      return_err: field_type.NilField,
+      params: [
+        #("title", field_type.StringField),
+        #("description", field_type.StringField),
+      ],
+      mutates_context: False,
+      msg_type: Some(#("public/pages/editor", "ServerPublishArticle")),
+    )
+  let output =
+    rpc_dispatch.generate(
+      [endpoint],
+      atoms_module: Some("generated@rpc_atoms"),
+      wire_module: Some("generated@rpc_wire"),
+    )
+
+  output
+  |> string.contains(
+    "ServerPublishArticle(title: title, description: description) ->",
+  )
+  |> should.equal(True)
+
+  output
+  |> string.contains(
+    "ServerPublishArticle(title: title, description: description)",
+  )
   |> should.equal(True)
 }
 

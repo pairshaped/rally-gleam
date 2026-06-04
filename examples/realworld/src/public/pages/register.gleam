@@ -1,4 +1,5 @@
 import generated/sql/auth_sql
+import gleam/bool
 import gleam/list
 import gleam/option.{Some}
 import gleam/string
@@ -133,46 +134,51 @@ pub fn server_register(
   msg msg: ServerRegister,
   server_context server_context: ServerContext,
 ) -> Result(#(String, String), List(String)) {
-  let errors = validate_register(msg.username, msg.email, msg.password)
-  case errors {
-    [] -> {
-      let session_id = rally_effect.get_ws_session()
-      let now = datetime.now_unix()
-      let hash = auth.hash(secret: msg.password)
+  let errors =
+    validate_register(
+      username: msg.username,
+      email: msg.email,
+      password_text: msg.password,
+    )
+  use <- bool.guard(when: errors != [], return: Error(errors))
+
+  let session_id = rally_effect.get_ws_session()
+  let now = datetime.now_unix()
+  let hash = auth.hash(secret: msg.password)
+  case
+    auth_sql.register_user(
+      db: server_context.db,
+      username: msg.username,
+      email: msg.email,
+      password_hash: hash,
+      bio: "",
+      image: "",
+      created_at: now,
+      updated_at: now,
+    )
+  {
+    Ok([user]) -> {
       case
-        auth_sql.register_user(
+        auth_sql.create_session(
           db: server_context.db,
-          username: msg.username,
-          email: msg.email,
-          password_hash: hash,
-          bio: "",
-          image: "",
-          created_at: now,
-          updated_at: now,
+          session_id: Some(session_id),
+          user_id: user.id,
+          now: now,
+          expires_at: now + datetime.session_ttl_seconds,
         )
       {
-        Ok([user]) -> {
-          let assert Ok(_) =
-            auth_sql.create_session(
-              db: server_context.db,
-              session_id: Some(session_id),
-              user_id: user.id,
-              now: now,
-              expires_at: now + datetime.session_ttl_seconds,
-            )
-          Ok(#(user.username, user.image))
-        }
-        _ -> Error(["Username or email already taken"])
+        Ok(_) -> Ok(#(user.username, user.image))
+        Error(_) -> Error(["Could not create session"])
       }
     }
-    _ -> Error(errors)
+    _ -> Error(["Username or email already taken"])
   }
 }
 
 fn validate_register(
-  username: String,
-  email: String,
-  password_text: String,
+  username username: String,
+  email email: String,
+  password_text password_text: String,
 ) -> List(String) {
   let errors = []
   let errors = case string.is_empty(string.trim(username)) {

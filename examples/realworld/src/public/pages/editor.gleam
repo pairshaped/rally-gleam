@@ -215,7 +215,7 @@ pub fn server_publish_article(
         Ok([user]) -> {
           let now = datetime.now_unix()
           let article_slug =
-            slug.unique_from_title(server_context.db, msg.title)
+            slug.unique_from_title(db: server_context.db, title: msg.title)
           case
             articles_sql.create(
               db: server_context.db,
