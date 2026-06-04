@@ -1,0 +1,144 @@
+---
+version: 2.0.0
+title: load_rpc_client_protocol_gleam
+---
+@target(javascript)
+import api/to_client.{type ToClient}
+@target(javascript)
+import api/to_server.{type ToServer}
+@target(javascript)
+import generated/libero/result.{type ApiLoadError, type ApiSaveError}
+@target(javascript)
+import generated/libero/to_client_codec
+@target(javascript)
+import generated/libero/to_server_codec
+@target(javascript)
+import public/pages/games/id_/wire as public_game_detail_wire
+@target(javascript)
+import public/pages/games/wire as public_games_wire
+
+@target(javascript)
+pub type ServerFrame {
+  Response(message: ToClient)
+  Push(module: String, message: ToClient)
+}
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  let _ = to_server_codec.ensure()
+  to_client_codec.ensure()
+}
+
+@target(javascript)
+pub fn send(message: ToServer) -> BitArray {
+  to_server_codec.encode(message)
+}
+
+@target(javascript)
+pub fn encode_request(
+  request_id request_id: Int,
+  module module: String,
+  message message: ToServer,
+) -> BitArray {
+  encode_any(#(request_id, module, message))
+}
+
+@target(javascript)
+pub fn encode_public_games_request(request_id request_id: Int) -> BitArray {
+  encode_any(#(
+    request_id,
+    "public/pages/games",
+    public_games_wire.PublicGamesLoad,
+  ))
+}
+
+@target(javascript)
+pub fn encode_public_game_detail_request(
+  request_id request_id: Int,
+  game_id game_id: Int,
+) -> BitArray {
+  encode_any(#(
+    request_id,
+    "public/pages/games/id_",
+    public_game_detail_wire.PublicGameDetailLoad(game_id:),
+  ))
+}
+
+@target(javascript)
+pub fn receive(bytes: BitArray) -> Result(ToClient, Nil) {
+  to_client_codec.decode(bytes)
+}
+
+@target(javascript)
+pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
+  case bytes {
+    <<0, payload:bits>> -> {
+      case to_client_codec.decode(payload) {
+        Ok(message) -> Ok(Response(message:))
+        Error(Nil) -> Error(Nil)
+      }
+    }
+    <<1, payload:bits>> -> {
+      case decode_any(payload) {
+        Ok(#(module, message)) -> Ok(Push(module:, message:))
+        Error(Nil) -> Error(Nil)
+      }
+    }
+    _ -> Error(Nil)
+  }
+}
+
+@target(javascript)
+pub fn decode_load_result(
+  bytes: BitArray,
+) -> Result(#(Int, Result(ToClient, List(ApiLoadError))), Nil) {
+  decode_result_envelope(bytes)
+}
+
+@target(javascript)
+pub fn decode_public_games_load_result(
+  bytes: BitArray,
+) -> Result(
+  #(Int, Result(public_games_wire.LoadResult, List(ApiLoadError))),
+  Nil,
+) {
+  decode_result_envelope(bytes)
+}
+
+@target(javascript)
+pub fn decode_public_game_detail_load_result(
+  bytes: BitArray,
+) -> Result(
+  #(Int, Result(public_game_detail_wire.LoadResult, List(ApiLoadError))),
+  Nil,
+) {
+  decode_result_envelope(bytes)
+}
+
+@target(javascript)
+pub fn decode_save_result(
+  bytes: BitArray,
+) -> Result(#(Int, Result(Nil, List(ApiSaveError))), Nil) {
+  decode_result_envelope(bytes)
+}
+
+@target(javascript)
+pub fn decode_result_envelope(bytes: BitArray) -> Result(#(Int, a), Nil) {
+  case bytes {
+    <<2, payload:bits>> -> decode_any(payload)
+    _ -> Error(Nil)
+  }
+}
+
+@target(javascript)
+@external(javascript, "../libero/codec_ffi.mjs", "encode_value")
+fn encode_any(_value: a) -> BitArray {
+  panic as "generated/rally/client_protocol.encode_any external missing"
+}
+
+@target(javascript)
+@external(javascript, "../libero/codec_ffi.mjs", "decode_result")
+fn decode_any(_bytes: BitArray) -> Result(a, Nil) {
+  panic as "generated/rally/client_protocol.decode_any external missing"
+}
+

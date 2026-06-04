@@ -24,7 +24,7 @@ packages = [
   { name = "global_value", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "global_value", source = "hex", outer_checksum = "23F74C91A7B819C43ABCCBF49DAD5BB8799D81F2A3736BA9A534BD47F309FF4F" },
   { name = "houdini", version = "1.2.1", build_tools = ["gleam"], requirements = [], otp_app = "houdini", source = "hex", outer_checksum = "6F8AC2F12974567FB744BEA66AC93CEB76AAEA19AD28564623F76CDA9BC26A85" },
   { name = "justin", version = "1.1.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "justin", source = "hex", outer_checksum = "8B1C62269E8607D0A0ED698B7903984CE0BF7B6B3C0DEA3C6C8302B39402837B" },
-  { name = "libero", version = "6.0.0", build_tools = ["gleam"], requirements = ["glance", "gleam_crypto", "gleam_json", "gleam_stdlib", "glexer", "simplifile", "tom"], otp_app = "libero", source = "hex", outer_checksum = "00962A178BF65AD93B54B4E2088EDDECE78C426B5889D13CEA7F22EDA573498B" },
+  { name = "libero", version = "6.0.0", build_tools = ["gleam"], requirements = ["glance", "gleam_crypto", "gleam_json", "gleam_stdlib", "glexer", "simplifile", "tom"], source = "local", path = "../libero" },
   { name = "logging", version = "1.5.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "logging", source = "hex", outer_checksum = "BC5F18CE5DD9686100229FE5409BDC3DD5C46D5A7DF2F804AD2D8F0DD6C5060E" },
   { name = "lustre", version = "5.7.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_json", "gleam_otp", "gleam_stdlib", "houdini"], otp_app = "lustre", source = "hex", outer_checksum = "38C6FCBD7B7BACE994D5BF643202BB69B02576D44250B4C5DCE738387C0E8F87" },
   { name = "marmot", version = "1.4.1", build_tools = ["gleam"], requirements = ["argv", "gleam_stdlib", "gleam_time", "simplifile", "sqlight", "tom"], otp_app = "marmot", source = "hex", outer_checksum = "D56552D11D6AB9591E47BB3FE583E4E01B2AEB1DBA43511A9E8D80A6CA6A2B1A" },
@@ -53,7 +53,7 @@ glexer = { version = ">= 2.0.0 and < 3.0.0" }
 glinter = { version = ">= 2.19.0 and < 3.0.0" }
 global_value = { version = ">= 1.0.0 and < 2.0.0" }
 justin = { version = ">= 1.1.0 and < 2.0.0" }
-libero = { version = ">= 6.0.0 and < 7.0.0" }
+libero = { path = "../libero" }
 logging = { version = ">= 1.0.0 and < 2.0.0" }
 lustre = { version = ">= 5.7.0 and < 7.0.0" }
 marmot = { version = ">= 1.4.1 and < 2.0.0" }

@@ -1,0 +1,144 @@
+import birdie
+import gleam/list
+import gleam/string
+import gleeunit/should
+import rally/internal/format
+import rally/internal/generator/load_rpc.{
+  type GeneratedFile, type LoadRpc, GeneratedFile, LoadArg, LoadRpc, discover,
+  generate,
+}
+import simplifile
+
+fn public_games_load() -> LoadRpc {
+  LoadRpc(
+    name: "public_games",
+    module_path: "public/pages/games",
+    wire_module: "public/pages/games/wire",
+    request_constructor: "PublicGamesLoad",
+    args: [],
+  )
+}
+
+fn public_game_detail_load() -> LoadRpc {
+  LoadRpc(
+    name: "public_game_detail",
+    module_path: "public/pages/games/id_",
+    wire_module: "public/pages/games/id_/wire",
+    request_constructor: "PublicGameDetailLoad",
+    args: [LoadArg(label: "game_id", type_ref: "Int")],
+  )
+}
+
+fn loads() -> List(LoadRpc) {
+  [public_games_load(), public_game_detail_load()]
+}
+
+fn generated_files() -> List(GeneratedFile) {
+  generate(
+    loads(),
+    to_client_module: "api/to_client",
+    to_server_module: "api/to_server",
+  )
+}
+
+pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
+  let paths =
+    list.map(generated_files(), fn(file: GeneratedFile) {
+      let GeneratedFile(path:, content: _) = file
+      path
+    })
+
+  paths
+  |> should.equal([
+    "src/generated/rally/client_protocol.gleam",
+    "src/generated/rally/server_protocol.gleam",
+    "src/generated/rally/client_transport.gleam",
+    "src/generated/rally/hydration.gleam",
+  ])
+  paths
+  |> list.any(fn(path) { string.starts_with(path, "src/generated/libero/") })
+  |> should.be_false()
+}
+
+pub fn load_rpc_client_protocol_snapshot_test() {
+  content_for("src/generated/rally/client_protocol.gleam")
+  |> birdie.snap("load_rpc_client_protocol_gleam")
+}
+
+pub fn load_rpc_server_protocol_snapshot_test() {
+  content_for("src/generated/rally/server_protocol.gleam")
+  |> birdie.snap("load_rpc_server_protocol_gleam")
+}
+
+pub fn load_rpc_client_transport_snapshot_test() {
+  content_for("src/generated/rally/client_transport.gleam")
+  |> birdie.snap("load_rpc_client_transport_gleam")
+}
+
+pub fn load_rpc_hydration_snapshot_test() {
+  content_for("src/generated/rally/hydration.gleam")
+  |> birdie.snap("load_rpc_hydration_gleam")
+}
+
+pub fn load_rpc_discover_finds_page_local_wire_loads_test() {
+  let root = "./tmp/load_rpc_generator_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games/id_")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/wire.gleam",
+      "pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(games: List(GameSummary))
+}
+
+pub type GameSummary {
+  GameSummary(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/id_/wire.gleam",
+      "pub type ServerMsg {
+  PublicGameDetailLoad(game_id: Int)
+}
+
+pub type LoadResult {
+  PublicGameDetailLoaded(id: Int)
+}
+",
+    )
+
+  let assert Ok(discovered) = discover(src)
+
+  let assert Ok(LoadRpc(
+    name: "public_games",
+    module_path: "public/pages/games",
+    wire_module: "public/pages/games/wire",
+    request_constructor: "PublicGamesLoad",
+    args: [],
+  )) = list.find(discovered, fn(load) { load.name == "public_games" })
+
+  let assert Ok(LoadRpc(
+    name: "public_game_detail",
+    module_path: "public/pages/games/id_",
+    wire_module: "public/pages/games/id_/wire",
+    request_constructor: "PublicGameDetailLoad",
+    args: [LoadArg(label: "game_id", type_ref: "Int")],
+  )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
+}
+
+fn content_for(path: String) -> String {
+  let assert Ok(GeneratedFile(content:, ..)) =
+    list.find(generated_files(), fn(file) {
+      let GeneratedFile(path: file_path, ..) = file
+      file_path == path
+    })
+  format.format_gleam(content)
+}

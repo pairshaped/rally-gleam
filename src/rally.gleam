@@ -25,6 +25,7 @@ import rally/internal/generator
 import rally/internal/generator/client
 import rally/internal/generator/codec
 import rally/internal/generator/http_handler
+import rally/internal/generator/load_rpc
 import rally/internal/generator/ssr_handler
 import rally/internal/generator/ws_handler
 import rally/internal/init as rally_init
@@ -257,6 +258,7 @@ fn run(args: List(String)) -> Result(String, RallyError) {
       Ok("initialized project")
     }
     ["migrate"] -> run_migrate()
+    ["load-rpc"] -> run_load_rpc()
     ["build"] -> {
       use configs <- result.try(read_configs())
       use Nil <- result.try(build_project(configs))
@@ -269,9 +271,38 @@ fn run(args: List(String)) -> Result(String, RallyError) {
     }
     _ ->
       Error(RallyError(
-        "Unknown command. Usage: rally init | rally migrate | rally build | rally gen",
+        "Unknown command. Usage: rally init | rally migrate | rally load-rpc | rally build | rally gen",
       ))
   }
+}
+
+fn run_load_rpc() -> Result(String, RallyError) {
+  use loads <- result.try(
+    load_rpc.discover("src")
+    |> result.map_error(fn(msg) {
+      RallyError("load-rpc discovery error: " <> msg)
+    }),
+  )
+  let files =
+    load_rpc.generate(
+      loads:,
+      to_client_module: "api/to_client",
+      to_server_module: "api/to_server",
+    )
+  use Nil <- result.try(
+    write_load_rpc_files(files)
+    |> result.map_error(fn(msg) { RallyError("write error: " <> msg) }),
+  )
+  Ok("generated " <> int.to_string(list.length(loads)) <> " load RPC(s)")
+}
+
+fn write_load_rpc_files(
+  files: List(load_rpc.GeneratedFile),
+) -> Result(Nil, String) {
+  list.try_fold(files, Nil, fn(_, file) {
+    let load_rpc.GeneratedFile(path:, content:) = file
+    write_file(path, content)
+  })
 }
 
 fn build_project(configs: List(ScanConfig)) -> Result(Nil, RallyError) {

@@ -669,6 +669,7 @@ fn emit_codec_ffi_with_endpoints(
     endpoints:,
     relpath_prefix: "../../",
     package: "client",
+    dependency_packages: [],
     dispatch_module: option.Some("generated/types"),
   )
 }
