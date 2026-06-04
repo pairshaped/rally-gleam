@@ -16,7 +16,6 @@ import gleam/option
 import gleam/result
 import gleam/string
 import justin
-import libero/codegen
 import libero/codegen_decoders
 import libero/field_type.{
   type FieldType, BitArrayField, BoolField, DictOf, FloatField, IntField, ListOf,
@@ -27,7 +26,8 @@ import libero/scanner.{type HandlerEndpoint}
 import libero/walker
 import rally/internal/tree_shaker
 import rally/internal/types.{
-  type PageContract, type ScannedRoute, type VariantInfo,
+  type ClientContextContract, type PageContract, type ScannedRoute,
+  type VariantInfo,
 }
 
 pub type CodecFile {
@@ -42,6 +42,28 @@ pub fn generate(
   server_symbols server_symbols: List(String),
   protocol protocol: String,
 ) -> List(CodecFile) {
+  generate_with_client_context_contract(
+    contracts:,
+    discovered:,
+    endpoints:,
+    server_symbols:,
+    protocol:,
+    client_context_contract: option.None,
+    client_context_module: "client_context",
+  )
+}
+
+pub fn generate_with_client_context_contract(
+  contracts contracts: List(#(ScannedRoute, PageContract)),
+  discovered discovered: List(walker.DiscoveredType),
+  endpoints endpoints: List(HandlerEndpoint),
+  server_symbols server_symbols: List(String),
+  protocol protocol: String,
+  client_context_contract client_context_contract: option.Option(
+    ClientContextContract,
+  ),
+  client_context_module client_context_module: String,
+) -> List(CodecFile) {
   case
     generate_result(
       contracts:,
@@ -49,6 +71,8 @@ pub fn generate(
       endpoints:,
       server_symbols:,
       protocol:,
+      client_context_contract:,
+      client_context_module:,
     )
   {
     Ok(files) -> files
@@ -65,8 +89,19 @@ fn generate_result(
   endpoints endpoints: List(HandlerEndpoint),
   server_symbols server_symbols: List(String),
   protocol protocol: String,
+  client_context_contract client_context_contract: option.Option(
+    ClientContextContract,
+  ),
+  client_context_module client_context_module: String,
 ) -> Result(List(CodecFile), String) {
-  use types_gleam <- result.try(emit_types_gleam(contracts, endpoints, protocol))
+  use types_gleam <- result.try(emit_types_gleam(
+    contracts,
+    endpoints,
+    protocol,
+    client_context_contract,
+    client_context_module,
+  ))
+  let has_client_context = option.is_some(client_context_contract)
   let codec_files = [
     CodecFile(
       "src/generated/codec_ffi.mjs",
@@ -76,7 +111,7 @@ fn generate_result(
     CodecFile("src/generated/codec.gleam", emit_codec_gleam(protocol)),
     CodecFile(
       "src/rally/runtime/effect.gleam",
-      emit_rally_effect_shim(protocol),
+      emit_rally_effect_shim(protocol, has_client_context),
     ),
     CodecFile("src/rally/runtime/rally_effect_ffi.mjs", emit_rally_effect_ffi()),
   ]
@@ -524,7 +559,10 @@ pub fn client_context_seeds(
   }
 }
 
-fn emit_rally_effect_shim(protocol: String) -> String {
+fn emit_rally_effect_shim(
+  protocol protocol: String,
+  has_client_context has_client_context: Bool,
+) -> String {
   let rpc_fn = case protocol {
     "json" ->
       "
@@ -548,14 +586,23 @@ pub fn rpc(msg: a, on_response on_response: fn(b) -> msg) -> Effect(msg) {
 "
   }
 
-  let client_context_fn = case protocol {
-    "json" ->
+  let client_context_fn = case protocol, has_client_context {
+    "json", True ->
       "
-pub fn send_to_client_context(_msg: a) -> Effect(b) {
-  panic as \"send_to_client_context: JSON client context encoding is not yet implemented\"
+pub fn send_to_client_context(msg: a) -> Effect(b) {
+  effect.from(fn(_dispatch) {
+    transport.send_to_server(\"__ClientContext__\", types.json_encode_client_context_msg(transport.coerce(msg)))
+    Nil
+  })
 }
 "
-    _ ->
+    "json", False ->
+      "
+pub fn send_to_client_context(_msg: a) -> Effect(b) {
+  effect.from(fn(_dispatch) { Nil })
+}
+"
+    _, _ ->
       "
 pub fn send_to_client_context(msg: a) -> Effect(b) {
   effect.from(fn(_dispatch) {
@@ -688,6 +735,8 @@ fn emit_types_gleam(
   _contracts: List(#(ScannedRoute, PageContract)),
   endpoints: List(HandlerEndpoint),
   protocol: String,
+  client_context_contract: option.Option(ClientContextContract),
+  client_context_module: String,
 ) -> Result(String, String) {
   let resolve_alias = build_type_alias_resolver(endpoints)
 
@@ -719,7 +768,6 @@ fn emit_types_gleam(
       case endpoints {
         [] -> Ok("")
         _ -> {
-          let json_import = "import gleam/json\n"
           use arms <- result.try(
             list.try_map(endpoints, fn(e) {
               let variant_name = justin.pascal_case("server_" <> e.fn_name)
@@ -802,8 +850,7 @@ fn emit_types_gleam(
             }),
           )
           Ok(
-            json_import
-            <> "\npub fn json_encode_client_msg(msg: ClientMsg) -> json.Json {\n  case msg {\n    "
+            "\npub fn json_encode_client_msg(msg: ClientMsg) -> json.Json {\n  case msg {\n    "
             <> string.join(arms, "\n")
             <> "\n  }\n}\n",
           )
@@ -811,6 +858,20 @@ fn emit_types_gleam(
       }
     _ -> Ok("")
   })
+
+  use json_encode_client_context_fn <- result.try(
+    case protocol, client_context_contract {
+      "json", option.Some(contract) ->
+        emit_json_client_context_encoder(contract, client_context_module)
+      _, _ -> Ok("")
+    },
+  )
+
+  let client_context_import = case protocol, client_context_contract {
+    "json", option.Some(_) ->
+      "\nimport " <> client_context_module <> " as client_context\n"
+    _, _ -> ""
+  }
 
   let all_modules =
     endpoints
@@ -836,24 +897,108 @@ fn emit_types_gleam(
       }
     }
 
-  let option_import =
-    codegen.import_if(
-      endpoints:,
-      predicate: codegen.is_option,
-      import_line: "import gleam/option.{type Option}",
+  let all_field_types =
+    list.append(
+      endpoints
+        |> list.flat_map(fn(e) { list.map(e.params, fn(p) { p.1 }) }),
+      client_context_field_types(client_context_contract),
     )
-  let dict_import =
-    codegen.import_if(
-      endpoints:,
-      predicate: codegen.is_dict,
-      import_line: "import gleam/dict.{type Dict}",
-    )
+  let option_import = case
+    list.any(all_field_types, field_type_contains_option)
+  {
+    True -> "import gleam/option.{type Option}\n"
+    False -> ""
+  }
+  let dict_import = case list.any(all_field_types, field_type_contains_dict) {
+    True -> "import gleam/dict.{type Dict}\n"
+    False -> ""
+  }
+  let json_codecs_import = case
+    list.any(all_field_types, field_type_contains_user_type)
+  {
+    True -> "import generated/json_codecs as json_codecs\n"
+    False -> ""
+  }
+  let json_import = case protocol, endpoints, client_context_contract {
+    "json", [], option.None -> ""
+    "json", _, _ -> "import gleam/json\n"
+    _, _, _ -> ""
+  }
 
   Ok("// Generated by Rally — do not edit.
 ////
 //// Mirrored page types for the client package.
 
-" <> type_imports <> option_import <> dict_import <> client_msg_type <> "\n" <> json_encode_fn)
+" <> json_import <> type_imports <> client_context_import <> json_codecs_import <> option_import <> dict_import <> client_msg_type <> "\n" <> json_encode_fn <> json_encode_client_context_fn)
+}
+
+fn emit_json_client_context_encoder(
+  contract: ClientContextContract,
+  client_context_module: String,
+) -> Result(String, String) {
+  case contract.msg_variants {
+    [] -> Ok("")
+    variants -> {
+      use arms <- result.try(
+        list.try_map(variants, fn(variant) {
+          emit_json_client_context_variant_arm(variant:, client_context_module:)
+        }),
+      )
+      Ok(
+        "\npub fn json_encode_client_context_msg(msg: client_context.ClientContextMsg) -> json.Json {\n"
+        <> "  case msg {\n    "
+        <> string.join(arms, "\n")
+        <> "\n  }\n}\n",
+      )
+    }
+  }
+}
+
+fn emit_json_client_context_variant_arm(
+  variant variant: VariantInfo,
+  client_context_module client_context_module: String,
+) -> Result(String, String) {
+  let pattern = case variant.fields {
+    [] -> "client_context." <> variant.name
+    fields ->
+      "client_context."
+      <> variant.name
+      <> "("
+      <> string.join(
+        list.map(fields, fn(field) { field.label <> ": " <> field.label }),
+        ", ",
+      )
+      <> ")"
+  }
+  use field_encoders <- result.try(case variant.fields {
+    [] -> Ok("json.object([])")
+    fields -> {
+      use pairs <- result.try(
+        list.try_map(fields, fn(field) {
+          use encoder <- result.try(json_primitive_encoder(
+            field.type_,
+            field.label,
+          ))
+          Ok("#(\"" <> field.label <> "\", " <> encoder <> ")")
+        }),
+      )
+      Ok("json.object([" <> string.join(pairs, ", ") <> "])")
+    }
+  })
+  Ok(
+    pattern
+    <> " -> json.object([\n"
+    <> "        #(\"type\", json.string(\""
+    <> client_context_module
+    <> ".ClientContextMsg\")),\n"
+    <> "        #(\"variant\", json.string(\""
+    <> variant.name
+    <> "\")),\n"
+    <> "        #(\"fields\", "
+    <> field_encoders
+    <> "),\n"
+    <> "      ])",
+  )
 }
 
 /// Build a resolver that uses the last segment when unique, or the full
@@ -896,6 +1041,60 @@ fn collect_user_type_modules(ft: FieldType) -> List(String) {
       list.append(collect_user_type_modules(k), collect_user_type_modules(v))
     field_type.TupleOf(elems) -> list.flat_map(elems, collect_user_type_modules)
     _ -> []
+  }
+}
+
+fn client_context_field_types(
+  contract: option.Option(ClientContextContract),
+) -> List(FieldType) {
+  case contract {
+    option.Some(contract) ->
+      contract.msg_variants
+      |> list.flat_map(fn(variant) {
+        list.map(variant.fields, fn(field) { field.type_ })
+      })
+    option.None -> []
+  }
+}
+
+fn field_type_contains_option(ft: FieldType) -> Bool {
+  case ft {
+    OptionOf(_) -> True
+    ListOf(inner) -> field_type_contains_option(inner)
+    ResultOf(ok, err) ->
+      field_type_contains_option(ok) || field_type_contains_option(err)
+    DictOf(key, value) ->
+      field_type_contains_option(key) || field_type_contains_option(value)
+    TupleOf(items) -> list.any(items, field_type_contains_option)
+    UserType(args:, ..) -> list.any(args, field_type_contains_option)
+    _ -> False
+  }
+}
+
+fn field_type_contains_dict(ft: FieldType) -> Bool {
+  case ft {
+    DictOf(_, _) -> True
+    ListOf(inner) -> field_type_contains_dict(inner)
+    OptionOf(inner) -> field_type_contains_dict(inner)
+    ResultOf(ok, err) ->
+      field_type_contains_dict(ok) || field_type_contains_dict(err)
+    TupleOf(items) -> list.any(items, field_type_contains_dict)
+    UserType(args:, ..) -> list.any(args, field_type_contains_dict)
+    _ -> False
+  }
+}
+
+fn field_type_contains_user_type(ft: FieldType) -> Bool {
+  case ft {
+    UserType(..) -> True
+    ListOf(inner) -> field_type_contains_user_type(inner)
+    OptionOf(inner) -> field_type_contains_user_type(inner)
+    ResultOf(ok, err) ->
+      field_type_contains_user_type(ok) || field_type_contains_user_type(err)
+    DictOf(key, value) ->
+      field_type_contains_user_type(key) || field_type_contains_user_type(value)
+    TupleOf(items) -> list.any(items, field_type_contains_user_type)
+    _ -> False
   }
 }
 

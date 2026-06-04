@@ -10,6 +10,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/string
 import libero/scanner.{type HandlerEndpoint}
+import libero/walker
 import rally/internal/generator/json_rpc_dispatch
 import rally/internal/generator/rpc_dispatch
 import rally/internal/types.{
@@ -797,6 +798,28 @@ pub fn generate_protocol_wire(
   auth_config: Option(AuthConfig),
   wire_import_module: String,
 ) -> String {
+  generate_protocol_wire_with_client_context(
+    protocol:,
+    atoms_module:,
+    contract_hash:,
+    rpc_dispatch_module:,
+    endpoints:,
+    auth_config:,
+    wire_import_module:,
+    client_context_module: None,
+  )
+}
+
+pub fn generate_protocol_wire_with_client_context(
+  protocol protocol: String,
+  atoms_module atoms_module: String,
+  contract_hash contract_hash: String,
+  rpc_dispatch_module rpc_dispatch_module: String,
+  endpoints endpoints: List(HandlerEndpoint),
+  auth_config auth_config: Option(AuthConfig),
+  wire_import_module wire_import_module: String,
+  client_context_module client_context_module: Option(String),
+) -> String {
   case protocol {
     "json" ->
       json_protocol_wire_source(
@@ -805,6 +828,7 @@ pub fn generate_protocol_wire(
         endpoints,
         auth_config,
         wire_import_module,
+        client_context_module,
       )
     _ ->
       etf_protocol_wire_source(atoms_module, rpc_dispatch_module, auth_config)
@@ -1082,6 +1106,7 @@ fn json_protocol_wire_source(
   endpoints: List(HandlerEndpoint),
   auth_config: Option(AuthConfig),
   wire_import_module: String,
+  client_context_module: Option(String),
 ) -> String {
   let has_auth = option.is_some(auth_config)
   let auth_import = case auth_config {
@@ -1129,6 +1154,22 @@ fn json_protocol_wire_source(
       server_context:,
     )
   #(RpcResult(text: frame), server_context)
+}
+"
+  }
+  let client_context_decoder = case client_context_module {
+    Some(module_path) -> {
+      let qual = walker.qualified_atom_name(module_path, "ClientContextMsg")
+      "pub fn decode_client_context_msg(value value: Dynamic) -> Result(a, List(JsonError)) {
+  json_codecs.json_decode_"
+      <> qual
+      <> "(value)
+}
+"
+    }
+    None ->
+      "pub fn decode_client_context_msg(_value: Dynamic) -> Result(a, List(JsonError)) {
+  Error([JsonError(\"client_context\", \"ClientContextMsg decoder is not generated\")])
 }
 "
   }
@@ -1251,7 +1292,7 @@ fn extract_message_type(message: Dynamic) -> Result(String, Nil) {
   }
 }
 
-" <> json_dispatch <> "\n" <> dispatch_fn <> "
+" <> client_context_decoder <> "\n" <> json_dispatch <> "\n" <> dispatch_fn <> "
 pub fn send_rpc_result(conn: WebsocketConnection, result: RpcResult) -> Nil {
   let _send_result = mist.send_text_frame(conn, result.text)
   Nil

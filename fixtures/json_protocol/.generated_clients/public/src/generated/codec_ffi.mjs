@@ -9,28 +9,9 @@ import { from_list as dictFromList } from "../../gleam_stdlib/gleam/dict.mjs";
 import { registerAtomDecoder } from "../../libero/libero/etf/wire_ffi.mjs";
 import { Success as _Success, Failure as _Failure, TransportError as _TransportError, DomainError as _DomainError } from "../../libero/libero/remote_data.mjs";
 import { MalformedRequest as _MalformedRequest, UnknownFunction as _UnknownFunction, InternalError as _InternalError } from "../../libero/libero/error.mjs";
-import * as _m_generated_types from "../../client/generated/types.mjs";
+import * as _m_generated_types from "./types.mjs";
 import * as _m_public_pages_home_ from "../../client/public/pages/home_.mjs";
 import * as _m_public_pages_notifications_ from "../../client/public/pages/notifications_.mjs";
-
-setResultCtors(Ok, ResultError);
-setOptionCtors(Some, None);
-setListCtors(Empty, NonEmpty);
-setDictFromList(dictFromList);
-_m_public_pages_home_.ServerIncrement.__wireAtom = "3adf004bda";
-_m_public_pages_home_.ServerIncrement.__fieldTypes = [];
-_m_public_pages_home_.IncrementResult.__wireAtom = "003511dd1c";
-_m_public_pages_home_.IncrementResult.__fieldTypes = [null, null];
-_m_public_pages_home_.ServerIncrementBy.__wireAtom = "10251ccd57";
-_m_public_pages_home_.ServerIncrementBy.__fieldTypes = [null];
-_m_public_pages_home_.Model.__wireAtom = "e4ff4f2689";
-_m_public_pages_home_.Model.__fieldTypes = [null];
-_m_public_pages_notifications_.Model.__wireAtom = "42a9f6fcde";
-_m_public_pages_notifications_.Model.__fieldTypes = [null];
-_m_public_pages_home_.Updated.__wireAtom = "19ae752434";
-_m_public_pages_home_.Updated.__fieldTypes = [null];
-_m_public_pages_notifications_.Updated.__wireAtom = "45ac7f3cba";
-_m_public_pages_notifications_.Updated.__fieldTypes = [null];
 
 export function decode_public_pages_home__server_increment(term) {
   if (term === "3adf004bda") return new _m_public_pages_home_.ServerIncrement(); // ServerIncrement @ public/pages/home_
@@ -80,16 +61,6 @@ export function decode_public_pages_notifications__to_client(term) {
   );
 }
 
-registerAtomDecoder("3adf004bda", "decode_public_pages_home__server_increment", decode_public_pages_home__server_increment);
-registerAtomDecoder("003511dd1c", "decode_public_pages_home__increment_result", decode_public_pages_home__increment_result);
-registerAtomDecoder("10251ccd57", "decode_public_pages_home__server_increment_by", decode_public_pages_home__server_increment_by);
-registerAtomDecoder("e4ff4f2689", "decode_public_pages_home__model", decode_public_pages_home__model);
-registerAtomDecoder("42a9f6fcde", "decode_public_pages_notifications__model", decode_public_pages_notifications__model);
-registerAtomDecoder("19ae752434", "decode_public_pages_home__to_client", decode_public_pages_home__to_client);
-registerAtomDecoder("45ac7f3cba", "decode_public_pages_notifications__to_client", decode_public_pages_notifications__to_client);
-
-
-export function ensure_decoders() { return true; }
 
 // --- Per-endpoint response decoders ---
 
@@ -124,4 +95,38 @@ export function decode_response_increment(raw) {
 
 export function decode_response_increment_by(raw) {
   return _decode_response(raw, (t) => decode_public_pages_home__increment_result(t), (t) => decode_nil(t));
+}
+
+
+let _decodersReady = false;
+
+export function ensure_decoders() {
+  if (_decodersReady) return true;
+  setResultCtors(Ok, ResultError);
+  setOptionCtors(Some, None);
+  setListCtors(Empty, NonEmpty);
+  setDictFromList(dictFromList);
+  _m_public_pages_home_.ServerIncrement.__wireAtom = "3adf004bda";
+  _m_public_pages_home_.ServerIncrement.__fieldTypes = [];
+  _m_public_pages_home_.IncrementResult.__wireAtom = "003511dd1c";
+  _m_public_pages_home_.IncrementResult.__fieldTypes = [null, null];
+  _m_public_pages_home_.ServerIncrementBy.__wireAtom = "10251ccd57";
+  _m_public_pages_home_.ServerIncrementBy.__fieldTypes = [null];
+  _m_public_pages_home_.Model.__wireAtom = "e4ff4f2689";
+  _m_public_pages_home_.Model.__fieldTypes = [null];
+  _m_public_pages_notifications_.Model.__wireAtom = "42a9f6fcde";
+  _m_public_pages_notifications_.Model.__fieldTypes = [null];
+  _m_public_pages_home_.Updated.__wireAtom = "19ae752434";
+  _m_public_pages_home_.Updated.__fieldTypes = [null];
+  _m_public_pages_notifications_.Updated.__wireAtom = "45ac7f3cba";
+  _m_public_pages_notifications_.Updated.__fieldTypes = [null];
+  registerAtomDecoder("3adf004bda", "decode_public_pages_home__server_increment", decode_public_pages_home__server_increment);
+  registerAtomDecoder("003511dd1c", "decode_public_pages_home__increment_result", decode_public_pages_home__increment_result);
+  registerAtomDecoder("10251ccd57", "decode_public_pages_home__server_increment_by", decode_public_pages_home__server_increment_by);
+  registerAtomDecoder("e4ff4f2689", "decode_public_pages_home__model", decode_public_pages_home__model);
+  registerAtomDecoder("42a9f6fcde", "decode_public_pages_notifications__model", decode_public_pages_notifications__model);
+  registerAtomDecoder("19ae752434", "decode_public_pages_home__to_client", decode_public_pages_home__to_client);
+  registerAtomDecoder("45ac7f3cba", "decode_public_pages_notifications__to_client", decode_public_pages_notifications__to_client);
+  _decodersReady = true;
+  return true;
 }

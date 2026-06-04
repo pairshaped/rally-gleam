@@ -2,13 +2,14 @@ import gleam/list
 import gleam/option
 import gleam/string
 import gleeunit/should
-import libero/field_type.{IntField}
+import libero/field_type.{IntField, UserType}
 import libero/walker.{type DiscoveredType, DiscoveredType, DiscoveredVariant}
 import rally/internal/generator
 import rally/internal/generator/codec.{
   generate_json_codecs, generate_json_decode_dispatch,
   generate_json_type_registry_js,
 }
+import rally/internal/types.{ClientContextContract, VariantField, VariantInfo}
 
 fn sample_discovered_types() -> List(DiscoveredType) {
   [
@@ -112,6 +113,62 @@ pub fn generate_json_codecs_includes_dispatch_test() {
   |> should.be_true()
   paths
   |> list.contains("src/generated/type_registry.mjs")
+  |> should.be_true()
+}
+
+pub fn json_client_context_encoder_is_generated_test() {
+  let client_context =
+    ClientContextContract(
+      context_variants: [],
+      msg_variants: [
+        VariantInfo(name: "SignedIn", fields: [
+          VariantField(
+            label: "user",
+            type_: UserType(
+              module_path: "public/client_context",
+              type_name: "User",
+              args: [],
+            ),
+          ),
+        ]),
+        VariantInfo(name: "SignedOut", fields: []),
+      ],
+      has_init: True,
+      has_update: True,
+    )
+  let files =
+    codec.generate_with_client_context_contract(
+      contracts: [],
+      discovered: [],
+      endpoints: [],
+      server_symbols: [],
+      protocol: "json",
+      client_context_contract: option.Some(client_context),
+      client_context_module: "public/client_context",
+    )
+  let assert Ok(types_file) =
+    list.find(files, fn(f) { f.path == "src/generated/types.gleam" })
+  types_file.content
+  |> string.contains("pub fn json_encode_client_context_msg")
+  |> should.be_true()
+  types_file.content
+  |> string.contains("\"public/client_context.ClientContextMsg\"")
+  |> should.be_true()
+  types_file.content
+  |> string.contains(
+    "json_codecs.json_encode_public_client_context__user(user)",
+  )
+  |> should.be_true()
+
+  let assert Ok(effect_file) =
+    list.find(files, fn(f) { f.path == "src/rally/runtime/effect.gleam" })
+  effect_file.content
+  |> string.contains(
+    "send_to_client_context: JSON client context encoding is not yet implemented",
+  )
+  |> should.be_false()
+  effect_file.content
+  |> string.contains("types.json_encode_client_context_msg")
   |> should.be_true()
 }
 

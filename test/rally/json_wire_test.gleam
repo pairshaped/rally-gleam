@@ -333,6 +333,56 @@ pub fn json_wire_ws_handler_auth_has_timestamp_imports_test() {
   ws |> string.contains("gleam/bit_array") |> should.be_false()
 }
 
+pub fn json_wire_protocol_wire_decodes_client_context_messages_test() {
+  let source =
+    generator.generate_protocol_wire_with_client_context(
+      protocol: "json",
+      atoms_module: "generated@rpc_atoms",
+      contract_hash: "test_hash_123",
+      rpc_dispatch_module: "generated/rpc_dispatch",
+      endpoints: [],
+      auth_config: None,
+      wire_import_module: "generated/protocol_wire",
+      client_context_module: Some("public/client_context"),
+    )
+
+  source
+  |> string.contains("pub fn decode_client_context_msg")
+  |> should.be_true()
+  source
+  |> string.contains(
+    "json_codecs.json_decode_public_client_context__client_context_msg(value)",
+  )
+  |> should.be_true()
+}
+
+pub fn json_wire_ws_handler_routes_client_context_frames_test() {
+  let ws =
+    ws_handler.generate_with_client_context(
+      page_contracts: [],
+      atoms_module: "",
+      rpc_dispatch_module: "",
+      auth_config: None,
+      from_session_module: "server_context",
+      endpoints: [],
+      wire_import_module: "generated/protocol_wire",
+      protocol: "json",
+      has_client_context: True,
+    )
+
+  ws
+  |> string.contains("envelope.module == \"__ClientContext__\"")
+  |> should.be_true()
+  ws
+  |> string.contains("wire.decode_client_context_msg(envelope.message)")
+  |> should.be_true()
+  ws
+  |> string.contains(
+    "wire.encode_push(\"__ClientContext__\", client_context_msg)",
+  )
+  |> should.be_true()
+}
+
 pub fn json_wire_protocol_wire_no_unused_alias_test() {
   let source =
     generator.generate_protocol_wire(

@@ -19,7 +19,7 @@ pub fn rpc(msg: a, on_response on_response: fn(b) -> msg) -> Effect(msg) {
 }
 
 pub fn send_to_client_context(_msg: a) -> Effect(b) {
-  panic as "send_to_client_context: JSON client context encoding is not yet implemented"
+  effect.from(fn(_dispatch) { Nil })
 }
 
 pub fn navigate(path: String) -> Effect(a) {

@@ -1,7 +1,7 @@
 ---
 # rally-au0s
 title: Implement JSON encoding for client-context messages
-status: todo
+status: completed
 type: feature
 priority: normal
 tags:
@@ -9,7 +9,7 @@ tags:
     - json
     - client-context
 created_at: 2026-05-18T14:34:54Z
-updated_at: 2026-05-18T14:34:54Z
+updated_at: 2026-06-04T22:52:12Z
 ---
 
 Follow-up to rally-yghe, which only adds a build-time guard. This bean is the actual feature: make `effect.update_client_context` work under the JSON protocol so JSON-protocol apps can send client-context messages just like ETF-protocol apps can.
@@ -46,3 +46,20 @@ The ETF transport encodes `msg` as an opaque BitArray. JSON protocol can't do th
 ## Why deferred
 
 The runtime panic is a production crash, but the right fix here involves codec generator changes that can sprawl into adjacent areas (JSON variant encoding shape, recursive type handling, dispatch routing). Better to ship a clean guard now via rally-yghe and tackle the full implementation under a properly-scoped issue.
+
+
+
+## Completion notes
+
+Implemented JSON client-context message generation:
+
+- JSON client packages now generate `json_encode_client_context_msg` from the parsed `ClientContextMsg` contract.
+- The generated JSON client effect shim sends `__ClientContext__` through the normal transport instead of panicking.
+- Generated JSON protocol wire exposes a `decode_client_context_msg` helper when a client context contract exists.
+- Generated JSON WS handlers route `__ClientContext__` request envelopes by decoding, pushing the context update back to the connection, and acknowledging the request.
+- The old JSON/client-context build guard is now a compatibility no-op.
+
+Validation:
+
+- `gleam build`
+- `gleam test --target erlang` (423 passed)

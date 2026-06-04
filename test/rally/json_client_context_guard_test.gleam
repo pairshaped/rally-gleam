@@ -1,10 +1,8 @@
-//// Regression: rally build must refuse to generate a JSON-protocol client
-//// when any page calls `send_to_client_context`. The JSON encoder for
-//// client-context messages is not implemented yet; without this guard the
-//// generated code would compile and crash at runtime.
+//// Regression: JSON-protocol apps may send ClientContextMsg values through
+//// send_to_client_context. The generated client must encode those messages
+//// instead of relying on the old build-time guard.
 
 import gleam/option.{None}
-import gleam/string
 import rally
 import rally/internal/types.{
   type PageContract, type ScannedRoute, PageContract, ScannedRoute,
@@ -66,20 +64,18 @@ pub fn json_protocol_allows_pages_without_client_context_test() {
     rally.check_json_client_context_compatibility_result(contracts, "json")
 }
 
-pub fn json_protocol_rejects_pages_with_client_context_test() {
+pub fn json_protocol_allows_pages_with_client_context_test() {
   let contracts = [
     #(
       make_route("Login", "public/pages/login"),
       make_contract("rally_effect.send_to_client_context(SignedIn(user))"),
     ),
   ]
-  let assert Error(message) =
+  let assert Ok(Nil) =
     rally.check_json_client_context_compatibility_result(contracts, "json")
-  let assert True = string.contains(message, "public/pages/login")
-  let assert True = string.contains(message, "rally-au0s")
 }
 
-pub fn json_protocol_reports_every_offending_page_test() {
+pub fn json_protocol_allows_multiple_pages_with_client_context_test() {
   let contracts = [
     #(
       make_route("Login", "public/pages/login"),
@@ -91,9 +87,6 @@ pub fn json_protocol_reports_every_offending_page_test() {
       make_contract("rally_effect.send_to_client_context(SignedOut)"),
     ),
   ]
-  let assert Error(message) =
+  let assert Ok(Nil) =
     rally.check_json_client_context_compatibility_result(contracts, "json")
-  let assert True = string.contains(message, "public/pages/login")
-  let assert True = string.contains(message, "public/pages/settings")
-  let assert False = string.contains(message, "public/pages/home")
 }

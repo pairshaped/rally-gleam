@@ -44,49 +44,77 @@ encode_float(N) when is_integer(N) -> N + 0.0.
 encode_public_pages_home___server_increment(server_increment) ->
     '3adf004bda'.
 
-decode_public_pages_home___server_increment('3adf004bda') ->
+decode_public_pages_home___server_increment(Value) -> decode_public_pages_home___server_increment(Value, 0).
+
+decode_public_pages_home___server_increment(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_home___server_increment('3adf004bda', _Depth) ->
     server_increment.
 
 %% Type: public/pages/home_.IncrementResult
 encode_public_pages_home___increment_result({increment_result, F0, F1}) ->
     {'003511dd1c', F0, F1}.
 
-decode_public_pages_home___increment_result({'003511dd1c', F0, F1}) ->
+decode_public_pages_home___increment_result(Value) -> decode_public_pages_home___increment_result(Value, 0).
+
+decode_public_pages_home___increment_result(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_home___increment_result({'003511dd1c', F0, F1}, _Depth) ->
     {increment_result, F0, F1}.
 
 %% Type: public/pages/home_.ServerIncrementBy
 encode_public_pages_home___server_increment_by({server_increment_by, F0}) ->
     {'10251ccd57', F0}.
 
-decode_public_pages_home___server_increment_by({'10251ccd57', F0}) ->
+decode_public_pages_home___server_increment_by(Value) -> decode_public_pages_home___server_increment_by(Value, 0).
+
+decode_public_pages_home___server_increment_by(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_home___server_increment_by({'10251ccd57', F0}, _Depth) ->
     {server_increment_by, F0}.
 
 %% Type: public/pages/home_.Model
 encode_public_pages_home___model({model, F0}) ->
     {'e4ff4f2689', F0}.
 
-decode_public_pages_home___model({'e4ff4f2689', F0}) ->
+decode_public_pages_home___model(Value) -> decode_public_pages_home___model(Value, 0).
+
+decode_public_pages_home___model(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_home___model({'e4ff4f2689', F0}, _Depth) ->
     {model, F0}.
 
 %% Type: public/pages/notifications_.Model
 encode_public_pages_notifications___model({model, F0}) ->
     {'42a9f6fcde', F0}.
 
-decode_public_pages_notifications___model({'42a9f6fcde', F0}) ->
+decode_public_pages_notifications___model(Value) -> decode_public_pages_notifications___model(Value, 0).
+
+decode_public_pages_notifications___model(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_notifications___model({'42a9f6fcde', F0}, _Depth) ->
     {model, F0}.
 
 %% Type: public/pages/home_.ToClient
 encode_public_pages_home___to_client({updated, F0}) ->
     {'19ae752434', F0}.
 
-decode_public_pages_home___to_client({'19ae752434', F0}) ->
+decode_public_pages_home___to_client(Value) -> decode_public_pages_home___to_client(Value, 0).
+
+decode_public_pages_home___to_client(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_home___to_client({'19ae752434', F0}, _Depth) ->
     {updated, F0}.
 
 %% Type: public/pages/notifications_.ToClient
 encode_public_pages_notifications___to_client({updated, F0}) ->
     {'45ac7f3cba', F0}.
 
-decode_public_pages_notifications___to_client({'45ac7f3cba', F0}) ->
+decode_public_pages_notifications___to_client(Value) -> decode_public_pages_notifications___to_client(Value, 0).
+
+decode_public_pages_notifications___to_client(_Value, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_public_pages_notifications___to_client({'45ac7f3cba', F0}, _Depth) ->
     {updated, F0}.
 
 encode_term(Term) -> encode_term(Term, 0).
@@ -112,12 +140,12 @@ decode_term(Atom, _Depth) when is_atom(Atom) ->
     end;
 decode_term(Tuple, Depth) when is_tuple(Tuple), tuple_size(Tuple) > 0 ->
     case {element(1, Tuple), tuple_size(Tuple)} of
-        {'003511dd1c', 3} -> decode_public_pages_home___increment_result(Tuple);
-        {'10251ccd57', 2} -> decode_public_pages_home___server_increment_by(Tuple);
-        {'e4ff4f2689', 2} -> decode_public_pages_home___model(Tuple);
-        {'42a9f6fcde', 2} -> decode_public_pages_notifications___model(Tuple);
-        {'19ae752434', 2} -> decode_public_pages_home___to_client(Tuple);
-        {'45ac7f3cba', 2} -> decode_public_pages_notifications___to_client(Tuple);
+        {'003511dd1c', 3} -> decode_public_pages_home___increment_result(Tuple, Depth + 1);
+        {'10251ccd57', 2} -> decode_public_pages_home___server_increment_by(Tuple, Depth + 1);
+        {'e4ff4f2689', 2} -> decode_public_pages_home___model(Tuple, Depth + 1);
+        {'42a9f6fcde', 2} -> decode_public_pages_notifications___model(Tuple, Depth + 1);
+        {'19ae752434', 2} -> decode_public_pages_home___to_client(Tuple, Depth + 1);
+        {'45ac7f3cba', 2} -> decode_public_pages_notifications___to_client(Tuple, Depth + 1);
         _ -> list_to_tuple([decode_term(E, Depth + 1) || E <- tuple_to_list(Tuple)])
     end;
 decode_term(List, Depth) when is_list(List) ->
@@ -126,15 +154,19 @@ decode_term(Map, Depth) when is_map(Map) ->
     maps:map(fun(_K, V) -> decode_term(V, Depth + 1) end, Map);
 decode_term(Other, _Depth) -> Other.
 
-decode_client_msg('3adf004bda') ->
+decode_client_msg(Msg) -> decode_client_msg(Msg, 0).
+
+decode_client_msg(_Msg, Depth) when Depth >= 512 ->
+    error({wire_depth_exceeded, Depth});
+decode_client_msg('3adf004bda', _Depth) ->
     server_increment;
-decode_client_msg(server_increment) ->
+decode_client_msg(server_increment, _Depth) ->
     server_increment;
-decode_client_msg({'10251ccd57', F0}) ->
+decode_client_msg({'10251ccd57', F0}, _Depth) ->
     {server_increment_by, F0};
-decode_client_msg({server_increment_by, F0}) ->
+decode_client_msg({server_increment_by, F0}, _Depth) ->
     {server_increment_by, F0};
-decode_client_msg(Other) ->
+decode_client_msg(Other, _Depth) ->
     Other.
 
 encode_response_increment({ok, V}) ->

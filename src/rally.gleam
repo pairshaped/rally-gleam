@@ -625,6 +625,16 @@ fn generate_for_config(config: ScanConfig) -> Result(Nil, RallyError) {
     |> string.drop_start(4)
     |> string.drop_end(6)
 
+  use client_context_contract <- result.try(case client_context_source {
+    option.Some(source) ->
+      parser.parse_client_context(source)
+      |> result.map(option.Some)
+      |> result.map_error(fn(error) {
+        RallyError("Cannot parse client_context.gleam: " <> error)
+      })
+    option.None -> Ok(option.None)
+  })
+
   let ssr_source =
     ssr_handler.generate(
       contracts,
@@ -659,6 +669,10 @@ fn generate_for_config(config: ScanConfig) -> Result(Nil, RallyError) {
       from_session_module:,
       protocol_wire_module:,
       contract_hash:,
+      client_context_module: case client_context_contract {
+        option.Some(_) -> option.Some(client_context_module)
+        option.None -> option.None
+      },
     )
   use _ <- result.try(result)
 
@@ -710,26 +724,15 @@ fn generate_for_config(config: ScanConfig) -> Result(Nil, RallyError) {
 
   let server_symbols = collect_server_symbols(ns_endpoints)
 
-  use client_context_contract <- result.try(case client_context_source {
-    option.Some(source) ->
-      parser.parse_client_context(source)
-      |> result.map(option.Some)
-      |> result.map_error(fn(error) {
-        RallyError("Cannot parse client_context.gleam: " <> error)
-      })
-    option.None -> Ok(option.None)
-  })
-  use _ <- result.try(check_json_client_context_compatibility(
-    contracts,
-    config.protocol,
-  ))
   let raw_codec_files =
-    codec.generate(
+    codec.generate_with_client_context_contract(
       contracts,
       discovered,
       ns_endpoints,
       server_symbols,
       config.protocol,
+      client_context_contract:,
+      client_context_module:,
     )
   let codec_files =
     list.map(raw_codec_files, fn(f: codec.CodecFile) {
@@ -906,9 +909,10 @@ fn do_write_files(
   from_session_module from_session_module: String,
   protocol_wire_module protocol_wire_module: String,
   contract_hash contract_hash: String,
+  client_context_module client_context_module: option.Option(String),
 ) -> Result(Nil, RallyError) {
   let ws_source =
-    ws_handler.generate(
+    ws_handler.generate_with_client_context(
       contracts,
       config.atoms_module,
       rpc_dispatch_module,
@@ -917,6 +921,7 @@ fn do_write_files(
       endpoints: ns_endpoints,
       wire_import_module: protocol_wire_module,
       protocol: config.protocol,
+      has_client_context: option.is_some(client_context_module),
     )
   use _ <- result.try(
     write_file(config.output_route, route_source)
@@ -960,7 +965,7 @@ fn do_write_files(
   let protocol_wire_output =
     string.replace(config.output_ws, "ws_handler.gleam", "protocol_wire.gleam")
   let protocol_wire_source =
-    generator.generate_protocol_wire(
+    generator.generate_protocol_wire_with_client_context(
       config.protocol,
       config.atoms_module,
       contract_hash,
@@ -968,6 +973,7 @@ fn do_write_files(
       ns_endpoints,
       auth_config,
       protocol_wire_module,
+      client_context_module:,
     )
   use _ <- result.try(
     write_file(protocol_wire_output, protocol_wire_source)
@@ -1402,50 +1408,13 @@ fn last_module_segment(module_path: String) -> String {
   }
 }
 
-/// Refuse to generate a JSON-protocol client when any page references
-/// `send_to_client_context`. The JSON encoding path is not implemented yet
-/// (tracked in rally-au0s) and the runtime panic shim in the generated
-/// `rally/runtime/effect` is a backstop, not an acceptable failure mode.
-fn check_json_client_context_compatibility(
-  contracts: List(#(types.ScannedRoute, types.PageContract)),
-  protocol: String,
-) -> Result(Nil, RallyError) {
-  check_json_client_context_compatibility_result(contracts, protocol)
-  |> result.map_error(RallyError)
-}
-
-/// Test-facing entry point for the JSON / client-context compatibility check.
-/// Returns the rendered error message rather than the private RallyError so
-/// tests can import it without touching internals.
+/// Backward-compatible test-facing entry point for the former JSON /
+/// client-context compatibility guard.
 pub fn check_json_client_context_compatibility_result(
-  contracts: List(#(types.ScannedRoute, types.PageContract)),
-  protocol: String,
+  contracts _contracts: List(#(types.ScannedRoute, types.PageContract)),
+  protocol _protocol: String,
 ) -> Result(Nil, String) {
-  case protocol {
-    "json" -> {
-      let offenders =
-        list.filter_map(contracts, fn(pair) {
-          let #(route, contract) = pair
-          case string.contains(contract.source, "send_to_client_context") {
-            True -> Ok(route.module_path)
-            False -> Error(Nil)
-          }
-        })
-      case offenders {
-        [] -> Ok(Nil)
-        _ ->
-          Error(
-            "JSON protocol does not yet support client-context messages. "
-            <> "These pages call send_to_client_context but the JSON encoder "
-            <> "is not implemented (tracked in rally-au0s):\n  - "
-            <> string.join(offenders, "\n  - ")
-            <> "\nEither switch the namespace to protocol = \"etf\" or remove "
-            <> "the send_to_client_context calls from these pages.",
-          )
-      }
-    }
-    _ -> Ok(Nil)
-  }
+  Ok(Nil)
 }
 
 fn write_file(path: String, content: String) -> Result(Nil, String) {

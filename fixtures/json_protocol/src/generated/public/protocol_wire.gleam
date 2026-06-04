@@ -16,7 +16,7 @@ import mist.{type WebsocketConnection, type WebsocketMessage}
 import public/pages/home_ as public_pages_home__handler
 import server_context.{type ServerContext}
 
-const contract_hash = "c506302898c52c437e16480983ed2e4dbc56ba4c08b6ea4f71a4f22090f9a065"
+const contract_hash = "a24382d78ebfe158bce02eba538f2bb2a542510dae3d9006ebd7a2ff9bacf57e"
 
 pub fn page_init_ok() -> json.Json {
   json.null()
@@ -148,6 +148,14 @@ fn extract_message_type(message: Dynamic) -> Result(String, Nil) {
     Ok(type_str) -> Ok(type_str)
     Error(_) -> Error(Nil)
   }
+}
+
+pub fn decode_client_context_msg(
+  _value: Dynamic,
+) -> Result(a, List(JsonError)) {
+  Error([
+    JsonError("client_context", "ClientContextMsg decoder is not generated"),
+  ])
 }
 
 fn json_dispatch(

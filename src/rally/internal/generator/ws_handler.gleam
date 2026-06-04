@@ -28,6 +28,30 @@ pub fn generate(
   wire_import_module wire_import_module: String,
   protocol protocol: String,
 ) -> String {
+  generate_with_client_context(
+    page_contracts,
+    atoms_module,
+    "",
+    auth_config,
+    from_session_module:,
+    endpoints:,
+    wire_import_module:,
+    protocol:,
+    has_client_context: False,
+  )
+}
+
+pub fn generate_with_client_context(
+  page_contracts page_contracts: List(#(ScannedRoute, PageContract)),
+  atoms_module atoms_module: String,
+  rpc_dispatch_module _rpc_dispatch_module: String,
+  auth_config auth_config: Option(AuthConfig),
+  from_session_module from_session_module: String,
+  endpoints endpoints: List(HandlerEndpoint),
+  wire_import_module wire_import_module: String,
+  protocol protocol: String,
+  has_client_context has_client_context: Bool,
+) -> String {
   let has_auth = option.is_some(auth_config)
   let has_endpoints = !list.is_empty(endpoints)
   let auth_module_ref = case auth_config {
@@ -123,8 +147,14 @@ pub fn generate(
         from_session_ref,
         endpoints,
         protocol,
+        has_client_context,
       )
-    False -> generate_frame_handler_no_auth(page_contracts, protocol)
+    False ->
+      generate_frame_handler_no_auth(
+        page_contracts,
+        protocol,
+        has_client_context,
+      )
   }
   string.join([header, init, handler], "\n\n") <> "\n"
 }
@@ -208,10 +238,11 @@ pub fn on_close(_state: Nil) -> Nil {
 fn generate_frame_handler_no_auth(
   page_contracts: List(#(ScannedRoute, PageContract)),
   protocol: String,
+  has_client_context: Bool,
 ) -> String {
   let page_effects = page_effect_helpers(page_contracts, protocol)
-  let rpc_branch =
-    "\n    _ -> {
+  let json_fallback = json_non_rpc_text_fallback(has_client_context)
+  let rpc_branch = "\n    _ -> {
       case wire.decode_ws_rpc_envelope(msg) {
         Ok(envelope) -> {
           let request_id = wire.rpc_request_id(envelope)
@@ -257,12 +288,7 @@ fn generate_frame_handler_no_auth(
             }
           }
         }
-        Error(Nil) -> {
-          let result = wire.malformed_rpc_result()
-          wire.send_rpc_result(conn, result)
-          send_pending_frames(conn)
-          mist.continue(state)
-        }
+        Error(Nil) -> " <> json_fallback <> "
       }
     }"
 
@@ -448,6 +474,7 @@ fn generate_frame_handler_with_auth(
   from_session_ref: String,
   endpoints: List(HandlerEndpoint),
   protocol: String,
+  has_client_context: Bool,
 ) -> String {
   let has_endpoints = !list.is_empty(endpoints)
   let page_effects = page_effect_helpers(page_contracts, protocol)
@@ -602,6 +629,7 @@ fn generate_frame_handler_with_auth(
     }"
   }
 
+  let json_fallback = json_non_rpc_text_fallback(has_client_context)
   let text_branch = case protocol {
     "json" -> "\n    mist.Text(_data) -> {
       // Reauth: re-resolve identity if the last auth check is stale.
@@ -640,12 +668,7 @@ fn generate_frame_handler_with_auth(
       }
       case wire.decode_ws_rpc_envelope(msg) {
 " <> rpc_body(has_endpoints, auth_ref) <> "
-        Error(Nil) -> {
-          let result = wire.malformed_rpc_result()
-          wire.send_rpc_result(conn, result)
-          send_pending_frames(conn)
-          mist.continue(state)
-        }
+        Error(Nil) -> " <> json_fallback <> "
       }
     }"
     _ -> ""
@@ -805,6 +828,47 @@ fn rpc_body(has_endpoints: Bool, auth_ref: String) -> String {
           let request_id = wire.rpc_request_id(envelope)
           debug_log(\"[rally:ws] RPC: request_id=\" <> int.to_string(request_id))
           let result = wire.auth_error_result(request_id, \"auth:unknown_rpc\")
+          wire.send_rpc_result(conn, result)
+          send_pending_frames(conn)
+          mist.continue(state)
+        }"
+  }
+}
+
+fn json_non_rpc_text_fallback(has_client_context: Bool) -> String {
+  case has_client_context {
+    True ->
+      "{
+          case wire.decode_request(data) {
+            Ok(envelope) if envelope.module == \"__ClientContext__\" -> {
+              case wire.decode_client_context_msg(envelope.message) {
+                Ok(client_context_msg) -> {
+                  let push_frame = wire.encode_push(\"__ClientContext__\", client_context_msg)
+                  let _push_result = mist.send_text_frame(conn, push_frame)
+                  let response_frame = wire.encode_response(request_id: envelope.request_id, value: wire.page_init_ok())
+                  let _response_result = mist.send_text_frame(conn, response_frame)
+                  send_pending_frames(conn)
+                  mist.continue(state)
+                }
+                Error(errors) -> {
+                  let error_frame = wire.encode_error(Some(envelope.request_id), errors)
+                  let _send_result = mist.send_text_frame(conn, error_frame)
+                  send_pending_frames(conn)
+                  mist.continue(state)
+                }
+              }
+            }
+            _ -> {
+              let result = wire.malformed_rpc_result()
+              wire.send_rpc_result(conn, result)
+              send_pending_frames(conn)
+              mist.continue(state)
+            }
+          }
+        }"
+    False ->
+      "{
+          let result = wire.malformed_rpc_result()
           wire.send_rpc_result(conn, result)
           send_pending_frames(conn)
           mist.continue(state)
