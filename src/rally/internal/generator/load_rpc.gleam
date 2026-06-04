@@ -81,6 +81,8 @@ pub fn client_protocol(
 ) -> String {
   "@target(javascript)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
+@target(javascript)
+import generated/libero/etf as libero_etf
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
 @target(javascript)
 import broadcasts
@@ -119,15 +121,16 @@ pub fn decode_result_envelope(bytes: BitArray) -> Result(#(Int, a), Nil) {
 }
 
 @target(javascript)
-@external(javascript, \"../libero/codec_ffi.mjs\", \"encode_value\")
-fn encode_any(_value: a) -> BitArray {
-  panic as \"generated/rally/client_protocol.encode_any external missing\"
+fn encode_any(value: a) -> BitArray {
+  libero_etf.encode(value)
 }
 
 @target(javascript)
-@external(javascript, \"../libero/codec_ffi.mjs\", \"decode_result\")
-fn decode_any(_bytes: BitArray) -> Result(a, Nil) {
-  panic as \"generated/rally/client_protocol.decode_any external missing\"
+fn decode_any(bytes: BitArray) -> Result(a, Nil) {
+  case libero_etf.decode(bytes) {
+    Ok(value) -> Ok(value)
+    Error(_) -> Error(Nil)
+  }
 }
 "
 }
@@ -140,17 +143,14 @@ pub fn server_protocol(
   "@target(erlang)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
-import generated/libero/to_client_codec
-@target(erlang)
-import generated/libero/to_server_codec
+import generated/libero/etf as libero_etf
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
 @target(erlang)
 import broadcasts
 
 @target(erlang)
 pub fn ensure() -> Nil {
-  let _ = to_server_codec.ensure()
-  to_client_codec.ensure()
+  libero_etf.ensure()
 }
 
 " <> string.join(list.map(loads, server_request_type), "\n") <> "
@@ -160,6 +160,17 @@ pub fn ensure() -> Nil {
     option.values(list.map(loads, server_encode_save_result)),
     "\n",
   ) <> "
+" <> string.join(list.map(loads, server_load_result_encoder), "\n") <> "
+" <> string.join(
+    option.values(list.map(loads, server_save_result_encoder)),
+    "\n",
+  ) <> "
+
+@target(erlang)
+@external(erlang, \"generated@rpc_wire\", \"encode_broadcasts__event\")
+fn encode_push_payload(_message: broadcasts.Event) -> a {
+  panic as \"generated/rally/server_protocol.encode_push_payload external missing\"
+}
 
 @target(erlang)
 fn encode_result_frame(request_id: Int, result: a) -> BitArray {
@@ -172,20 +183,29 @@ pub fn encode_push(
   module module: String,
   message message: broadcasts.Event,
 ) -> BitArray {
-  let payload = encode_any(#(module, message))
+  let payload = encode_any(#(module, encode_push_payload(message)))
   <<1, payload:bits>>
 }
 
 @target(erlang)
-@external(erlang, \"to_server_codec_ffi\", \"decode\")
-fn decode_any(_bytes: BitArray) -> Result(a, Nil) {
-  panic as \"generated/rally/server_protocol.decode_any external missing\"
+fn encode_ok_payload(result: Result(a, b), encode_ok: fn(a) -> c) -> Result(c, b) {
+  case result {
+    Ok(payload) -> Ok(encode_ok(payload))
+    Error(error) -> Error(error)
+  }
 }
 
 @target(erlang)
-@external(erlang, \"to_client_codec_ffi\", \"encode\")
-fn encode_any(_value: a) -> BitArray {
-  panic as \"generated/rally/server_protocol.encode_any external missing\"
+fn decode_any(bytes: BitArray) -> Result(a, Nil) {
+  case libero_etf.decode(bytes) {
+    Ok(value) -> Ok(value)
+    Error(_) -> Error(Nil)
+  }
+}
+
+@target(erlang)
+fn encode_any(value: a) -> BitArray {
+  libero_etf.encode(value)
 }
 "
 }
@@ -556,7 +576,7 @@ pub fn encode_" <> load.name <> "_load_result(
   request_id request_id: Int,
   result result: Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError)),
 ) -> BitArray {
-  encode_result_frame(request_id, result)
+  encode_result_frame(request_id, encode_" <> load.name <> "_load_result_payload(result))
 }
 "
 }
@@ -569,7 +589,52 @@ pub fn encode_" <> load.name <> "_save_result(
   request_id request_id: Int,
   result result: Result(" <> wire_alias(load) <> "." <> save_result_type <> ", List(ApiSaveError)),
 ) -> BitArray {
-  encode_result_frame(request_id, result)
+  encode_result_frame(request_id, encode_" <> load.name <> "_save_result_payload(result))
+}
+")
+  }
+}
+
+fn server_load_result_encoder(load: LoadRpc) -> String {
+  "@target(erlang)
+fn encode_" <> load.name <> "_load_result_payload(
+  result: Result(" <> wire_alias(load) <> ".LoadResult, List(ApiLoadError)),
+) -> Result(a, List(ApiLoadError)) {
+  encode_ok_payload(result, encode_" <> load.name <> "_load_result_value)
+}
+
+@target(erlang)
+@external(erlang, \"generated@rpc_wire\", \"" <> wire_encoder_function(
+    load.wire_module,
+    "LoadResult",
+  ) <> "\")
+fn encode_" <> load.name <> "_load_result_value(
+  _value: " <> wire_alias(load) <> ".LoadResult,
+) -> a {
+  panic as \"generated/rally/server_protocol.encode_" <> load.name <> "_load_result_value external missing\"
+}
+"
+}
+
+fn server_save_result_encoder(load: LoadRpc) -> Option(String) {
+  case load.save_result_type {
+    None -> None
+    Some(save_result_type) -> Some("@target(erlang)
+fn encode_" <> load.name <> "_save_result_payload(
+  result: Result(" <> wire_alias(load) <> "." <> save_result_type <> ", List(ApiSaveError)),
+) -> Result(a, List(ApiSaveError)) {
+  encode_ok_payload(result, encode_" <> load.name <> "_save_result_value)
+}
+
+@target(erlang)
+@external(erlang, \"generated@rpc_wire\", \"" <> wire_encoder_function(
+        load.wire_module,
+        save_result_type,
+      ) <> "\")
+fn encode_" <> load.name <> "_save_result_value(
+  _value: " <> wire_alias(load) <> "." <> save_result_type <> ",
+) -> a {
+  panic as \"generated/rally/server_protocol.encode_" <> load.name <> "_save_result_value external missing\"
 }
 ")
   }
@@ -697,6 +762,13 @@ fn client_save_result_type(load: LoadRpc) -> String {
     True, Some(save_result_type) -> wire_alias(load) <> "." <> save_result_type
     _, _ -> "save_result"
   }
+}
+
+fn wire_encoder_function(module_path: String, type_name: String) -> String {
+  "encode_"
+  <> string.replace(module_path, "/", "_")
+  <> "__"
+  <> to_snake_case(type_name)
 }
 
 fn has_custom_type(

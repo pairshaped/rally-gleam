@@ -87,6 +87,56 @@ pub fn load_rpc_server_protocol_snapshot_test() {
   |> birdie.snap("load_rpc_server_protocol_gleam")
 }
 
+pub fn load_rpc_protocols_use_neutral_libero_codec_test() {
+  let client = content_for("src/generated/rally/client_protocol.gleam")
+  let server = content_for("src/generated/rally/server_protocol.gleam")
+
+  client
+  |> string.contains("import generated/libero/etf as libero_etf")
+  |> should.be_true()
+  server
+  |> string.contains("import generated/libero/etf as libero_etf")
+  |> should.be_true()
+
+  client |> string.contains("../libero/codec_ffi.mjs") |> should.be_false()
+  server
+  |> string.contains("generated/libero/to_client_codec")
+  |> should.be_false()
+  server
+  |> string.contains("generated/libero/to_server_codec")
+  |> should.be_false()
+  server |> string.contains("to_client_codec_ffi") |> should.be_false()
+  server |> string.contains("to_server_codec_ffi") |> should.be_false()
+}
+
+pub fn load_rpc_server_protocol_uses_libero_wire_encoders_test() {
+  let server = content_for("src/generated/rally/server_protocol.gleam")
+
+  server
+  |> string.contains(
+    "@external(erlang, \"generated@rpc_wire\", \"encode_public_pages_games_wire__load_result\")",
+  )
+  |> should.be_true()
+  server
+  |> string.contains(
+    "@external(erlang, \"generated@rpc_wire\", \"encode_admin_pages_games__game_update\")",
+  )
+  |> should.be_true()
+  server
+  |> string.contains(
+    "@external(erlang, \"generated@rpc_wire\", \"encode_broadcasts__event\")",
+  )
+  |> should.be_true()
+  server
+  |> string.contains("encode_public_games_load_result_payload(result)")
+  |> should.be_true()
+  server
+  |> string.contains(
+    "let payload = encode_any(#(module, encode_push_payload(message)))",
+  )
+  |> should.be_true()
+}
+
 pub fn load_rpc_client_transport_snapshot_test() {
   content_for("src/generated/rally/client_transport.gleam")
   |> birdie.snap("load_rpc_client_transport_gleam")
