@@ -1,7 +1,9 @@
 import generated/sql/articles_sql
 import generated/sql/auth_sql
 import generated/sql/tags_sql
+import gleam/bool
 import gleam/list
+import gleam/result
 import gleam/string
 import helpers/datetime
 import helpers/slug
@@ -234,8 +236,8 @@ pub type ServerModel {
 }
 
 pub fn server_init(
-  server_context: ServerContext,
-  article_slug: String,
+  server_context server_context: ServerContext,
+  article_slug article_slug: String,
 ) -> #(ServerModel, Effect(ToClient)) {
   let session_id = rally_effect.get_ws_session()
   case
@@ -249,38 +251,12 @@ pub fn server_init(
       case
         articles_sql.get_for_edit(db: server_context.db, slug: article_slug)
       {
-        Ok([article]) -> {
-          case article.author_id == user.id {
-            True -> {
-              let assert Ok(tag_rows) =
-                tags_sql.list_by_article(
-                  db: server_context.db,
-                  article_id: article.id,
-                )
-              let tags = list.map(tag_rows, fn(row) { row.name })
-              #(
-                ServerModel(
-                  article_id: article.id,
-                  author_id: article.author_id,
-                ),
-                rally_effect.send_to_client(ArticleLoaded(
-                  title: article.title,
-                  description: article.description,
-                  body: article.body,
-                  tags:,
-                )),
-              )
-            }
-            False -> #(
-              ServerModelEmpty,
-              rally_effect.send_to_client(
-                EditorErrors([
-                  "You can only edit your own articles",
-                ]),
-              ),
-            )
-          }
-        }
+        Ok([article]) ->
+          load_article_for_editor(
+            db: server_context.db,
+            article: article,
+            user_id: user.id,
+          )
         _ -> #(
           ServerModelEmpty,
           rally_effect.send_to_client(EditorErrors(["Article not found"])),
@@ -298,10 +274,47 @@ pub fn server_init(
   }
 }
 
+fn load_article_for_editor(
+  db db: sqlight.Connection,
+  article article: articles_sql.GetForEditRow,
+  user_id user_id: Int,
+) -> #(ServerModel, Effect(ToClient)) {
+  use <- bool.guard(when: article.author_id != user_id, return: #(
+    ServerModelEmpty,
+    rally_effect.send_to_client(
+      EditorErrors([
+        "You can only edit your own articles",
+      ]),
+    ),
+  ))
+  case tags_sql.list_by_article(db: db, article_id: article.id) {
+    Ok(tag_rows) -> {
+      let tags = list.map(tag_rows, fn(row) { row.name })
+      #(
+        ServerModel(article_id: article.id, author_id: article.author_id),
+        rally_effect.send_to_client(ArticleLoaded(
+          title: article.title,
+          description: article.description,
+          body: article.body,
+          tags:,
+        )),
+      )
+    }
+    Error(sqlight.SqlightError(message:, ..)) -> #(
+      ServerModelEmpty,
+      rally_effect.send_to_client(
+        EditorErrors([
+          "Failed to load tags: " <> message,
+        ]),
+      ),
+    )
+  }
+}
+
 pub fn server_update(
-  model: ServerModel,
-  msg: ToServer,
-  server_context: ServerContext,
+  model model: ServerModel,
+  msg msg: ToServer,
+  server_context server_context: ServerContext,
 ) -> #(ServerModel, Effect(ToClient)) {
   let UpdateArticle(title, description, body, tags) = msg
   case model {
@@ -310,38 +323,35 @@ pub fn server_update(
       rally_effect.send_to_client(EditorErrors(["No article loaded"])),
     )
     ServerModel(article_id, _author_id) -> {
-      let errors = validate_article(title, body)
-      case errors {
-        [] -> {
-          let now = datetime.now_unix()
-          let new_slug =
-            slug.unique_from_title_excluding(
-              db: server_context.db,
-              title: title,
-              article_id: article_id,
-            )
-          let assert Ok(_) =
-            articles_sql.update(
-              db: server_context.db,
-              slug: new_slug,
-              title:,
-              description:,
-              body:,
-              now:,
-              article_id:,
-            )
-          let assert Ok(_) =
-            tags_sql.unlink_from_article(db: server_context.db, article_id:)
-          save_tags(server_context.db, article_id, tags)
-          #(model, rally_effect.send_to_client(ArticleUpdated(slug: new_slug)))
-        }
-        _ -> #(model, rally_effect.send_to_client(EditorErrors(errors)))
+      let errors = validate_article(title: title, body: body)
+      use <- bool.guard(when: errors != [], return: #(
+        model,
+        rally_effect.send_to_client(EditorErrors(errors)),
+      ))
+      case
+        update_article(
+          db: server_context.db,
+          article_id: article_id,
+          title: title,
+          description: description,
+          body: body,
+          tags: tags,
+        )
+      {
+        Ok(new_slug) -> #(
+          model,
+          rally_effect.send_to_client(ArticleUpdated(slug: new_slug)),
+        )
+        Error(errors) -> #(
+          model,
+          rally_effect.send_to_client(EditorErrors(errors)),
+        )
       }
     }
   }
 }
 
-fn validate_article(title: String, body: String) -> List(String) {
+fn validate_article(title title: String, body body: String) -> List(String) {
   let errors = []
   let errors = case string.is_empty(string.trim(title)) {
     True -> ["Title can't be blank", ..errors]
@@ -354,14 +364,81 @@ fn validate_article(title: String, body: String) -> List(String) {
 }
 
 fn save_tags(
-  db: sqlight.Connection,
-  article_id: Int,
-  tags: List(String),
-) -> Nil {
-  list.each(tags, fn(tag) {
-    let assert Ok(_) = tags_sql.create_or_ignore(db:, name: tag)
-    let assert Ok([row]) = tags_sql.get_id_by_name(db:, name: tag)
-    let assert Ok(_) =
-      tags_sql.link_to_article(db:, article_id:, tag_id: row.id)
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  tags tags: List(String),
+) -> Result(Nil, List(String)) {
+  case tags {
+    [] -> Ok(Nil)
+    [tag, ..rest] -> {
+      use Nil <- result.try(save_tag(db: db, article_id: article_id, tag: tag))
+      save_tags(db: db, article_id: article_id, tags: rest)
+    }
+  }
+}
+
+fn update_article(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  title title: String,
+  description description: String,
+  body body: String,
+  tags tags: List(String),
+) -> Result(String, List(String)) {
+  let now = datetime.now_unix()
+  let new_slug =
+    slug.unique_from_title_excluding(
+      db: db,
+      title: title,
+      article_id: article_id,
+    )
+  use _updated <- result.try(
+    articles_sql.update(
+      db: db,
+      slug: new_slug,
+      title: title,
+      description: description,
+      body: body,
+      now: now,
+      article_id: article_id,
+    )
+    |> sql_result_to_app_error(message: "Failed to update article"),
+  )
+  use _unlinked <- result.try(
+    tags_sql.unlink_from_article(db: db, article_id: article_id)
+    |> sql_result_to_app_error(message: "Failed to save tags"),
+  )
+  use Nil <- result.try(save_tags(db: db, article_id: article_id, tags: tags))
+  Ok(new_slug)
+}
+
+fn save_tag(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  tag tag: String,
+) -> Result(Nil, List(String)) {
+  use _created <- result.try(
+    tags_sql.create_or_ignore(db: db, name: tag)
+    |> sql_result_to_app_error(message: "Failed to save tags"),
+  )
+  use row <- result.try(case tags_sql.get_id_by_name(db: db, name: tag) {
+    Ok([row]) -> Ok(row)
+    _ -> Error(["Failed to save tags"])
   })
+  case
+    tags_sql.link_to_article(db: db, article_id: article_id, tag_id: row.id)
+  {
+    Ok(_) -> Ok(Nil)
+    Error(_) -> Error(["Failed to save tags"])
+  }
+}
+
+fn sql_result_to_app_error(
+  result result: Result(a, b),
+  message message: String,
+) -> Result(a, List(String)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(_) -> Error([message])
+  }
 }

@@ -8,6 +8,7 @@ import generated/sql/users_sql
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/result
 import gleam/string
 import helpers/datetime
 import lustre/attribute as attr
@@ -60,8 +61,8 @@ pub type Comment {
 }
 
 pub fn init(
-  _client_context: ClientContext,
-  _slug: String,
+  client_context _client_context: ClientContext,
+  slug _slug: String,
 ) -> #(Model, Effect(Msg)) {
   #(
     Model(
@@ -90,9 +91,9 @@ pub type Msg {
 }
 
 pub fn update(
-  _client_context: ClientContext,
-  model: Model,
-  msg: Msg,
+  client_context _client_context: ClientContext,
+  model model: Model,
+  msg msg: Msg,
 ) -> #(Model, Effect(Msg)) {
   case msg {
     ClickedFavorite -> #(model, rally_effect.send_to_server(ToggleFavorite))
@@ -160,7 +161,10 @@ pub fn update(
 
 // VIEW
 
-pub fn view(client_context: ClientContext, model: Model) -> Element(Msg) {
+pub fn view(
+  client_context client_context: ClientContext,
+  model model: Model,
+) -> Element(Msg) {
   case model.article {
     None ->
       html.div([attr.class("article-page")], [
@@ -171,10 +175,10 @@ pub fn view(client_context: ClientContext, model: Model) -> Element(Msg) {
     Some(article) ->
       html.div([attr.class("article-page")], [
         article_banner(
-          article,
-          model.is_favorited,
-          model.is_following,
-          model.favorites_count,
+          article:,
+          is_favorited: model.is_favorited,
+          is_following: model.is_following,
+          favorites_count: model.favorites_count,
         ),
         html.div([attr.class("container page")], [
           html.div([attr.class("row article-content")], [
@@ -193,37 +197,37 @@ pub fn view(client_context: ClientContext, model: Model) -> Element(Msg) {
           html.hr([]),
           html.div([attr.class("article-actions")], [
             article_meta(
-              article,
-              model.is_favorited,
-              model.is_following,
-              model.favorites_count,
+              article:,
+              is_favorited: model.is_favorited,
+              is_following: model.is_following,
+              favorites_count: model.favorites_count,
             ),
           ]),
-          comment_section(client_context, model),
+          comment_section(client_context: client_context, model: model),
         ]),
       ])
   }
 }
 
 fn article_banner(
-  article: Article,
-  is_favorited: Bool,
-  is_following: Bool,
-  favorites_count: Int,
+  article article: Article,
+  is_favorited is_favorited: Bool,
+  is_following is_following: Bool,
+  favorites_count favorites_count: Int,
 ) -> Element(Msg) {
   html.div([attr.class("banner")], [
     html.div([attr.class("container")], [
       html.h1([], [html.text(article.title)]),
-      article_meta(article, is_favorited, is_following, favorites_count),
+      article_meta(article:, is_favorited:, is_following:, favorites_count:),
     ]),
   ])
 }
 
 fn article_meta(
-  article: Article,
-  is_favorited: Bool,
-  is_following: Bool,
-  favorites_count: Int,
+  article article: Article,
+  is_favorited is_favorited: Bool,
+  is_following is_following: Bool,
+  favorites_count favorites_count: Int,
 ) -> Element(Msg) {
   let follow_class = case is_following {
     True -> "btn btn-sm btn-secondary"
@@ -276,8 +280,8 @@ fn article_meta(
 }
 
 fn comment_section(
-  client_context: ClientContext,
-  model: Model,
+  client_context client_context: ClientContext,
+  model model: Model,
 ) -> Element(Msg) {
   html.div([attr.class("row")], [
     html.div(
@@ -389,370 +393,492 @@ pub type ServerModel {
   ServerModelEmpty
 }
 
+type ServerError {
+  ServerError(message: String)
+}
+
 pub fn server_init(
-  server_context: ServerContext,
-  article_slug: String,
+  server_context server_context: ServerContext,
+  article_slug article_slug: String,
 ) -> #(ServerModel, Effect(ToClient)) {
   let session_id = rally_effect.get_ws_session()
-  let maybe_user_id = get_user_id(server_context.db, session_id)
-  case articles_sql.get_by_slug(db: server_context.db, slug: article_slug) {
-    Ok([row]) -> {
-      let assert Ok(tag_rows) =
-        tags_sql.list_by_article(db: server_context.db, article_id: row.id)
-      let tags = list.map(tag_rows, fn(r) { r.name })
-      let article =
-        Article(
-          id: row.id,
-          slug: row.slug,
-          title: row.title,
-          description: row.description,
-          body: row.body,
-          created_at: row.created_at,
-          tags:,
-          author_username: row.username,
-          author_image: row.image,
-          author_bio: row.bio,
+  case get_current_user_id(db: server_context.db, session_id:) {
+    Ok(maybe_user_id) ->
+      case
+        load_article_page(db: server_context.db, article_slug:, maybe_user_id:)
+      {
+        Ok(#(model, message)) -> #(model, rally_effect.send_to_client(message))
+        Error(error) -> #(
+          ServerModelEmpty,
+          rally_effect.send_to_client(ArticleError(error_message(error:))),
         )
-      let assert Ok(comment_rows) =
-        comments_sql.list_by_article(db: server_context.db, article_id: row.id)
-      let comments =
-        list.map(comment_rows, fn(c) {
-          Comment(
-            id: c.id,
-            body: c.body,
-            created_at: c.created_at,
-            username: c.username,
-            image: c.image,
-          )
-        })
-      let #(is_favorited, favorites_count) =
-        get_favorite_info(server_context.db, row.id, maybe_user_id)
-      let is_following =
-        get_follow_status(server_context.db, row.author_id, maybe_user_id)
-      #(
-        ServerModel(article_id: row.id, author_id: row.author_id),
-        rally_effect.send_to_client(ArticleData(
-          article:,
-          comments:,
-          is_favorited:,
-          is_following:,
-          favorites_count:,
-        )),
-      )
-    }
-    _ -> #(
+      }
+    Error(error) -> #(
       ServerModelEmpty,
-      rally_effect.send_to_client(ArticleError("Article not found")),
+      rally_effect.send_to_client(ArticleError(error_message(error:))),
     )
   }
 }
 
 pub fn server_update(
-  model: ServerModel,
-  msg: ToServer,
-  server_context: ServerContext,
+  model model: ServerModel,
+  msg msg: ToServer,
+  server_context server_context: ServerContext,
 ) -> #(ServerModel, Effect(ToClient)) {
   case msg {
-    ToggleFavorite -> {
-      case model {
-        ServerModelEmpty -> #(
+    ToggleFavorite -> update_favorite(model: model, db: server_context.db)
+    ToggleFollow(username) ->
+      update_follow(model: model, db: server_context.db, username:)
+    SubmitComment(body) ->
+      submit_comment(model: model, db: server_context.db, body:)
+    DeleteComment(id) ->
+      delete_comment(model: model, db: server_context.db, id:)
+    DeleteArticle -> delete_article(model: model, db: server_context.db)
+  }
+}
+
+fn load_article_page(
+  db db: sqlight.Connection,
+  article_slug article_slug: String,
+  maybe_user_id maybe_user_id: Option(Int),
+) -> Result(#(ServerModel, ToClient), ServerError) {
+  use row <- result.try(query_one(
+    query_result: articles_sql.get_by_slug(db: db, slug: article_slug),
+    message: "Article not found",
+  ))
+  use tag_rows <- result.try(sql_result_to_app_error(
+    query_result: tags_sql.list_by_article(db: db, article_id: row.id),
+    message: "Failed to load tags",
+  ))
+  use comment_rows <- result.try(sql_result_to_app_error(
+    query_result: comments_sql.list_by_article(db: db, article_id: row.id),
+    message: "Failed to load comments",
+  ))
+  use favorite_info <- result.try(get_favorite_info(
+    db:,
+    article_id: row.id,
+    maybe_user_id:,
+  ))
+  use is_following <- result.try(get_follow_status(
+    db:,
+    followed_id: row.author_id,
+    maybe_user_id:,
+  ))
+
+  let #(is_favorited, favorites_count) = favorite_info
+  let tags = list.map(tag_rows, fn(row) { row.name })
+  let comments =
+    list.map(comment_rows, fn(row) {
+      Comment(
+        id: row.id,
+        body: row.body,
+        created_at: row.created_at,
+        username: row.username,
+        image: row.image,
+      )
+    })
+  let article =
+    Article(
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      description: row.description,
+      body: row.body,
+      created_at: row.created_at,
+      tags:,
+      author_username: row.username,
+      author_image: row.image,
+      author_bio: row.bio,
+    )
+
+  Ok(#(
+    ServerModel(article_id: row.id, author_id: row.author_id),
+    ArticleData(
+      article:,
+      comments:,
+      is_favorited:,
+      is_following:,
+      favorites_count:,
+    ),
+  ))
+}
+
+fn update_favorite(
+  model model: ServerModel,
+  db db: sqlight.Connection,
+) -> #(ServerModel, Effect(ToClient)) {
+  case model {
+    ServerModelEmpty ->
+      article_error(model: model, message: "No article loaded")
+    ServerModel(article_id, _author_id) ->
+      case toggle_favorite(db: db, article_id:) {
+        Ok(#(new_count, is_favorited)) -> #(
           model,
-          rally_effect.send_to_client(ArticleError("No article loaded")),
+          effect.batch([
+            rally_effect.send_to_client(FavoriteUpdated(
+              count: new_count,
+              is_favorited:,
+            )),
+            rally_effect.broadcast_to_page(FavoriteCountUpdated(
+              count: new_count,
+            )),
+          ]),
         )
-        ServerModel(article_id, _author_id) -> {
-          let session_id = rally_effect.get_ws_session()
-          case get_user_id(server_context.db, session_id) {
-            Ok(user_id) -> {
-              let assert Ok([row]) =
-                favorites_sql.is_favorited(
-                  db: server_context.db,
-                  user_id:,
-                  article_id:,
-                )
-              case row.count > 0 {
-                True -> {
-                  let assert Ok(_) =
-                    favorites_sql.remove(
-                      db: server_context.db,
-                      user_id:,
-                      article_id:,
-                    )
-                  let new_count =
-                    get_favorites_count(server_context.db, article_id)
-                  #(
-                    model,
-                    effect.batch([
-                      rally_effect.send_to_client(FavoriteUpdated(
-                        count: new_count,
-                        is_favorited: False,
-                      )),
-                      rally_effect.broadcast_to_page(FavoriteCountUpdated(
-                        count: new_count,
-                      )),
-                    ]),
-                  )
-                }
-                False -> {
-                  let assert Ok(_) =
-                    favorites_sql.add(
-                      db: server_context.db,
-                      user_id:,
-                      article_id:,
-                    )
-                  let new_count =
-                    get_favorites_count(server_context.db, article_id)
-                  #(
-                    model,
-                    effect.batch([
-                      rally_effect.send_to_client(FavoriteUpdated(
-                        count: new_count,
-                        is_favorited: True,
-                      )),
-                      rally_effect.broadcast_to_page(FavoriteCountUpdated(
-                        count: new_count,
-                      )),
-                    ]),
-                  )
-                }
-              }
-            }
-            Error(_error) -> #(
-              model,
-              rally_effect.send_to_client(ArticleError("You must be logged in")),
-            )
-          }
-        }
+        Error(error) -> article_result_error(model: model, error:)
       }
+  }
+}
+
+fn toggle_favorite(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+) -> Result(#(Int, Bool), ServerError) {
+  let session_id = rally_effect.get_ws_session()
+  use user_id <- result.try(require_user_id(db: db, session_id:))
+  use is_favorited <- result.try(is_article_favorited(
+    db:,
+    user_id:,
+    article_id:,
+  ))
+
+  case is_favorited {
+    True -> {
+      use Nil <- result.try(execute_sql(
+        query_result: favorites_sql.remove(db:, user_id:, article_id:),
+        message: "Failed to unfavorite article",
+      ))
+      use count <- result.try(get_favorites_count(db: db, article_id:))
+      Ok(#(count, False))
     }
-    ToggleFollow(username) -> {
-      let session_id = rally_effect.get_ws_session()
-      case get_user_id(server_context.db, session_id) {
-        Ok(user_id) -> {
-          case users_sql.get_id_by_username(db: server_context.db, username:) {
-            Ok([row]) -> {
-              let followed_id = row.id
-              let assert Ok([existing]) =
-                follows_sql.is_following(
-                  db: server_context.db,
-                  follower_id: user_id,
-                  followed_id:,
-                )
-              case existing.count > 0 {
-                True -> {
-                  let assert Ok(_) =
-                    follows_sql.remove(
-                      db: server_context.db,
-                      follower_id: user_id,
-                      followed_id:,
-                    )
-                  #(
-                    model,
-                    rally_effect.send_to_client(FollowUpdated(
-                      is_following: False,
-                    )),
-                  )
-                }
-                False -> {
-                  let assert Ok(_) =
-                    follows_sql.add(
-                      db: server_context.db,
-                      follower_id: user_id,
-                      followed_id:,
-                    )
-                  #(
-                    model,
-                    rally_effect.send_to_client(FollowUpdated(
-                      is_following: True,
-                    )),
-                  )
-                }
-              }
-            }
-            _ -> #(
-              model,
-              rally_effect.send_to_client(ArticleError("User not found")),
-            )
-          }
-        }
-        Error(_error) -> #(
-          model,
-          rally_effect.send_to_client(ArticleError("You must be logged in")),
-        )
-      }
+    False -> {
+      use Nil <- result.try(execute_sql(
+        query_result: favorites_sql.add(db:, user_id:, article_id:),
+        message: "Failed to favorite article",
+      ))
+      use count <- result.try(get_favorites_count(db: db, article_id:))
+      Ok(#(count, True))
     }
-    SubmitComment(body) -> {
-      case model {
-        ServerModelEmpty -> #(
-          model,
-          rally_effect.send_to_client(ArticleError("No article loaded")),
-        )
-        ServerModel(article_id, _author_id) -> {
-          case string.is_empty(string.trim(body)) {
-            True -> #(
-              model,
-              rally_effect.send_to_client(ArticleError("Comment can't be blank")),
-            )
-            False -> {
-              let session_id = rally_effect.get_ws_session()
-              case get_user_id(server_context.db, session_id) {
-                Ok(user_id) -> {
-                  let now = datetime.now_unix()
-                  case
-                    comments_sql.create(
-                      db: server_context.db,
-                      body:,
-                      article_id:,
-                      author_id: user_id,
-                      now: now,
-                    )
-                  {
-                    Ok([row]) -> {
-                      let assert Ok([user_row]) =
-                        users_sql.get_info(db: server_context.db, user_id:)
-                      let comment =
-                        Comment(
-                          id: row.id,
-                          body:,
-                          created_at: now,
-                          username: user_row.username,
-                          image: user_row.image,
-                        )
-                      #(
-                        model,
-                        rally_effect.broadcast_to_page(CommentAdded(comment)),
-                      )
-                    }
-                    _ -> #(
-                      model,
-                      rally_effect.send_to_client(ArticleError(
-                        "Failed to post comment",
-                      )),
-                    )
-                  }
-                }
-                Error(_error) -> #(
-                  model,
-                  rally_effect.send_to_client(ArticleError(
-                    "You must be logged in",
-                  )),
-                )
-              }
-            }
-          }
-        }
-      }
+  }
+}
+
+fn update_follow(
+  model model: ServerModel,
+  db db: sqlight.Connection,
+  username username: String,
+) -> #(ServerModel, Effect(ToClient)) {
+  case toggle_follow(db: db, username:) {
+    Ok(is_following) -> #(
+      model,
+      rally_effect.send_to_client(FollowUpdated(is_following:)),
+    )
+    Error(error) -> article_result_error(model: model, error:)
+  }
+}
+
+fn toggle_follow(
+  db db: sqlight.Connection,
+  username username: String,
+) -> Result(Bool, ServerError) {
+  let session_id = rally_effect.get_ws_session()
+  use user_id <- result.try(require_user_id(db: db, session_id:))
+  use row <- result.try(query_one(
+    query_result: users_sql.get_id_by_username(db: db, username:),
+    message: "User not found",
+  ))
+  let followed_id = row.id
+  use is_following <- result.try(is_user_following(
+    db:,
+    follower_id: user_id,
+    followed_id:,
+  ))
+
+  case is_following {
+    True -> {
+      use Nil <- result.try(execute_sql(
+        query_result: follows_sql.remove(
+          db:,
+          follower_id: user_id,
+          followed_id:,
+        ),
+        message: "Failed to unfollow user",
+      ))
+      Ok(False)
     }
-    DeleteComment(id) -> {
-      let session_id = rally_effect.get_ws_session()
-      case get_user_id(server_context.db, session_id) {
-        Ok(user_id) -> {
-          case
-            comments_sql.delete_own(
-              db: server_context.db,
-              id:,
-              author_id: user_id,
-            )
-          {
-            Ok([_]) -> #(
-              model,
-              rally_effect.broadcast_to_page(CommentRemoved(id:)),
-            )
-            _ -> #(model, effect.none())
-          }
-        }
-        Error(_error) -> #(
-          model,
-          rally_effect.send_to_client(ArticleError("You must be logged in")),
-        )
-      }
+    False -> {
+      use Nil <- result.try(execute_sql(
+        query_result: follows_sql.add(db:, follower_id: user_id, followed_id:),
+        message: "Failed to follow user",
+      ))
+      Ok(True)
     }
-    DeleteArticle -> {
-      case model {
-        ServerModelEmpty -> #(
-          model,
-          rally_effect.send_to_client(ArticleError("No article loaded")),
-        )
-        ServerModel(article_id, author_id) -> {
-          let session_id = rally_effect.get_ws_session()
-          case get_user_id(server_context.db, session_id) {
-            Ok(user_id) -> {
-              case user_id == author_id {
-                True -> {
-                  let assert Ok(_) =
-                    articles_sql.delete(db: server_context.db, article_id:)
-                  #(
-                    ServerModelEmpty,
-                    rally_effect.send_to_client(ArticleDeleted),
-                  )
-                }
-                False -> #(
-                  model,
-                  rally_effect.send_to_client(ArticleError(
-                    "You can only delete your own articles",
-                  )),
-                )
-              }
-            }
-            Error(_error) -> #(
+  }
+}
+
+fn submit_comment(
+  model model: ServerModel,
+  db db: sqlight.Connection,
+  body body: String,
+) -> #(ServerModel, Effect(ToClient)) {
+  case model {
+    ServerModelEmpty ->
+      article_error(model: model, message: "No article loaded")
+    ServerModel(article_id, _author_id) -> {
+      case string.is_empty(string.trim(body)) {
+        True -> article_error(model: model, message: "Comment can't be blank")
+        False ->
+          case create_comment(db: db, article_id:, body:) {
+            Ok(comment) -> #(
               model,
-              rally_effect.send_to_client(ArticleError("You must be logged in")),
+              rally_effect.broadcast_to_page(CommentAdded(comment)),
             )
+            Error(error) -> article_result_error(model: model, error:)
           }
-        }
       }
     }
   }
 }
 
-fn get_user_id(db: sqlight.Connection, session_id: String) -> Result(Int, Nil) {
+fn create_comment(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  body body: String,
+) -> Result(Comment, ServerError) {
+  let session_id = rally_effect.get_ws_session()
+  use user_id <- result.try(require_user_id(db: db, session_id:))
+  let now = datetime.now_unix()
+  use row <- result.try(query_one(
+    query_result: comments_sql.create(
+      db: db,
+      body:,
+      article_id:,
+      author_id: user_id,
+      now:,
+    ),
+    message: "Failed to post comment",
+  ))
+  use user_row <- result.try(query_one(
+    query_result: users_sql.get_info(db: db, user_id:),
+    message: "Failed to load comment author",
+  ))
+
+  Ok(Comment(
+    id: row.id,
+    body:,
+    created_at: now,
+    username: user_row.username,
+    image: user_row.image,
+  ))
+}
+
+fn delete_comment(
+  model model: ServerModel,
+  db db: sqlight.Connection,
+  id id: Int,
+) -> #(ServerModel, Effect(ToClient)) {
+  let session_id = rally_effect.get_ws_session()
+  case require_user_id(db: db, session_id:) {
+    Ok(user_id) ->
+      case
+        comments_sql.delete_own(db: db, id:, author_id: user_id)
+        |> sql_result_to_app_error(message: "Failed to delete comment")
+      {
+        Ok([_]) -> #(model, rally_effect.broadcast_to_page(CommentRemoved(id:)))
+        Ok([_, _, ..]) -> #(
+          model,
+          rally_effect.broadcast_to_page(CommentRemoved(id:)),
+        )
+        Ok([]) -> #(model, effect.none())
+        Error(error) -> article_result_error(model: model, error:)
+      }
+    Error(error) -> article_result_error(model: model, error:)
+  }
+}
+
+fn delete_article(
+  model model: ServerModel,
+  db db: sqlight.Connection,
+) -> #(ServerModel, Effect(ToClient)) {
+  case model {
+    ServerModelEmpty ->
+      article_error(model: model, message: "No article loaded")
+    ServerModel(article_id, author_id) ->
+      case delete_article_if_author(db: db, article_id:, author_id:) {
+        Ok(Nil) -> #(
+          ServerModelEmpty,
+          rally_effect.send_to_client(ArticleDeleted),
+        )
+        Error(error) -> article_result_error(model: model, error:)
+      }
+  }
+}
+
+fn delete_article_if_author(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  author_id author_id: Int,
+) -> Result(Nil, ServerError) {
+  let session_id = rally_effect.get_ws_session()
+  use user_id <- result.try(require_user_id(db: db, session_id:))
+  case user_id == author_id {
+    True ->
+      execute_sql(
+        query_result: articles_sql.delete(db: db, article_id:),
+        message: "Failed to delete article",
+      )
+    False -> Error(ServerError("You can only delete your own articles"))
+  }
+}
+
+fn article_error(
+  model model: ServerModel,
+  message message: String,
+) -> #(ServerModel, Effect(ToClient)) {
+  #(model, rally_effect.send_to_client(ArticleError(message)))
+}
+
+fn article_result_error(
+  model model: ServerModel,
+  error error: ServerError,
+) -> #(ServerModel, Effect(ToClient)) {
+  article_error(model: model, message: error_message(error:))
+}
+
+fn require_user_id(
+  db db: sqlight.Connection,
+  session_id session_id: String,
+) -> Result(Int, ServerError) {
+  case get_current_user_id(db: db, session_id:) {
+    Ok(Some(user_id)) -> Ok(user_id)
+    Ok(None) -> Error(ServerError("You must be logged in"))
+    Error(error) -> Error(error)
+  }
+}
+
+fn get_current_user_id(
+  db db: sqlight.Connection,
+  session_id session_id: String,
+) -> Result(Option(Int), ServerError) {
   let now = datetime.now_unix()
   case auth_sql.find_user_by_session(db:, session_id: session_id, now:) {
     Ok([row]) -> {
-      let _result =
-        auth_sql.extend_session(
+      use _rows <- result.try(sql_result_to_app_error(
+        query_result: auth_sql.extend_session(
           db:,
           expires_at: now + datetime.session_ttl_seconds,
           session_id: session_id,
-        )
-      Ok(row.id)
+        ),
+        message: "Failed to extend session",
+      ))
+      Ok(Some(row.id))
     }
-    _ -> Error(Nil)
+    Ok(_) -> Ok(None)
+    Error(error) -> Error(sql_error(message: "Failed to read session", error:))
   }
 }
 
 fn get_favorite_info(
-  db: sqlight.Connection,
-  article_id: Int,
-  maybe_user_id: Result(Int, Nil),
-) -> #(Bool, Int) {
-  let count = get_favorites_count(db, article_id)
-  let is_favorited = case maybe_user_id {
-    Ok(user_id) -> {
-      let assert Ok([row]) =
-        favorites_sql.is_favorited(db:, user_id:, article_id:)
-      row.count > 0
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+  maybe_user_id maybe_user_id: Option(Int),
+) -> Result(#(Bool, Int), ServerError) {
+  use count <- result.try(get_favorites_count(db: db, article_id:))
+  case maybe_user_id {
+    Some(user_id) -> {
+      use is_favorited <- result.try(is_article_favorited(
+        db:,
+        user_id:,
+        article_id:,
+      ))
+      Ok(#(is_favorited, count))
     }
-    Error(_error) -> False
+    None -> Ok(#(False, count))
   }
-  #(is_favorited, count)
 }
 
-fn get_favorites_count(db: sqlight.Connection, article_id: Int) -> Int {
-  let assert Ok([row]) = favorites_sql.count_for_article(db:, article_id:)
-  row.count
+fn get_favorites_count(
+  db db: sqlight.Connection,
+  article_id article_id: Int,
+) -> Result(Int, ServerError) {
+  use row <- result.try(query_one(
+    query_result: favorites_sql.count_for_article(db: db, article_id:),
+    message: "Failed to load favorite count",
+  ))
+  Ok(row.count)
 }
 
 fn get_follow_status(
-  db: sqlight.Connection,
-  followed_id: Int,
-  maybe_user_id: Result(Int, Nil),
-) -> Bool {
+  db db: sqlight.Connection,
+  followed_id followed_id: Int,
+  maybe_user_id maybe_user_id: Option(Int),
+) -> Result(Bool, ServerError) {
   case maybe_user_id {
-    Ok(user_id) -> {
-      let assert Ok([row]) =
-        follows_sql.is_following(db:, follower_id: user_id, followed_id:)
-      row.count > 0
-    }
-    Error(_error) -> False
+    Some(user_id) -> is_user_following(db:, follower_id: user_id, followed_id:)
+    None -> Ok(False)
   }
+}
+
+fn is_article_favorited(
+  db db: sqlight.Connection,
+  user_id user_id: Int,
+  article_id article_id: Int,
+) -> Result(Bool, ServerError) {
+  use row <- result.try(query_one(
+    query_result: favorites_sql.is_favorited(db: db, user_id:, article_id:),
+    message: "Failed to check favorite status",
+  ))
+  Ok(row.count > 0)
+}
+
+fn is_user_following(
+  db db: sqlight.Connection,
+  follower_id follower_id: Int,
+  followed_id followed_id: Int,
+) -> Result(Bool, ServerError) {
+  use row <- result.try(query_one(
+    query_result: follows_sql.is_following(db: db, follower_id:, followed_id:),
+    message: "Failed to check follow status",
+  ))
+  Ok(row.count > 0)
+}
+
+fn query_one(
+  query_result query_result: Result(List(a), sqlight.Error),
+  message message: String,
+) -> Result(a, ServerError) {
+  use rows <- result.try(sql_result_to_app_error(query_result:, message:))
+  case rows {
+    [row] -> Ok(row)
+    _ -> Error(ServerError(message))
+  }
+}
+
+fn execute_sql(
+  query_result query_result: Result(List(a), sqlight.Error),
+  message message: String,
+) -> Result(Nil, ServerError) {
+  use _rows <- result.try(sql_result_to_app_error(query_result:, message:))
+  Ok(Nil)
+}
+
+fn sql_result_to_app_error(
+  query_result query_result: Result(a, sqlight.Error),
+  message message: String,
+) -> Result(a, ServerError) {
+  case query_result {
+    Ok(value) -> Ok(value)
+    Error(error) -> Error(sql_error(message:, error:))
+  }
+}
+
+fn sql_error(
+  message message: String,
+  error error: sqlight.Error,
+) -> ServerError {
+  let sqlight.SqlightError(message: sql_message, ..) = error
+  ServerError(message <> ": " <> sql_message)
+}
+
+fn error_message(error error: ServerError) -> String {
+  let ServerError(message) = error
+  message
 }

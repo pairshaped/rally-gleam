@@ -46,7 +46,9 @@ pub type Tab {
   TagFeed(tag: String)
 }
 
-pub fn init(_client_context: ClientContext) -> #(Model, Effect(Msg)) {
+pub fn init(
+  client_context _client_context: ClientContext,
+) -> #(Model, Effect(Msg)) {
   #(
     Model(articles: [], tags: [], active_tab: GlobalFeed, page: 1, total: 0),
     effect.none(),
@@ -69,7 +71,7 @@ pub fn update(
 ) -> #(Model, Effect(Msg)) {
   case msg {
     ClickedTab(tab) -> {
-      let #(tab_name, tag) = tab_to_wire(tab)
+      let #(tab_name, tag) = tab_to_wire(tab:)
       #(
         Model(..model, active_tab: tab, page: 1),
         rally_effect.rpc(
@@ -79,7 +81,7 @@ pub fn update(
       )
     }
     ClickedPage(page) -> {
-      let #(tab_name, tag) = tab_to_wire(model.active_tab)
+      let #(tab_name, tag) = tab_to_wire(tab: model.active_tab)
       #(
         Model(..model, page:),
         rally_effect.rpc(
@@ -105,7 +107,7 @@ pub fn update(
   }
 }
 
-fn tab_to_wire(tab: Tab) -> #(String, String) {
+fn tab_to_wire(tab tab: Tab) -> #(String, String) {
   case tab {
     GlobalFeed -> #("global", "")
     YourFeed -> #("feed", "")
@@ -115,13 +117,19 @@ fn tab_to_wire(tab: Tab) -> #(String, String) {
 
 // VIEW
 
-pub fn view(client_context: ClientContext, model: Model) -> Element(Msg) {
+pub fn view(
+  client_context client_context: ClientContext,
+  model model: Model,
+) -> Element(Msg) {
   html.div([attr.class("home-page")], [
     banner(),
     html.div([attr.class("container page")], [
       html.div([attr.class("row")], [
         html.div([attr.class("col-md-9")], [
-          feed_toggle(client_context, model.active_tab),
+          feed_toggle(
+            client_context: client_context,
+            active_tab: model.active_tab,
+          ),
           ..list.map(model.articles, article_preview)
         ]),
         html.div([attr.class("col-md-3")], [sidebar(model.tags)]),
@@ -140,16 +148,23 @@ fn banner() -> Element(msg) {
   ])
 }
 
-fn feed_toggle(client_context: ClientContext, active_tab: Tab) -> Element(Msg) {
+fn feed_toggle(
+  client_context client_context: ClientContext,
+  active_tab active_tab: Tab,
+) -> Element(Msg) {
   let your_feed_tab = case client_context.current_user {
     Some(_) -> [
-      tab_link("Your Feed", YourFeed, active_tab == YourFeed),
+      tab_link(
+        label: "Your Feed",
+        tab: YourFeed,
+        is_active: active_tab == YourFeed,
+      ),
     ]
     None -> []
   }
   let tag_tab = case active_tab {
     TagFeed(tag:) -> [
-      tab_link("# " <> tag, TagFeed(tag:), True),
+      tab_link(label: "# " <> tag, tab: TagFeed(tag:), is_active: True),
     ]
     _ -> []
   }
@@ -158,14 +173,24 @@ fn feed_toggle(client_context: ClientContext, active_tab: Tab) -> Element(Msg) {
       [attr.class("nav nav-pills outline-active")],
       list.flatten([
         your_feed_tab,
-        [tab_link("Global Feed", GlobalFeed, active_tab == GlobalFeed)],
+        [
+          tab_link(
+            label: "Global Feed",
+            tab: GlobalFeed,
+            is_active: active_tab == GlobalFeed,
+          ),
+        ],
         tag_tab,
       ]),
     ),
   ])
 }
 
-fn tab_link(label: String, tab: Tab, is_active: Bool) -> Element(Msg) {
+fn tab_link(
+  label label: String,
+  tab tab: Tab,
+  is_active is_active: Bool,
+) -> Element(Msg) {
   let active_class = case is_active {
     True -> "nav-link active"
     False -> "nav-link"
@@ -276,11 +301,22 @@ pub type ServerChangePage {
   ServerChangePage(page: Int, tab_name: String, tag: String)
 }
 
+type HomeError {
+  HomeNotLoggedIn
+  HomeSqlError(message: String)
+}
+
 pub fn server_switch_tab(
   msg msg: ServerSwitchTab,
   server_context server_context: ServerContext,
 ) -> Result(#(List(ArticlePreview), Int), Nil) {
-  Ok(fetch_tab_articles(server_context.db, msg.tab_name, msg.tag, 0))
+  fetch_tab_articles(
+    db: server_context.db,
+    tab_name: msg.tab_name,
+    tag: msg.tag,
+    offset: 0,
+  )
+  |> hide_home_error
 }
 
 pub fn server_change_page(
@@ -288,132 +324,134 @@ pub fn server_change_page(
   server_context server_context: ServerContext,
 ) -> Result(#(List(ArticlePreview), Int), Nil) {
   let offset = { msg.page - 1 } * 10
-  Ok(fetch_tab_articles(server_context.db, msg.tab_name, msg.tag, offset))
+  fetch_tab_articles(
+    db: server_context.db,
+    tab_name: msg.tab_name,
+    tag: msg.tag,
+    offset:,
+  )
+  |> hide_home_error
 }
 
-pub fn load(server_context: ServerContext) -> Model {
-  let assert Ok(rows) =
-    articles_sql.list_global(db: server_context.db, limit: 10, offset: 0)
-  let articles =
-    list.map(rows, fn(r) {
-      to_preview(
-        r.slug,
-        r.title,
-        r.description,
-        r.created_at,
-        r.username,
-        r.image,
-        r.fav_count,
-      )
-    })
-  let assert Ok(tag_rows) = tags_sql.list_popular(db: server_context.db)
-  let tags = list.map(tag_rows, fn(r) { r.name })
-  let assert Ok([count_row]) = articles_sql.count_global(db: server_context.db)
-  Model(
-    articles:,
-    tags:,
-    active_tab: GlobalFeed,
-    page: 1,
-    total: count_row.count,
-  )
+pub fn load(server_context server_context: ServerContext) -> Model {
+  load_home(db: server_context.db)
+  |> result.unwrap(default_model())
+}
+
+fn default_model() -> Model {
+  Model(articles: [], tags: [], active_tab: GlobalFeed, page: 1, total: 0)
+}
+
+fn load_home(db db: sqlight.Connection) -> Result(Model, HomeError) {
+  use article_info <- result.try(fetch_global_articles(db: db, offset: 0))
+  use tag_rows <- result.try(sql_result_to_home_error(
+    query_result: tags_sql.list_popular(db: db),
+    message: "Failed to load tags",
+  ))
+
+  let #(articles, total) = article_info
+  let tags = list.map(tag_rows, fn(row) { row.name })
+  Model(articles:, tags:, active_tab: GlobalFeed, page: 1, total:)
+  |> Ok
 }
 
 fn fetch_tab_articles(
-  db: sqlight.Connection,
-  tab_name: String,
-  tag: String,
-  offset: Int,
-) -> #(List(ArticlePreview), Int) {
+  db db: sqlight.Connection,
+  tab_name tab_name: String,
+  tag tag: String,
+  offset offset: Int,
+) -> Result(#(List(ArticlePreview), Int), HomeError) {
   case tab_name {
-    "feed" -> {
-      let session_id = rally_effect.get_ws_session()
-      case get_user_id(db, session_id) {
-        Ok(user_id) -> {
-          let assert Ok(rows) =
-            articles_sql.list_feed(db:, user_id:, limit: 10, offset:)
-          let assert Ok([count_row]) = articles_sql.count_feed(db:, user_id:)
-          #(
-            list.map(rows, fn(r) {
-              to_preview(
-                r.slug,
-                r.title,
-                r.description,
-                r.created_at,
-                r.username,
-                r.image,
-                r.fav_count,
-              )
-            }),
-            count_row.count,
-          )
-        }
-        Error(_error) -> #([], 0)
-      }
-    }
-    "tag" -> {
-      let assert Ok(rows) =
-        articles_sql.list_by_tag(db:, tag:, limit: 10, offset:)
-      let assert Ok([count_row]) = articles_sql.count_by_tag(db:, tag:)
-      #(
-        list.map(rows, fn(r) {
-          to_preview(
-            r.slug,
-            r.title,
-            r.description,
-            r.created_at,
-            r.username,
-            r.image,
-            r.fav_count,
-          )
-        }),
-        count_row.count,
-      )
-    }
-    _ -> {
-      let assert Ok(rows) = articles_sql.list_global(db:, limit: 10, offset:)
-      let assert Ok([count_row]) = articles_sql.count_global(db:)
-      #(
-        list.map(rows, fn(r) {
-          to_preview(
-            r.slug,
-            r.title,
-            r.description,
-            r.created_at,
-            r.username,
-            r.image,
-            r.fav_count,
-          )
-        }),
-        count_row.count,
-      )
-    }
+    "feed" -> fetch_feed_articles(db: db, offset:)
+    "tag" -> fetch_tag_articles(db: db, tag:, offset:)
+    _ -> fetch_global_articles(db: db, offset:)
   }
 }
 
-fn get_user_id(db: sqlight.Connection, session_id: String) -> Result(Int, Nil) {
+fn fetch_feed_articles(
+  db db: sqlight.Connection,
+  offset offset: Int,
+) -> Result(#(List(ArticlePreview), Int), HomeError) {
+  let session_id = rally_effect.get_ws_session()
+  case get_user_id(db: db, session_id:) {
+    Ok(user_id) -> {
+      use rows <- result.try(sql_result_to_home_error(
+        query_result: articles_sql.list_feed(db:, user_id:, limit: 10, offset:),
+        message: "Failed to load feed",
+      ))
+      use count_row <- result.try(query_one(
+        query_result: articles_sql.count_feed(db:, user_id:),
+        message: "Failed to count feed",
+      ))
+      Ok(#(list.map(rows, feed_row_to_preview), count_row.count))
+    }
+    Error(HomeNotLoggedIn) -> Ok(#([], 0))
+    Error(HomeSqlError(_) as error) -> Error(error)
+  }
+}
+
+fn fetch_tag_articles(
+  db db: sqlight.Connection,
+  tag tag: String,
+  offset offset: Int,
+) -> Result(#(List(ArticlePreview), Int), HomeError) {
+  use rows <- result.try(sql_result_to_home_error(
+    query_result: articles_sql.list_by_tag(db:, tag:, limit: 10, offset:),
+    message: "Failed to load tag feed",
+  ))
+  use count_row <- result.try(query_one(
+    query_result: articles_sql.count_by_tag(db:, tag:),
+    message: "Failed to count tag feed",
+  ))
+  Ok(#(list.map(rows, tag_row_to_preview), count_row.count))
+}
+
+fn fetch_global_articles(
+  db db: sqlight.Connection,
+  offset offset: Int,
+) -> Result(#(List(ArticlePreview), Int), HomeError) {
+  use rows <- result.try(sql_result_to_home_error(
+    query_result: articles_sql.list_global(db:, limit: 10, offset:),
+    message: "Failed to load global feed",
+  ))
+  use count_row <- result.try(query_one(
+    query_result: articles_sql.count_global(db:),
+    message: "Failed to count global feed",
+  ))
+  Ok(#(list.map(rows, global_row_to_preview), count_row.count))
+}
+
+fn get_user_id(
+  db db: sqlight.Connection,
+  session_id session_id: String,
+) -> Result(Int, HomeError) {
   let now = datetime.now_unix()
   case auth_sql.find_user_by_session(db:, session_id: session_id, now:) {
     Ok([user]) -> {
-      let _result =
-        auth_sql.extend_session(
+      use _rows <- result.try(sql_result_to_home_error(
+        query_result: auth_sql.extend_session(
           db:,
           expires_at: now + datetime.session_ttl_seconds,
           session_id: session_id,
-        )
+        ),
+        message: "Failed to extend session",
+      ))
       Ok(user.id)
     }
-    _ -> Error(Nil)
+    Ok(_) -> Error(HomeNotLoggedIn)
+    Error(error) ->
+      Error(home_sql_error(message: "Failed to read session", error:))
   }
 }
 
 fn to_preview(
-  slug: String,
-  title: String,
-  description: String,
-  created_at: Int,
-  username: String,
-  image: String,
-  fav_count: option.Option(String),
+  slug slug: String,
+  title title: String,
+  description description: String,
+  created_at created_at: Int,
+  username username: String,
+  image image: String,
+  fav_count fav_count: option.Option(String),
 ) -> ArticlePreview {
   ArticlePreview(
     slug:,
@@ -427,4 +465,88 @@ fn to_preview(
       |> int.parse
       |> result.unwrap(0),
   )
+}
+
+fn feed_row_to_preview(row row: articles_sql.ListFeedRow) -> ArticlePreview {
+  to_preview(
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    created_at: row.created_at,
+    username: row.username,
+    image: row.image,
+    fav_count: row.fav_count,
+  )
+}
+
+fn tag_row_to_preview(row row: articles_sql.ListByTagRow) -> ArticlePreview {
+  to_preview(
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    created_at: row.created_at,
+    username: row.username,
+    image: row.image,
+    fav_count: row.fav_count,
+  )
+}
+
+fn global_row_to_preview(
+  row row: articles_sql.ListGlobalRow,
+) -> ArticlePreview {
+  to_preview(
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    created_at: row.created_at,
+    username: row.username,
+    image: row.image,
+    fav_count: row.fav_count,
+  )
+}
+
+fn query_one(
+  query_result query_result: Result(List(a), sqlight.Error),
+  message message: String,
+) -> Result(a, HomeError) {
+  use rows <- result.try(sql_result_to_home_error(query_result:, message:))
+  case rows {
+    [row] -> Ok(row)
+    _ -> Error(HomeSqlError(message))
+  }
+}
+
+fn sql_result_to_home_error(
+  query_result query_result: Result(a, sqlight.Error),
+  message message: String,
+) -> Result(a, HomeError) {
+  case query_result {
+    Ok(value) -> Ok(value)
+    Error(error) -> Error(home_sql_error(message:, error:))
+  }
+}
+
+fn home_sql_error(
+  message message: String,
+  error error: sqlight.Error,
+) -> HomeError {
+  let sqlight.SqlightError(message: sql_message, ..) = error
+  HomeSqlError(message <> ": " <> sql_message)
+}
+
+fn hide_home_error(result result: Result(a, HomeError)) -> Result(a, Nil) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(error) -> {
+      let _message = home_error_message(error:)
+      Error(Nil)
+    }
+  }
+}
+
+fn home_error_message(error error: HomeError) -> String {
+  case error {
+    HomeNotLoggedIn -> "Not logged in"
+    HomeSqlError(message:) -> message
+  }
 }

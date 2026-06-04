@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-05-09T13:52:32Z
-updated_at: 2026-06-04T22:04:24Z
+updated_at: 2026-06-04T22:20:28Z
 ---
 
 Context: After fixing 39 mechanical lint issues, 166 remain in realworld user code. Most need coordinated fixes in generators first.
@@ -43,3 +43,22 @@ Progress 2026-06-04 after 2d12303:
 - Cleaned editor.gleam publish/tag-saving flow.
 - Remaining editor warnings are generated-usage unused_exports only.
 - RealWorld lint is now 160 errors.
+
+
+
+Progress 2026-06-04 after 0abc245:
+
+• Cleaned editor/slug_.gleam load/edit/save flow; remaining warnings are generated-usage unused_exports only.
+• Cleaned article/slug_.gleam article load/favorite/follow/comment/delete flows with page-local typed errors instead of SQL asserts.
+• Remaining article warnings are generated-usage unused_exports only.
+• RealWorld lint is now 99 errors.
+• Validation: RealWorld build passes; RealWorld view_test and slug_test pass.
+
+
+
+Progress 2026-06-04 continued after article cleanup:
+
+• Cleaned home_.gleam load/feed/tag/global query flow with page-local typed errors and explicit RPC error hiding.
+• Remaining home warnings are generated-usage unused_exports only.
+• RealWorld lint is now 72 errors.
+• Validation: RealWorld build passes; RealWorld view_test and slug_test pass; git diff --check passes; beans check passes.
