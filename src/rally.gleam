@@ -277,23 +277,136 @@ fn run(args: List(String)) -> Result(String, RallyError) {
 }
 
 fn run_load_rpc() -> Result(String, RallyError) {
+  use toml_map <- result.try(read_project_toml())
   use loads <- result.try(
     load_rpc.discover("src")
     |> result.map_error(fn(msg) {
       RallyError("load-rpc discovery error: " <> msg)
     }),
   )
+  use libero_files <- result.try(generate_load_rpc_libero_files(
+    loads:,
+    package: package_name_from_toml(toml_map),
+    dependency_packages: dependency_names_from_toml(toml_map),
+  ))
   let files =
-    load_rpc.generate(
-      loads:,
-      to_client_module: "api/to_client",
-      to_server_module: "api/to_server",
+    list.append(
+      load_rpc.generate(
+        loads:,
+        to_client_module: "api/to_client",
+        to_server_module: "api/to_server",
+      ),
+      libero_files,
     )
   use Nil <- result.try(
     write_load_rpc_files(files)
     |> result.map_error(fn(msg) { RallyError("write error: " <> msg) }),
   )
   Ok("generated " <> int.to_string(list.length(loads)) <> " load RPC(s)")
+}
+
+fn generate_load_rpc_libero_files(
+  loads loads: List(load_rpc.LoadRpc),
+  package package: String,
+  dependency_packages dependency_packages: List(String),
+) -> Result(List(load_rpc.GeneratedFile), RallyError) {
+  let endpoints = []
+  let seeds = load_rpc.libero_type_seeds(loads:)
+  use discovered <- result.try(
+    libero.walk(seeds)
+    |> result.map_error(fn(errors) {
+      list.each(errors, gen_error.print_error)
+      RallyError("Libero type discovery failed for Rally load RPC types")
+    }),
+  )
+  let atoms_module = "generated@rpc_atoms"
+  let wire_module = "generated@rpc_wire"
+  let decoders_module = "generated/libero/rpc_decoders"
+  let atoms_erl =
+    libero.generate_atoms(
+      endpoints:,
+      discovered:,
+      atoms_module:,
+      wire_module: option.Some(wire_module),
+    )
+  use wire_erl <- result.try(
+    case
+      libero.generate_wire_erl(
+        discovered:,
+        wire_module:,
+        endpoints:,
+        push_dispatches: [],
+      )
+    {
+      Ok(source) -> Ok(source)
+      Error(err) -> {
+        gen_error.print_error(err)
+        Error(RallyError(
+          "Libero wire generation failed for Rally load RPC types",
+        ))
+      }
+    },
+  )
+  let decoders_js =
+    libero.generate_decoders_ffi(
+      discovered:,
+      endpoints:,
+      package:,
+      dependency_packages:,
+    )
+  let decoders_gleam = libero.generate_decoders_gleam()
+  let etf_gleam =
+    libero.generate_etf_codec_module(atoms_module:, decoders_module:)
+  let messages_gleam = libero.generate_client_msg_module(endpoints:)
+  let contract =
+    libero.generate_json_contract(
+      endpoints:,
+      discovered:,
+      push_types: [],
+      ssr_models: [],
+    )
+
+  Ok([
+    load_rpc.GeneratedFile(
+      "src/generated/libero/dispatch.gleam",
+      messages_gleam,
+    ),
+    load_rpc.GeneratedFile(
+      "src/generated/libero/messages.gleam",
+      messages_gleam,
+    ),
+    load_rpc.GeneratedFile(
+      "src/generated/libero/rpc_decoders_ffi.mjs",
+      decoders_js,
+    ),
+    load_rpc.GeneratedFile(
+      "src/generated/libero/rpc_decoders.gleam",
+      decoders_gleam,
+    ),
+    load_rpc.GeneratedFile("src/generated/libero/etf.gleam", etf_gleam),
+    load_rpc.GeneratedFile(
+      "src/generated/libero/" <> atoms_module <> ".erl",
+      atoms_erl,
+    ),
+    load_rpc.GeneratedFile(
+      "src/generated/libero/" <> wire_module <> ".erl",
+      wire_erl,
+    ),
+    load_rpc.GeneratedFile("src/generated/libero/rpc_contract.json", contract),
+  ])
+}
+
+fn package_name_from_toml(toml_map: dict.Dict(String, tom.Toml)) -> String {
+  tom.get_string(toml_map, ["name"])
+  |> result.unwrap("app")
+}
+
+fn dependency_names_from_toml(
+  toml_map: dict.Dict(String, tom.Toml),
+) -> List(String) {
+  tom.get_table(toml_map, ["dependencies"])
+  |> result.map(dict.keys)
+  |> result.unwrap([])
 }
 
 fn write_load_rpc_files(

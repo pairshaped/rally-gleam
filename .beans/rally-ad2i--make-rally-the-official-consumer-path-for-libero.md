@@ -1,14 +1,14 @@
 ---
 # rally-ad2i
 title: Make Rally the official consumer path for Libero
-status: todo
+status: completed
 type: task
 priority: high
 tags:
     - codegen
     - architecture
 created_at: 2026-06-04T19:11:16Z
-updated_at: 2026-06-04T19:57:36Z
+updated_at: 2026-06-04T20:10:20Z
 ---
 
 Rally should become the official way Libero is consumed. Libero remains the owner of ETF codecs, contracts, atom coverage, and generated Libero artifacts, but its public workflow should align with being driven by Rally rather than by direct app usage.
@@ -17,7 +17,7 @@ Acceptance criteria:
 - Rally discovers or produces the wire-type manifest needed by Libero for Rally-managed app surfaces.
 - Example apps no longer need to hand-maintain `tools.libero.type_seeds` for Rally-owned wire needs.
 - Rally invokes or feeds Libero through a clear lower-level interface instead of requiring app authors to understand Libero internals.
-- Boundary stays intact: Rally does not generate Libero-owned codec artifacts, and Libero does not own page routing, transport, hydration, request/result correlation, or app behavior.
+- Boundary stays intact: Rally does not author Libero-owned codec artifacts, and Libero does not own page routing, transport, hydration, request/result correlation, or app behavior.
 - Document the intended relationship: Rally is the app-facing entrypoint; Libero is the typed wire-code generation engine Rally consumes.
 
 Non-goals:

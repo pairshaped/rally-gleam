@@ -6,7 +6,7 @@ import gleeunit/should
 import rally/internal/format
 import rally/internal/generator/load_rpc.{
   type GeneratedFile, type LoadRpc, GeneratedFile, LoadArg, LoadRpc, discover,
-  generate,
+  generate, libero_type_seeds, result_module,
 }
 import simplifile
 
@@ -71,6 +71,7 @@ pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
     "src/generated/rally/server_protocol.gleam",
     "src/generated/rally/client_transport.gleam",
     "src/generated/rally/hydration.gleam",
+    "src/generated/rally/result.gleam",
   ])
   paths
   |> list.any(fn(path) { string.starts_with(path, "src/generated/libero/") })
@@ -134,6 +135,31 @@ pub fn load_rpc_server_protocol_uses_libero_wire_encoders_test() {
   |> string.contains(
     "let payload = encode_any(#(module, encode_push_payload(message)))",
   )
+  |> should.be_true()
+}
+
+pub fn load_rpc_derives_libero_type_seeds_test() {
+  libero_type_seeds(loads: loads())
+  |> should.equal([
+    #("broadcasts", "Event"),
+    #("admin/pages/games", "ServerMsg"),
+    #("admin/pages/games", "LoadResult"),
+    #("admin/pages/games", "GameUpdate"),
+    #("public/pages/games/wire", "ServerMsg"),
+    #("public/pages/games/wire", "LoadResult"),
+    #("public/pages/games/id_/wire", "ServerMsg"),
+    #("public/pages/games/id_/wire", "LoadResult"),
+  ])
+}
+
+pub fn load_rpc_result_module_defines_boundary_errors_test() {
+  let source = result_module()
+
+  source
+  |> string.contains("pub type ApiLoadError")
+  |> should.be_true()
+  source
+  |> string.contains("pub type ApiSaveError")
   |> should.be_true()
 }
 

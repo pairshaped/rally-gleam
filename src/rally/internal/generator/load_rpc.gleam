@@ -71,7 +71,42 @@ pub fn generate(
       "src/generated/rally/hydration.gleam",
       hydration(loads:, to_client_module:),
     ),
+    GeneratedFile("src/generated/rally/result.gleam", result_module()),
   ]
+}
+
+pub fn libero_type_seeds(
+  loads loads: List(LoadRpc),
+) -> List(#(String, String)) {
+  let load_seeds =
+    loads
+    |> list.flat_map(fn(load) {
+      let save_seeds = case load.save_result_type {
+        Some(type_name) -> [#(load.wire_module, type_name)]
+        None -> []
+      }
+      [
+        #(load.wire_module, "ServerMsg"),
+        #(load.wire_module, "LoadResult"),
+        ..save_seeds
+      ]
+    })
+
+  [#("broadcasts", "Event"), ..load_seeds]
+  |> list.unique
+}
+
+pub fn result_module() -> String {
+  "import gleam/option.{type Option}
+
+pub type ApiLoadError {
+  ApiLoadError(message: String)
+}
+
+pub type ApiSaveError {
+  ApiSaveError(field: Option(String), message: String)
+}
+"
 }
 
 pub fn client_protocol(
@@ -80,7 +115,7 @@ pub fn client_protocol(
   to_server_module _to_server_module: String,
 ) -> String {
   "@target(javascript)
-import generated/libero/result.{type ApiLoadError, type ApiSaveError}
+import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
 import generated/libero/etf as libero_etf
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
@@ -141,7 +176,7 @@ pub fn server_protocol(
   to_server_module _to_server_module: String,
 ) -> String {
   "@target(erlang)
-import generated/libero/result.{type ApiLoadError, type ApiSaveError}
+import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
 import generated/libero/etf as libero_etf
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
@@ -218,7 +253,7 @@ pub fn client_transport(
   "@target(javascript)
 import generated/rally/client_protocol
 @target(javascript)
-import generated/libero/result.{type ApiLoadError, type ApiSaveError}
+import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
 import lustre/effect.{type Effect}
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
@@ -259,7 +294,7 @@ pub fn hydration(
   "@target(javascript)
 import generated/rally/client_protocol
 @target(javascript)
-import generated/libero/result.{type ApiLoadError}
+import generated/rally/result.{type ApiLoadError}
 @target(javascript)
 import generated/rally/browser
 @target(javascript)
