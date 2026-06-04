@@ -5,10 +5,6 @@ title: load_rpc_server_protocol_gleam
 @target(erlang)
 import admin/pages/games as admin_games_wire
 @target(erlang)
-import api/to_client.{type ToClient}
-@target(erlang)
-import api/to_server.{type ToServer}
-@target(erlang)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
 import generated/libero/to_client_codec
@@ -23,8 +19,9 @@ import public/pages/games/wire as public_games_wire
 import broadcasts
 
 @target(erlang)
-pub type ClientRequest {
-  ClientRequest(request_id: Int, module: String, message: ToServer)
+pub fn ensure() -> Nil {
+  let _ = to_server_codec.ensure()
+  to_client_codec.ensure()
 }
 
 @target(erlang)
@@ -52,26 +49,6 @@ pub type PublicGameDetailClientRequest {
     module: String,
     message: public_game_detail_wire.ServerMsg,
   )
-}
-
-@target(erlang)
-pub fn ensure() -> Nil {
-  let _ = to_server_codec.ensure()
-  to_client_codec.ensure()
-}
-
-@target(erlang)
-pub fn decode(bytes: BitArray) -> Result(ToServer, Nil) {
-  to_server_codec.decode(bytes)
-}
-
-@target(erlang)
-pub fn decode_request(bytes: BitArray) -> Result(ClientRequest, Nil) {
-  case decode_any(bytes) {
-    Ok(#(request_id, module, message)) ->
-      Ok(ClientRequest(request_id:, module:, message:))
-    _ -> Error(Nil)
-  }
 }
 
 @target(erlang)
@@ -108,25 +85,6 @@ pub fn decode_public_game_detail_request(
 }
 
 @target(erlang)
-pub fn encode(message: ToClient) -> BitArray {
-  to_client_codec.encode(message)
-}
-
-@target(erlang)
-pub fn encode_response(message message: ToClient) -> BitArray {
-  let payload = to_client_codec.encode(message)
-  <<0, payload:bits>>
-}
-
-@target(erlang)
-pub fn encode_load_result(
-  request_id request_id: Int,
-  result result: Result(ToClient, List(ApiLoadError)),
-) -> BitArray {
-  encode_result_frame(request_id, result)
-}
-
-@target(erlang)
 pub fn encode_admin_games_load_result(
   request_id request_id: Int,
   result result: Result(admin_games_wire.LoadResult, List(ApiLoadError)),
@@ -146,14 +104,6 @@ pub fn encode_public_games_load_result(
 pub fn encode_public_game_detail_load_result(
   request_id request_id: Int,
   result result: Result(public_game_detail_wire.LoadResult, List(ApiLoadError)),
-) -> BitArray {
-  encode_result_frame(request_id, result)
-}
-
-@target(erlang)
-pub fn encode_save_result(
-  request_id request_id: Int,
-  result result: Result(ToClient, List(ApiSaveError)),
 ) -> BitArray {
   encode_result_frame(request_id, result)
 }

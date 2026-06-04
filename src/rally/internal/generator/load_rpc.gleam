@@ -76,63 +76,24 @@ pub fn generate(
 
 pub fn client_protocol(
   loads loads: List(LoadRpc),
-  to_client_module to_client_module: String,
-  to_server_module to_server_module: String,
+  to_client_module _to_client_module: String,
+  to_server_module _to_server_module: String,
 ) -> String {
   "@target(javascript)
-import " <> to_client_module <> ".{type ToClient}
-@target(javascript)
-import " <> to_server_module <> ".{type ToServer}
-@target(javascript)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
-@target(javascript)
-import generated/libero/to_client_codec
-@target(javascript)
-import generated/libero/to_server_codec
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
 @target(javascript)
 import broadcasts
 
 @target(javascript)
 pub type ServerFrame {
-  Response(message: ToClient)
   Push(module: String, message: broadcasts.Event)
 }
 
-@target(javascript)
-pub fn ensure() -> Nil {
-  let _ = to_server_codec.ensure()
-  to_client_codec.ensure()
-}
-
-@target(javascript)
-pub fn send(message: ToServer) -> BitArray {
-  to_server_codec.encode(message)
-}
-
-@target(javascript)
-pub fn encode_request(
-  request_id request_id: Int,
-  module module: String,
-  message message: ToServer,
-) -> BitArray {
-  encode_any(#(request_id, module, message))
-}
 " <> string.join(list.map(loads, client_encode_request), "\n") <> "
-@target(javascript)
-pub fn receive(bytes: BitArray) -> Result(ToClient, Nil) {
-  to_client_codec.decode(bytes)
-}
-
 @target(javascript)
 pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
   case bytes {
-    <<0, payload:bits>> -> {
-      case to_client_codec.decode(payload) {
-        Ok(message) -> Ok(Response(message:))
-        Error(Nil) -> Error(Nil)
-      }
-    }
     <<1, payload:bits>> -> {
       case decode_any(payload) {
         Ok(#(module, message)) -> Ok(Push(module:, message:))
@@ -143,19 +104,7 @@ pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
   }
 }
 
-@target(javascript)
-pub fn decode_load_result(
-  bytes: BitArray,
-) -> Result(#(Int, Result(ToClient, List(ApiLoadError))), Nil) {
-  decode_result_envelope(bytes)
-}
 " <> string.join(list.map(loads, client_decode_load_result), "\n") <> "
-@target(javascript)
-pub fn decode_save_result(
-  bytes: BitArray,
-) -> Result(#(Int, Result(ToClient, List(ApiSaveError))), Nil) {
-  decode_result_envelope(bytes)
-}
 " <> string.join(
     option.values(list.map(loads, client_decode_save_result)),
     "\n",
@@ -185,14 +134,10 @@ fn decode_any(_bytes: BitArray) -> Result(a, Nil) {
 
 pub fn server_protocol(
   loads loads: List(LoadRpc),
-  to_client_module to_client_module: String,
-  to_server_module to_server_module: String,
+  to_client_module _to_client_module: String,
+  to_server_module _to_server_module: String,
 ) -> String {
   "@target(erlang)
-import " <> to_client_module <> ".{type ToClient}
-@target(erlang)
-import " <> to_server_module <> ".{type ToServer}
-@target(erlang)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
 import generated/libero/to_client_codec
@@ -203,56 +148,14 @@ import generated/libero/to_server_codec
 import broadcasts
 
 @target(erlang)
-pub type ClientRequest {
-  ClientRequest(request_id: Int, module: String, message: ToServer)
-}
-" <> string.join(list.map(loads, server_request_type), "\n") <> "
-@target(erlang)
 pub fn ensure() -> Nil {
   let _ = to_server_codec.ensure()
   to_client_codec.ensure()
 }
 
-@target(erlang)
-pub fn decode(bytes: BitArray) -> Result(ToServer, Nil) {
-  to_server_codec.decode(bytes)
-}
-
-@target(erlang)
-pub fn decode_request(bytes: BitArray) -> Result(ClientRequest, Nil) {
-  case decode_any(bytes) {
-    Ok(#(request_id, module, message)) ->
-      Ok(ClientRequest(request_id:, module:, message:))
-    _ -> Error(Nil)
-  }
-}
+" <> string.join(list.map(loads, server_request_type), "\n") <> "
 " <> string.join(list.map(loads, server_decode_request), "\n") <> "
-@target(erlang)
-pub fn encode(message: ToClient) -> BitArray {
-  to_client_codec.encode(message)
-}
-
-@target(erlang)
-pub fn encode_response(message message: ToClient) -> BitArray {
-  let payload = to_client_codec.encode(message)
-  <<0, payload:bits>>
-}
-
-@target(erlang)
-pub fn encode_load_result(
-  request_id request_id: Int,
-  result result: Result(ToClient, List(ApiLoadError)),
-) -> BitArray {
-  encode_result_frame(request_id, result)
-}
 " <> string.join(list.map(loads, server_encode_load_result), "\n") <> "
-@target(erlang)
-pub fn encode_save_result(
-  request_id request_id: Int,
-  result result: Result(ToClient, List(ApiSaveError)),
-) -> BitArray {
-  encode_result_frame(request_id, result)
-}
 " <> string.join(
     option.values(list.map(loads, server_encode_save_result)),
     "\n",
@@ -289,14 +192,10 @@ fn encode_any(_value: a) -> BitArray {
 
 pub fn client_transport(
   loads loads: List(LoadRpc),
-  to_client_module to_client_module: String,
-  to_server_module to_server_module: String,
+  to_client_module _to_client_module: String,
+  to_server_module _to_server_module: String,
 ) -> String {
   "@target(javascript)
-import " <> to_client_module <> ".{type ToClient}
-@target(javascript)
-import " <> to_server_module <> ".{type ToServer}
-@target(javascript)
 import generated/rally/client_protocol
 @target(javascript)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
@@ -313,40 +212,7 @@ pub fn connect(
   })
 }
 
-@target(javascript)
-pub fn send(module module: String, message message: ToServer) -> Effect(msg) {
-  effect.from(fn(_dispatch) {
-    let request_id = next_request_id()
-    let frame = client_protocol.encode_request(request_id, module, message)
-    send_frame(frame)
-  })
-}
-
-@target(javascript)
-pub fn send_load(
-  module module: String,
-  message message: ToServer,
-  on_result on_result: fn(Result(ToClient, List(ApiLoadError))) -> msg,
-) -> Effect(msg) {
-  effect.from(fn(dispatch) {
-    let request_id = next_request_id()
-    let frame = client_protocol.encode_request(request_id, module, message)
-    send_load_frame(request_id, frame, on_result, dispatch)
-  })
-}
 " <> string.join(list.map(loads, transport_send_load), "\n") <> "
-@target(javascript)
-pub fn send_save(
-  module module: String,
-  message message: ToServer,
-  on_result on_result: fn(Result(ToClient, List(ApiSaveError))) -> msg,
-) -> Effect(msg) {
-  effect.from(fn(dispatch) {
-    let request_id = next_request_id()
-    let frame = client_protocol.encode_request(request_id, module, message)
-    send_save_frame(request_id, frame, on_result, dispatch)
-  })
-}
 " <> string.join(option.values(list.map(loads, transport_send_save)), "\n") <> "
 
 @target(javascript)
@@ -355,33 +221,7 @@ fn connect_socket(_url: String, _on_frame: fn(BitArray) -> Nil) -> Nil {
   Nil
 }
 
-@target(javascript)
-@external(javascript, \"./client_transport_ffi.mjs\", \"send_frame\")
-fn send_frame(_frame: BitArray) -> Nil {
-  Nil
-}
-
-@target(javascript)
-@external(javascript, \"./client_transport_ffi.mjs\", \"send_load_frame\")
-fn send_load_frame(
-  _request_id: Int,
-  _frame: BitArray,
-  _on_result: fn(Result(ToClient, List(ApiLoadError))) -> msg,
-  _dispatch: fn(msg) -> Nil,
-) -> Nil {
-  Nil
-}
 " <> string.join(list.map(loads, transport_external), "\n") <> "
-@target(javascript)
-@external(javascript, \"./client_transport_ffi.mjs\", \"send_save_frame\")
-fn send_save_frame(
-  _request_id: Int,
-  _frame: BitArray,
-  _on_result: fn(Result(ToClient, List(ApiSaveError))) -> msg,
-  _dispatch: fn(msg) -> Nil,
-) -> Nil {
-  Nil
-}
 " <> string.join(option.values(list.map(loads, transport_save_external)), "\n") <> "
 
 @target(javascript)
@@ -394,55 +234,20 @@ fn next_request_id() -> Int {
 
 pub fn hydration(
   loads loads: List(LoadRpc),
-  to_client_module to_client_module: String,
+  to_client_module _to_client_module: String,
 ) -> String {
   "@target(javascript)
-import " <> to_client_module <> ".{type ToClient}
-@target(javascript)
 import generated/rally/client_protocol
 @target(javascript)
 import generated/libero/result.{type ApiLoadError}
-@target(javascript)
-import generated/libero/to_client_codec
 @target(javascript)
 import generated/rally/browser
 @target(javascript)
 import gleam/bit_array
 @target(javascript)
-import gleam/list
-@target(javascript)
 import gleam/string
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
-@target(javascript)
-pub fn messages() -> Result(List(ToClient), Nil) {
-  case browser.take_boot_string(\"hydration\") {
-    \"\" -> Error(Nil)
-    raw -> decode_all(string.split(raw, \",\"), [])
-  }
-}
 " <> string.join(list.map(loads, hydration_load_result), "\n") <> "
-@target(javascript)
-fn decode_all(
-  encoded: List(String),
-  decoded: List(ToClient),
-) -> Result(List(ToClient), Nil) {
-  case encoded {
-    [] -> Ok(list.reverse(decoded))
-    [first, ..rest] ->
-      case decode_message(first) {
-        Ok(message) -> decode_all(rest, [message, ..decoded])
-        Error(Nil) -> Error(Nil)
-      }
-  }
-}
-
-@target(javascript)
-fn decode_message(encoded: String) -> Result(ToClient, Nil) {
-  case bit_array.base64_url_decode(encoded) {
-    Ok(bytes) -> to_client_codec.decode(bytes)
-    Error(_) -> Error(Nil)
-  }
-}
 " <> string.join(list.map(loads, hydration_decode_result), "\n")
 }
 

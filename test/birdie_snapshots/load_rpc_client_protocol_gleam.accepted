@@ -3,15 +3,7 @@ version: 2.0.0
 title: load_rpc_client_protocol_gleam
 ---
 @target(javascript)
-import api/to_client.{type ToClient}
-@target(javascript)
-import api/to_server.{type ToServer}
-@target(javascript)
 import generated/libero/result.{type ApiLoadError, type ApiSaveError}
-@target(javascript)
-import generated/libero/to_client_codec
-@target(javascript)
-import generated/libero/to_server_codec
 @target(javascript)
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(javascript)
@@ -22,28 +14,7 @@ import broadcasts
 
 @target(javascript)
 pub type ServerFrame {
-  Response(message: ToClient)
   Push(module: String, message: broadcasts.Event)
-}
-
-@target(javascript)
-pub fn ensure() -> Nil {
-  let _ = to_server_codec.ensure()
-  to_client_codec.ensure()
-}
-
-@target(javascript)
-pub fn send(message: ToServer) -> BitArray {
-  to_server_codec.encode(message)
-}
-
-@target(javascript)
-pub fn encode_request(
-  request_id request_id: Int,
-  module module: String,
-  message message: ToServer,
-) -> BitArray {
-  encode_any(#(request_id, module, message))
 }
 
 @target(javascript)
@@ -76,19 +47,8 @@ pub fn encode_public_game_detail_request(
 }
 
 @target(javascript)
-pub fn receive(bytes: BitArray) -> Result(ToClient, Nil) {
-  to_client_codec.decode(bytes)
-}
-
-@target(javascript)
 pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
   case bytes {
-    <<0, payload:bits>> -> {
-      case to_client_codec.decode(payload) {
-        Ok(message) -> Ok(Response(message:))
-        Error(Nil) -> Error(Nil)
-      }
-    }
     <<1, payload:bits>> -> {
       case decode_any(payload) {
         Ok(#(module, message)) -> Ok(Push(module:, message:))
@@ -97,13 +57,6 @@ pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
     }
     _ -> Error(Nil)
   }
-}
-
-@target(javascript)
-pub fn decode_load_result(
-  bytes: BitArray,
-) -> Result(#(Int, Result(ToClient, List(ApiLoadError))), Nil) {
-  decode_result_envelope(bytes)
 }
 
 @target(javascript)
@@ -130,13 +83,6 @@ pub fn decode_public_game_detail_load_result(
   #(Int, Result(public_game_detail_wire.LoadResult, List(ApiLoadError))),
   Nil,
 ) {
-  decode_result_envelope(bytes)
-}
-
-@target(javascript)
-pub fn decode_save_result(
-  bytes: BitArray,
-) -> Result(#(Int, Result(ToClient, List(ApiSaveError))), Nil) {
   decode_result_envelope(bytes)
 }
 
