@@ -1,14 +1,14 @@
 ---
 # rally-i7ir
 title: Generate SSR load and hydration adapter
-status: todo
+status: in-progress
 type: task
 priority: high
 tags:
     - codegen
     - ssr
 created_at: 2026-06-04T23:18:18Z
-updated_at: 2026-06-04T23:18:18Z
+updated_at: 2026-06-04T23:48:08Z
 parent: rally-oymv
 ---
 
@@ -37,3 +37,8 @@ Acceptance:
 - Generated SSR adapter lives under `src/generated/rally/**`.
 - Targeted snapshot or generator tests cover generated SSR load, hydration, success result, and error result paths.
 - Scoreboard SSR routes still build and render with the same page state.
+
+Progress notes:
+- Added generated `src/generated/rally/server_ssr.gleam` for hydration payload encoding and `LoadError` to transport error mapping.
+- Scoreboard `app_ssr` no longer imports `generated/rally/result`, calls `server_protocol`, or performs base64 hydration encoding directly.
+- Route-to-page load selection and page message application remain in app code. That is the remaining part of this bean and needs a boundary decision before Rally consumes more Proute page shape.

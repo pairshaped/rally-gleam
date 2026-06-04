@@ -76,6 +76,10 @@ pub fn generate(
       server_ws(loads:, to_client_module:, to_server_module:),
     ),
     GeneratedFile(
+      "src/generated/rally/server_ssr.gleam",
+      server_ssr(loads:, to_client_module:, to_server_module:),
+    ),
+    GeneratedFile(
       "src/generated/rally/hydration.gleam",
       hydration(loads:, to_client_module:),
     ),
@@ -430,6 +434,42 @@ fn map_save_result(
     Error(errors) -> Error(list.map(errors, fn(error) {
       let SaveError(field:, message:) = error
       transport_result.ApiSaveError(field:, message:)
+    }))
+  }
+}
+"
+}
+
+pub fn server_ssr(
+  loads loads: List(LoadRpc),
+  to_client_module _to_client_module: String,
+  to_server_module _to_server_module: String,
+) -> String {
+  "@target(erlang)
+import generated/rally/result as transport_result
+@target(erlang)
+import generated/rally/server_protocol
+@target(erlang)
+import gleam/bit_array
+@target(erlang)
+import gleam/list
+" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+@target(erlang)
+pub type LoadError {
+  LoadError(message: String)
+}
+
+" <> string.join(list.map(loads, server_ssr_hydration_payload), "\n") <> "
+
+@target(erlang)
+fn map_load_result(
+  result: Result(a, List(LoadError)),
+) -> Result(a, List(transport_result.ApiLoadError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) -> Error(list.map(errors, fn(error) {
+      let LoadError(message:) = error
+      transport_result.ApiLoadError(message:)
     }))
   }
 }
@@ -1167,6 +1207,20 @@ fn server_ws_load_pattern(load: LoadRpc) -> String {
 
 fn server_ws_module_load_patterns(load: LoadRpc) -> String {
   "        " <> server_ws_load_pattern(load) <> " -> Error(Nil)\n"
+}
+
+fn server_ssr_hydration_payload(load: LoadRpc) -> String {
+  "@target(erlang)
+pub fn " <> load.name <> "_hydration_payload(
+  result result: Result(" <> wire_alias(load) <> ".LoadResult, List(LoadError)),
+) -> String {
+  server_protocol.ensure()
+  result
+  |> map_load_result
+  |> server_protocol.encode_" <> load.name <> "_load_result(request_id: 0)
+  |> bit_array.base64_url_encode(False)
+}
+"
 }
 
 fn hydration_load_result(load: LoadRpc) -> String {
