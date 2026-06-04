@@ -5,6 +5,11 @@ import rally/runtime/internal/system_db as system
 import rally/runtime/system as runtime_system
 import sqlight
 
+@external(erlang, "rally_runtime_test_db_ffi", "connection_usable")
+fn connection_usable(_conn: sqlight.Connection) -> Bool {
+  False
+}
+
 pub fn open_creates_observability_tables_test() {
   let assert Ok(conn) = system.open(":memory:")
 
@@ -21,6 +26,17 @@ pub fn supervised_job_runner_returns_startable_child_spec_test() {
   let assert Ok(started) = child.start()
   process.unlink(started.pid)
   process.kill(started.pid)
+}
+
+pub fn start_replaces_and_closes_previous_global_connection_test() {
+  runtime_system.start(":memory:")
+  let assert Ok(first_conn) = system.get_conn()
+
+  runtime_system.start(":memory:")
+  let assert Ok(second_conn) = system.get_conn()
+
+  connection_usable(first_conn) |> should.be_false()
+  connection_usable(second_conn) |> should.be_true()
 }
 
 pub fn log_to_client_persists_message_test() {

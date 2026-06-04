@@ -8,7 +8,6 @@
 import gleam/int
 import gleam/otp/actor
 import gleam/otp/supervision
-import global_value
 import logging
 import rally/runtime/internal/system_db
 import rally/runtime/jobs
@@ -102,11 +101,9 @@ pub fn enqueue_now(name name: String, payload payload: BitArray) -> Nil {
 fn open_and_store(path: String) -> Result(sqlight.Connection, sqlight.Error) {
   case system_db.open(path) {
     Ok(conn) -> {
-      // TODO: Make repeated starts/restarts replace or close the old
-      // connection instead of leaving global state behind.
-      let _global_value =
-        global_value.create_with_unique_name("rally_system_db", fn() { conn })
+      let previous_conn = system_db.get_conn()
       system_db.store_conn(conn)
+      close_previous_conn(previous_conn)
       logging.log(logging.Info, "System DB opened: " <> path)
       let count = system_db.message_count(conn)
       logging.log(
@@ -116,6 +113,22 @@ fn open_and_store(path: String) -> Result(sqlight.Connection, sqlight.Error) {
       Ok(conn)
     }
     Error(err) -> Error(err)
+  }
+}
+
+fn close_previous_conn(conn: Result(sqlight.Connection, Nil)) -> Nil {
+  case conn {
+    Ok(conn) -> {
+      case sqlight.close(conn) {
+        Ok(Nil) -> Nil
+        Error(err) ->
+          logging.log(
+            logging.Warning,
+            "Failed to close previous system DB connection: " <> err.message,
+          )
+      }
+    }
+    Error(Nil) -> Nil
   }
 }
 

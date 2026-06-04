@@ -1,5 +1,5 @@
 -module(rally_runtime_test_db_ffi).
--export([clone_db/1, pt_put/2, pt_get/2]).
+-export([clone_db/1, pt_put/2, pt_get/2, connection_usable/1]).
 
 clone_db(Template) ->
     {ok, Dest} = esqlite3:open(":memory:"),
@@ -15,4 +15,12 @@ pt_put(Key, Value) ->
 pt_get(Key, Default) ->
     try persistent_term:get(Key)
     catch error:badarg -> Default
+    end.
+
+connection_usable(Connection) ->
+    try esqlite3:q(Connection, <<"SELECT 1">>, []) of
+        {error, _} -> false;
+        _ -> true
+    catch
+        _:_ -> false
     end.
