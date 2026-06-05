@@ -92,7 +92,7 @@ pub fn generate(
     GeneratedFile("src/generated/rally/browser.gleam", browser_module()),
     GeneratedFile("src/generated/rally/browser_ffi.mjs", browser_ffi()),
     GeneratedFile("src/generated/rally/browser_mount.gleam", browser_mount()),
-    GeneratedFile("src/generated/rally/browser_app.gleam", browser_app()),
+    GeneratedFile("src/generated/rally/browser_app.gleam", browser_app(loads:)),
     GeneratedFile("src/generated/rally/result.gleam", result_module()),
   ]
 }
@@ -577,15 +577,40 @@ function bytes_from_bit_array(frame) {
 "
 }
 
-pub fn browser_app() -> String {
+pub fn browser_app(loads loads: List(LoadRpc)) -> String {
+  let mounts = load_mounts(loads)
+
   "@target(javascript)
 import generated/rally/browser_mount
+@target(javascript)
+import generated/rally/client_transport
+@target(javascript)
+import generated/rally/hydration
+@target(javascript)
+import generated/rally/result.{type ApiLoadError}
+@target(javascript)
+import page_context.{type PageContext}
 @target(javascript)
 import lustre
 @target(javascript)
 import lustre/effect.{type Effect}
 @target(javascript)
 import lustre/element.{type Element}
+" <> browser_app_int_import(loads) <> "
+" <> browser_app_mount_imports(mounts) <> "
+" <> wire_imports(loads, "@target(javascript)", client_only: False) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      browser_app_mount_load_route_type(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      browser_app_mount_initial_page(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
 
 @target(javascript)
 pub fn start(
@@ -664,7 +689,289 @@ pub fn navigation_effects(
 
   effect.batch([history_effect, effect.map(page_effect, on_page)])
 }
+
+@target(javascript)
+fn initial_loaded_page(
+  page page: page,
+  hydration hydration: Result(result, Nil),
+  to_message to_message: fn(result) -> message,
+  load_client load_client: fn() -> Effect(message),
+  update_page update_page: fn(page, message) -> #(page, Effect(message)),
+) -> #(page, Effect(message)) {
+  case hydration {
+    Ok(result) -> {
+      let #(page, _) = update_page(page, to_message(result))
+      #(page, effect.none())
+    }
+    Error(Nil) -> #(page, load_client())
+  }
+}
 "
+}
+
+fn browser_app_mount_imports(mounts: List(String)) -> String {
+  mounts
+  |> list.map(fn(mount) { "@target(javascript)
+import generated/proute/" <> mount <> "/page_input as " <> mount_alias(
+      mount,
+      "page_input",
+    ) <> "
+@target(javascript)
+import generated/proute/" <> mount <> "/pages as " <> mount_alias(
+      mount,
+      "pages",
+    ) <> "
+@target(javascript)
+import generated/proute/" <> mount <> "/routes as " <> mount_alias(
+      mount,
+      "routes",
+    ) })
+  |> string.join("\n")
+  |> fn(imports) {
+    case imports {
+      "" -> ""
+      _ -> imports <> "\n"
+    }
+  }
+}
+
+fn browser_app_int_import(loads: List(LoadRpc)) -> String {
+  case
+    list.any(loads, fn(load) {
+      load.args
+      |> list.any(fn(arg) { arg.type_ref == "Int" })
+    })
+  {
+    True -> "\n@target(javascript)\nimport gleam/int"
+    False -> ""
+  }
+}
+
+fn browser_app_mount_load_route_type(
+  mount: String,
+  loads: List(LoadRpc),
+) -> String {
+  let prefix = mount_type_prefix(mount)
+  let pages = mount_alias(mount, "pages")
+
+  "@target(javascript)
+pub type " <> prefix <> "LoadRoute {
+  " <> prefix <> "NoLoad
+" <> string.join(list.map(loads, fn(load) { "  " <> pascal_name(load) <> "Load(
+    " <> browser_app_load_message_field(load) <> "to_message: fn(Result(" <> wire_alias(
+      load,
+    ) <> ".LoadResult, List(ApiLoadError))) -> " <> pages <> ".Message,
+  )" }), "\n") <> "
+}
+"
+}
+
+fn browser_app_load_message_field(load: LoadRpc) -> String {
+  case load.import_on_client {
+    True -> ""
+    False -> "message: " <> wire_alias(load) <> ".ServerMsg,\n    "
+  }
+}
+
+fn browser_app_mount_initial_page(
+  mount: String,
+  loads: List(LoadRpc),
+) -> String {
+  let prefix = mount_type_prefix(mount)
+  let page_input = mount_alias(mount, "page_input")
+  let pages = mount_alias(mount, "pages")
+  let routes = mount_alias(mount, "routes")
+  let request_route_label = case browser_app_mount_uses_route(loads) {
+    True -> "route"
+    False -> "_route"
+  }
+
+  "@target(javascript)
+pub fn " <> mount <> "_load_client(
+  page_context page_context: PageContext,
+  query_params query_params: " <> page_input <> ".QueryParams,
+  route route: " <> routes <> ".Route,
+  select_load select_load: fn(" <> routes <> ".Route) -> " <> prefix <> "LoadRoute,
+) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
+  let page = " <> pages <> ".load_sync(page_context, query_params, route)
+  #(page, " <> mount <> "_request_effect(route, select_load(route)))
+}
+
+@target(javascript)
+pub fn " <> mount <> "_initial_page(
+  page_context page_context: PageContext,
+  query_params query_params: " <> page_input <> ".QueryParams,
+  route route: " <> routes <> ".Route,
+  select_load select_load: fn(" <> routes <> ".Route) -> " <> prefix <> "LoadRoute,
+  update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
+  let page = " <> pages <> ".load_sync(page_context, query_params, route)
+
+  case select_load(route) {
+    " <> prefix <> "NoLoad -> #(page, effect.none())
+" <> string.join(list.map(loads, browser_app_initial_page_case), "\n") <> "
+  }
+}
+
+@target(javascript)
+fn " <> mount <> "_request_effect(
+  route " <> request_route_label <> ": " <> routes <> ".Route,
+  selected selected: " <> prefix <> "LoadRoute,
+) -> Effect(" <> pages <> ".Message) {
+  case selected {
+    " <> prefix <> "NoLoad -> effect.none()
+" <> string.join(list.map(loads, browser_app_request_effect_case), "\n") <> "
+  }
+}
+"
+}
+
+fn browser_app_initial_page_case(load: LoadRpc) -> String {
+  "    "
+  <> pascal_name(load)
+  <> "Load("
+  <> browser_app_ignored_load_message_pattern(load)
+  <> "to_message:) -> {
+      initial_loaded_page(
+        page: page,
+        hydration: hydration."
+  <> load.name
+  <> "_load_result(),
+        to_message: to_message,
+        load_client: fn() { "
+  <> load_mount(load)
+  <> "_request_effect(route, select_load(route)) },
+        update_page: update_page,
+      )
+    }"
+}
+
+fn browser_app_request_effect_case(load: LoadRpc) -> String {
+  "    "
+  <> pascal_name(load)
+  <> "Load("
+  <> browser_app_load_message_pattern(load)
+  <> "to_message:) -> "
+  <> browser_app_send_load(load)
+}
+
+fn browser_app_load_message_pattern(load: LoadRpc) -> String {
+  case load.import_on_client {
+    True -> ""
+    False -> "message:, "
+  }
+}
+
+fn browser_app_ignored_load_message_pattern(load: LoadRpc) -> String {
+  case load.import_on_client {
+    True -> ""
+    False -> "message: _, "
+  }
+}
+
+fn browser_app_mount_uses_route(loads: List(LoadRpc)) -> Bool {
+  list.any(loads, fn(load) {
+    browser_app_supported_route_args(load) && !list.is_empty(load.args)
+  })
+}
+
+fn browser_app_send_load(load: LoadRpc) -> String {
+  case browser_app_supported_route_args(load) {
+    False -> "effect.none()"
+    True -> {
+      case load.args {
+        [] -> browser_app_transport_call(load)
+        _ -> "case route {
+        " <> browser_app_route_pattern(load) <> " -> " <> browser_app_send_load_arg_body(
+            load,
+          ) <> "
+        _ -> effect.none()
+      }"
+      }
+    }
+  }
+}
+
+fn browser_app_send_load_arg_body(load: LoadRpc) -> String {
+  let args = browser_app_route_args(load)
+  let route_fields = list.map(args, fn(pair) { pair.0 })
+  let load_args = list.map(args, fn(pair) { pair.1 })
+
+  case list.any(load_args, fn(arg) { arg.type_ref == "Int" }) {
+    False -> browser_app_transport_call(load)
+    True -> browser_app_int_load_arg_body(load, route_fields, load_args)
+  }
+}
+
+fn browser_app_int_load_arg_body(
+  load: LoadRpc,
+  route_fields: List(String),
+  load_args: List(LoadArg),
+) -> String {
+  let parsers =
+    list.zip(route_fields, load_args)
+    |> list.map(fn(pair) {
+      let #(route_field, arg) = pair
+      case arg.type_ref {
+        "Int" -> Some("case int.parse(" <> route_field <> ") {
+            Ok(" <> arg.label <> ") -> ")
+        _ -> None
+      }
+    })
+    |> option.values
+
+  let close_parens =
+    list.repeat("}", list.length(parsers))
+    |> string.join("\n")
+
+  string.join(parsers, "") <> browser_app_transport_call(load) <> "
+            Error(Nil) -> effect.none()
+          " <> close_parens
+}
+
+fn browser_app_transport_call(load: LoadRpc) -> String {
+  "client_transport.send_"
+  <> load.name
+  <> "_load("
+  <> browser_app_transport_call_args(load)
+  <> "on_result: to_message)"
+}
+
+fn browser_app_transport_call_args(load: LoadRpc) -> String {
+  let args = case load.import_on_client {
+    True -> load.args |> list.map(fn(arg) { arg.label <> ":" })
+    False -> ["message:"]
+  }
+
+  case args {
+    [] -> ""
+    _ -> string.join(args, ", ") <> ", "
+  }
+}
+
+fn browser_app_supported_route_args(load: LoadRpc) -> Bool {
+  let route_args = browser_app_route_args(load)
+
+  list.length(route_args) == list.length(load.args)
+  && list.all(route_args, fn(pair) {
+    let #(route_field, arg) = pair
+    case arg.type_ref {
+      "Int" -> True
+      "String" -> route_field == arg.label
+      _ -> False
+    }
+  })
+}
+
+fn browser_app_route_pattern(load: LoadRpc) -> String {
+  mount_alias(load_mount(load), "routes")
+  <> "."
+  <> server_ssr_route_constructor(load)
+  <> server_ssr_route_pattern_args(load)
+}
+
+fn browser_app_route_args(load: LoadRpc) -> List(#(String, LoadArg)) {
+  list.zip(server_ssr_dynamic_segments(load), load.args)
 }
 
 pub fn client_protocol(
