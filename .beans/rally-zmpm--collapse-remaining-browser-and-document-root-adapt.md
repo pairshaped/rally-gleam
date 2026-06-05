@@ -1,13 +1,13 @@
 ---
 # rally-zmpm
 title: Make Rally conventions own standard app glue
-status: todo
+status: completed
 type: epic
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T22:44:06Z
-updated_at: 2026-06-05T22:56:45Z
+updated_at: 2026-06-05T23:37:34Z
 ---
 
 Rally should make the standard template app feel framework-owned in the Rails sense: apps declare product meaning, while Rally owns repeated bootstrap, routing shell, document boot, browser lifecycle, websocket transport, static serving, and config mechanics.
@@ -38,9 +38,27 @@ Current audit findings:
 
 Acceptance criteria:
 
-[ ] Standard Scoreboard bootstrap no longer requires authored PORT parsing, DB path constants, DB opening, static asset routing, or auth session setup.
-[ ] Standard document response, query params, hydration attrs, boot attrs, and browser entrypoint selection are Rally-owned.
-[ ] Standard public/admin browser lifecycle is Rally-owned while app shell/shared-state decisions remain explicit.
-[ ] Standard websocket transport loop is Rally-owned while app load context, auth policy, and broadcast meaning remain explicit.
-[ ] Scoreboard root modules mostly express app-owned surfaces: auth policy, shell/layout, authentication context, broadcasts, page context if still needed, and page/domain code.
-[ ] Boundary guard, clean generation, browser smoke, websocket smoke, and Scoreboard tests pass.
+[x] Standard Scoreboard bootstrap no longer requires authored PORT parsing, DB path constants, DB opening, static asset routing, or auth session setup.
+[x] Standard document response, query params, hydration attrs, boot attrs, and browser entrypoint selection are Rally-owned.
+[x] Standard public/admin browser lifecycle is Rally-owned while app shell/shared-state decisions remain explicit.
+[x] Standard websocket transport loop is Rally-owned while app load context, auth policy, and broadcast meaning remain explicit.
+[x] Scoreboard root modules mostly express app-owned surfaces: auth policy, shell/layout, authentication context, broadcasts, page context if still needed, and page/domain code.
+[x] Boundary guard, clean generation, browser smoke, websocket smoke, and Scoreboard tests pass.
+
+
+## Completion audit
+
+Root modules now keep the product-owned surface: auth policy callbacks, shell/layout, authentication context, broadcast topics/events/data, page context, page/domain code, and thin standard-entry callbacks that provide DB and authenticated-user context to Rally-owned glue.
+
+Rally now owns the repeated standard app mechanics covered by this epic: bootstrap config and DB/session startup, static serving, document helpers, browser mount lifecycle, websocket transport loop, direct SSR load-context plumbing, and generated route/page dispatch around Proute output.
+
+## Validation
+
+- rally-gleam: `gleam test`
+- rally-scoreboard-example: clean regeneration from empty `src/generated` with `gleam run -m marmot`, `gleam run -m proute`, and `gleam run -m rally load-rpc`
+- rally-scoreboard-example: `gleam build --target erlang`
+- rally-scoreboard-example: `gleam build --target javascript`
+- rally-scoreboard-example: `node test/boundary_guard_test.mjs`
+- rally-scoreboard-example: `TEMP=./tmp gleam test --target erlang`
+- rally-scoreboard-example: `node test/ws_result_smoke.mjs`
+- rally-scoreboard-example: `npm run test:browser`
