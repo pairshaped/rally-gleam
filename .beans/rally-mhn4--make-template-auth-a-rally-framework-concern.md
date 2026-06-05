@@ -1,14 +1,14 @@
 ---
 # rally-mhn4
 title: Make template auth a Rally framework concern
-status: todo
+status: in-progress
 type: epic
 priority: normal
 tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T04:08:18Z
+updated_at: 2026-06-05T21:03:01Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -35,3 +35,13 @@ Acceptance criteria:
 Risks:
 
 The main risk is over-generalizing. If this starts becoming a generic auth platform, stop and narrow it back to the Scoreboard/template use case.
+
+Starting implementation pass: inspect ADRs and current Scoreboard auth/session root modules before moving generic template-auth mechanics into Rally-owned generated/runtime code.
+
+- Progress slice implemented: Rally runtime session now owns encrypted auth-session cookie encoding/decoding, auth cookie lookup, and auth cookie attributes through `rally/runtime/session` plus `rally_runtime_session_ffi`.
+- Progress slice implemented: Scoreboard deleted `src/app_session.gleam` and `src/app_session_crypto_ffi.erl`; server context, SSR, document rendering, websocket admin auth, and sign-in issuing now use `rally/runtime/session.AuthSession`.
+- Guarded: Scoreboard boundary guard rejects app-local session codec files, app-auth session-cookie lookup, app-auth-http cookie attribute builders, and app-local session crypto references.
+- Still remaining in this epic: move generic sign-in/sign-out route handler plumbing and redirect helpers out of `app_auth_http.gleam`; keep Scoreboard user lookup, demo code verification policy, and admin policy app-owned.
+- Validated: Rally `gleam test` passed (444 tests; existing generator-format warnings still printed).
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `node test/boundary_guard_test.mjs` passed.
+- Validated: `npm run test:browser` failed once with transient startup `ERR_CONNECTION_REFUSED` at `/games`, then passed on immediate rerun through sign-in, admin save ack, and peer broadcast.
