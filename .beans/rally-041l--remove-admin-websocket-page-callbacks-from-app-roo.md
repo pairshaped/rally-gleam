@@ -1,14 +1,14 @@
 ---
 # rally-041l
 title: Remove admin websocket page callbacks from app root
-status: todo
+status: completed
 type: task
 priority: high
 tags:
     - boundary-cleanup
     - websocket
 created_at: 2026-06-05T19:04:55Z
-updated_at: 2026-06-05T19:23:53Z
+updated_at: 2026-06-05T19:36:36Z
 parent: rally-kobq
 ---
 
@@ -111,3 +111,16 @@ Related but separate beans:
 
 - `rally-mhn4`: template auth should handle `app_session.gleam`, much of `app_auth_http.gleam`, and part of `app_auth.gleam`.
 - `rally-gvkf`: dark-mode storage/application should handle `browser_mount.gleam`, `device_preferences.gleam`, and parts of `admin_app.gleam`, `public_app.gleam`, and `app_document.gleam`.
+
+## Work Started
+
+Starting implementation pass: remove root-owned admin websocket page callbacks, introduce typed broadcast topics, and move broadcast mapping out of root modules where feasible.
+
+- Implemented: generated Rally websocket glue now owns page load/save calls, admin authorization checks, save error mapping, and after-save broadcasting for direct page saves.
+- Implemented: Scoreboard root websocket handlers now provide load context and admin authorization only; page-specific load/save callbacks and page imports are gone from `app_ws.gleam`.
+- Implemented: broadcast topics are typed in `broadcasts.gleam`; runtime topic names are produced at the websocket/client transport boundary.
+- Implemented: `app_api.gleam` was removed by moving game-updated broadcast snapshot construction into `broadcasts.gleam` and the admin games page after-save hook.
+- Guarded: boundary guard now fails if root websocket code imports page modules or reintroduces page load/save/after-save callback plumbing.
+- Validated: Rally `gleam test` passed (440 tests; existing generator-format warnings still printed).
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `node test/boundary_guard_test.mjs` passed.
+- Validated: `npm run test:browser` failed once with transient startup `ERR_CONNECTION_REFUSED` at `/games`, then passed on immediate rerun through admin save ack and peer broadcast.

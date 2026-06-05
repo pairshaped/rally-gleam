@@ -671,7 +671,7 @@ import lustre
 import lustre/effect.{type Effect}
 @target(javascript)
 import lustre/element.{type Element}
-" <> browser_app_int_import(loads) <> browser_app_client_protocol_import(
+" <> browser_app_int_import(loads) <> browser_app_list_import(push_contract) <> browser_app_client_protocol_import(
     push_contract,
   ) <> push_import(push_contract, "@target(javascript)") <> browser_app_mount_imports(
     mounts,
@@ -746,10 +746,7 @@ pub fn startup_effects(
   ])
 }
 
-@target(javascript)
-pub fn sync_topics(topics topics: List(String)) -> Effect(msg) {
-  client_transport.sync_topics(topics)
-}
+" <> browser_app_sync_topics(push_contract) <> "
 
 @target(javascript)
 pub fn initial_page(
@@ -850,6 +847,13 @@ fn browser_app_int_import(loads: List(LoadRpc)) -> String {
   {
     True -> "@target(javascript)\nimport gleam/int\n"
     False -> ""
+  }
+}
+
+fn browser_app_list_import(push_contract: Option(PushContract)) -> String {
+  case push_contract {
+    Some(_) -> "@target(javascript)\nimport gleam/list\n"
+    None -> ""
   }
 }
 
@@ -966,9 +970,13 @@ fn browser_app_mount_topic_functions(
 ) -> String {
   let pages = mount_alias(mount, "pages")
   let route_modules = mount_route_modules(loads)
+  let topic_type = case push_contract {
+    Some(_) -> "push_payload.Topic"
+    None -> "String"
+  }
 
   "@target(javascript)
-pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(String) {
+pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(" <> topic_type <> ") {
   case page {
 " <> string.join(
     list.map(route_modules, fn(module_path) {
@@ -987,6 +995,23 @@ pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(Stri
   }
 }
 " <> browser_app_mount_apply_push(mount, loads, route_modules, push_contract:)
+}
+
+fn browser_app_sync_topics(push_contract: Option(PushContract)) -> String {
+  case push_contract {
+    Some(_) ->
+      "@target(javascript)
+pub fn sync_topics(topics topics: List(push_payload.Topic)) -> Effect(msg) {
+  client_transport.sync_topics(list.map(topics, push_payload.topic_name))
+}
+"
+    None ->
+      "@target(javascript)
+pub fn sync_topics(topics topics: List(String)) -> Effect(msg) {
+  client_transport.sync_topics(topics)
+}
+"
+  }
 }
 
 fn browser_app_mount_apply_push(
@@ -1803,7 +1828,7 @@ import generated/rally/server_protocol
 @target(erlang)
 import gleam/list
 @target(erlang)
-import gleam/option.{type Option}
+import gleam/option.{type Option, None}
 @target(erlang)
 import gleam/string
 @target(erlang)
@@ -1859,7 +1884,9 @@ pub fn handle_client_frame(
   ) <> "
 " <> string.join(
     option.values(
-      list.map(loads, fn(load) { server_ws_send_save_result(load, loads) }),
+      list.map(loads, fn(load) {
+        server_ws_send_save_result(load, loads, load_context:, push_contract:)
+      }),
     ),
     "\n",
   ) <> "
@@ -2861,7 +2888,10 @@ fn server_ws_page_imports(
   load_context load_context: Option(LoadContext),
 ) -> String {
   loads
-  |> list.filter(fn(load) { server_ws_direct_load(load, load_context:) })
+  |> list.filter(fn(load) {
+    server_ws_direct_load(load, load_context:)
+    || server_ws_direct_save(load, load_context:)
+  })
   |> list.filter(fn(load) { load.module_path != load.wire_module })
   |> list.map(fn(load) {
     "@target(erlang)\nimport " <> load.module_path <> " as " <> page_alias(load)
@@ -2877,13 +2907,30 @@ fn server_ws_page_imports(
 }
 
 fn server_ws_direct_load(
+  _load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  option.is_some(load_context)
+}
+
+fn server_ws_direct_save(
   load: LoadRpc,
   load_context load_context: Option(LoadContext),
 ) -> Bool {
-  load_mount(load) == "public" && option.is_some(load_context)
+  option.is_some(load_context) && option.is_some(load.save_result_type)
 }
 
 fn server_ws_has_direct_loads(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  list.any(loads, fn(load) {
+    server_ws_direct_load(load, load_context:)
+    || server_ws_direct_save(load, load_context:)
+  })
+}
+
+fn server_ws_has_direct_page_loads(
   loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
 ) -> Bool {
@@ -2904,7 +2951,7 @@ fn server_ws_map_page_load_result(
   loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
 ) -> String {
-  case server_ws_has_direct_loads(loads, load_context:) {
+  case server_ws_has_direct_page_loads(loads, load_context:) {
     True ->
       "
 @target(erlang)
@@ -3403,15 +3450,42 @@ fn server_ws_handler_fields(
     ]
     _, _ -> []
   }
+  let authorization_fields =
+    server_ws_authorized_mounts(loads, load_context:)
+    |> list.map(fn(mount) {
+      "    " <> mount <> "_authorized: fn(state) -> Bool,"
+    })
   let load_fields =
     loads
     |> list.filter(fn(load) { !server_ws_direct_load(load, load_context:) })
     |> list.map(server_ws_load_handler_field)
   let save_fields =
-    option.values(list.map(loads, server_ws_save_handler_fields))
+    loads
+    |> list.filter(fn(load) { !server_ws_direct_save(load, load_context:) })
+    |> list.map(server_ws_save_handler_fields)
+    |> option.values
 
-  list.append(load_context_fields, list.append(load_fields, save_fields))
+  list.append(
+    load_context_fields,
+    list.append(authorization_fields, list.append(load_fields, save_fields)),
+  )
   |> string.join("\n")
+}
+
+fn server_ws_authorized_mounts(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> List(String) {
+  loads
+  |> list.filter(fn(load) {
+    load_mount(load) != "public"
+    && {
+      server_ws_direct_load(load, load_context:)
+      || server_ws_direct_save(load, load_context:)
+    }
+  })
+  |> list.map(load_mount)
+  |> list.unique
 }
 
 fn server_ws_load_handler_field(load: LoadRpc) -> String {
@@ -3559,12 +3633,16 @@ fn server_ws_load_result_call(
 ) -> String {
   case server_ws_direct_load(load, load_context:) {
     True ->
-      generated_direct_load_call(
+      server_ws_authorized_result(
         load:,
-        load_context: "handlers.load_context(state)",
-        args: call_args(load.args),
+        error: "Error([LoadError(message: \"Unauthorized.\")])",
+        body: generated_direct_load_call(
+          load:,
+          load_context: "handlers.load_context(state)",
+          args: call_args(load.args),
+        )
+          <> "\n    |> map_page_load_result",
       )
-      <> "\n    |> map_page_load_result"
     False ->
       "handlers."
       <> load.name
@@ -3574,9 +3652,25 @@ fn server_ws_load_result_call(
   }
 }
 
+fn server_ws_authorized_result(
+  load load: LoadRpc,
+  error error: String,
+  body body: String,
+) -> String {
+  case load_mount(load) {
+    "public" -> body
+    mount -> "case handlers." <> mount <> "_authorized(state) {
+      False -> " <> error <> "
+      True -> " <> body <> "
+    }"
+  }
+}
+
 fn server_ws_send_save_result(
   load: LoadRpc,
   loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+  push_contract push_contract: Option(PushContract),
 ) -> Option(String) {
   case load.save_result_type {
     None -> None
@@ -3588,7 +3682,7 @@ fn send_" <> load.name <> "_save_result(
   message message: " <> wire_alias(load) <> ".ServerMsg,
   handlers handlers: " <> server_ws_handlers_type(loads) <> ",
 ) -> Nil {
-  let result = handlers." <> load.name <> "_save(state, message)
+  let result = " <> server_ws_save_result_call(load, load_context:) <> "
 
   let _sent =
     mist.send_binary_frame(
@@ -3600,11 +3694,64 @@ fn send_" <> load.name <> "_save_result(
     )
 
   case result {
-    Ok(value) -> handlers.after_" <> load.name <> "_save(state, message, value)
+    Ok(value) -> " <> server_ws_after_save_call(
+        load,
+        load_context:,
+        push_contract:,
+      ) <> "
     Error(_) -> Nil
   }
 }
 ")
+  }
+}
+
+fn server_ws_save_result_call(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case server_ws_direct_save(load, load_context:) {
+    True ->
+      server_ws_authorized_result(
+        load:,
+        error: "Error([SaveError(field: None, message: \"Unauthorized.\")])",
+        body: "case "
+          <> page_alias(load)
+          <> ".handle(handlers.load_context(state), message) {
+      Ok(value) -> Ok(value)
+      Error("
+          <> page_alias(load)
+          <> ".SaveError(message: message)) ->
+        Error([SaveError(field: None, message:)])
+    }",
+      )
+    False -> "handlers." <> load.name <> "_save(state, message)"
+  }
+}
+
+fn server_ws_after_save_call(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+  push_contract push_contract: Option(PushContract),
+) -> String {
+  case server_ws_direct_save(load, load_context:), push_contract {
+    True, Some(_) ->
+      "case "
+      <> page_alias(load)
+      <> ".after_save(handlers.load_context(state), value) {
+      Ok(push_payload.TargetedEvent(topics: target_topics, event: event)) ->
+        target_topics
+        |> list.each(fn(topic) {
+          let topic_name = push_payload.topic_name(topic)
+          topics.broadcast_except_self(
+            topic_name,
+            push_frame(module: topic_name, message: event),
+          )
+        })
+      Error(Nil) -> Nil
+    }"
+    True, None -> "Nil"
+    False, _ -> "handlers.after_" <> load.name <> "_save(state, message, value)"
   }
 }
 

@@ -18,7 +18,7 @@ import generated/rally/server_protocol
 @target(erlang)
 import gleam/list
 @target(erlang)
-import gleam/option.{type Option}
+import gleam/option.{type Option, None}
 @target(erlang)
 import gleam/string
 @target(erlang)
@@ -50,15 +50,7 @@ pub type SaveError {
 pub type Handlers(state) {
   Handlers(
     load_context: fn(state) -> load_context.Connection,
-    admin_games_load: fn(state) ->
-      Result(admin_games_wire.LoadResult, List(LoadError)),
-    admin_games_save: fn(state, admin_games_wire.ServerMsg) ->
-      Result(admin_games_wire.GameUpdate, List(SaveError)),
-    after_admin_games_save: fn(
-      state,
-      admin_games_wire.ServerMsg,
-      admin_games_wire.GameUpdate,
-    ) -> Nil,
+    admin_authorized: fn(state) -> Bool,
   )
 }
 
@@ -244,7 +236,16 @@ fn send_admin_games_load_result(
   handlers handlers: Handlers(state),
 ) -> Nil {
   let result =
-    handlers.admin_games_load(state)
+    case handlers.admin_authorized(state) {
+      False -> Error([LoadError(message: "Unauthorized.")])
+      True ->
+        case admin_games_wire.load(handlers.load_context(state)) {
+          Ok(data) -> Ok(admin_games_wire.AdminGamesLoaded(data))
+          Error(admin_games_wire.LoadError(message: message)) ->
+            Error([message])
+        }
+        |> map_page_load_result
+    }
     |> map_load_result
 
   let _sent =
@@ -320,7 +321,15 @@ fn send_admin_games_save_result(
   message message: admin_games_wire.ServerMsg,
   handlers handlers: Handlers(state),
 ) -> Nil {
-  let result = handlers.admin_games_save(state, message)
+  let result = case handlers.admin_authorized(state) {
+    False -> Error([SaveError(field: None, message: "Unauthorized.")])
+    True ->
+      case admin_games_wire.handle(handlers.load_context(state), message) {
+        Ok(value) -> Ok(value)
+        Error(admin_games_wire.SaveError(message: message)) ->
+          Error([SaveError(field: None, message:)])
+      }
+  }
 
   let _sent =
     mist.send_binary_frame(
@@ -332,7 +341,19 @@ fn send_admin_games_save_result(
     )
 
   case result {
-    Ok(value) -> handlers.after_admin_games_save(state, message, value)
+    Ok(value) ->
+      case admin_games_wire.after_save(handlers.load_context(state), value) {
+        Ok(push_payload.TargetedEvent(topics: target_topics, event: event)) ->
+          target_topics
+          |> list.each(fn(topic) {
+            let topic_name = push_payload.topic_name(topic)
+            topics.broadcast_except_self(
+              topic_name,
+              push_frame(module: topic_name, message: event),
+            )
+          })
+        Error(Nil) -> Nil
+      }
     Error(_) -> Nil
   }
 }
