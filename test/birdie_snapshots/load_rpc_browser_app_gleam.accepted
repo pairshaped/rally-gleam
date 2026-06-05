@@ -2,6 +2,11 @@
 version: 2.0.0
 title: load_rpc_browser_app_gleam
 ---
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
 @target(javascript)
 import generated/rally/browser_mount
 @target(javascript)
@@ -20,6 +25,14 @@ import lustre/element.{type Element}
 import page_context.{type PageContext}
 
 @target(javascript)
+import generated/rally/client_protocol
+@target(javascript)
+import gleam/int
+
+@target(javascript)
+import broadcasts as push_payload
+
+@target(javascript)
 import generated/proute/admin/page_input as admin_page_input
 @target(javascript)
 import generated/proute/admin/pages as admin_pages
@@ -31,8 +44,6 @@ import generated/proute/public/page_input as public_page_input
 import generated/proute/public/pages as public_pages
 @target(javascript)
 import generated/proute/public/routes as public_routes
-@target(javascript)
-import gleam/int
 
 @target(javascript)
 import admin/pages/games as admin_games_wire
@@ -239,11 +250,15 @@ pub fn map_page_effect(
 pub fn server_frame_effect(
   page page: page,
   bytes bytes: BitArray,
-  apply_frame apply_frame: fn(page, BitArray) -> #(page, Effect(page_msg)),
+  apply_push apply_push: fn(page, String, push_payload.Event) ->
+    #(page, Effect(page_msg)),
   on_page on_page: fn(page_msg) -> msg,
 ) -> #(page, Effect(msg)) {
-  let page_update = apply_frame(page, bytes)
-  map_page_effect(page_update, on_page)
+  case client_protocol.decode_server_frame(bytes) {
+    Ok(client_protocol.Push(module:, message:)) ->
+      map_page_effect(apply_push(page, module, message), on_page)
+    Error(Nil) -> #(page, effect.none())
+  }
 }
 
 @target(javascript)

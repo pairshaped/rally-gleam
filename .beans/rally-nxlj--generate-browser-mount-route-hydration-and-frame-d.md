@@ -58,3 +58,17 @@ Validated with:
 • Scoreboard `node test/ws_result_smoke.mjs`
 
 Validation caveat: Rally's test runner ignored the requested module filter and ran the wider suite; unrelated dependency/tmp failures remain. Scoreboard `gleam test --target erlang` is currently blocked in this workspace by stale `/tmp/scoreboard-unified-*.db` files owned by `debian`, because `test/support/test_db.gleam` hardcodes `/tmp`.
+
+
+
+Progress slice: generated Rally browser app glue now decodes server frames itself when a push contract is configured. The generated `server_frame_effect` consumes `generated/rally/client_protocol.decode_server_frame` and calls an app-supplied typed push callback with the decoded module and broadcast payload. Scoreboard deleted the root `to_client_application.gleam` decode shim; public/admin boot adapters still own broadcast meaning and page update decisions.
+
+Validated with:
+
+• Rally `gleam build`
+• Rally `gleam test --target erlang -- --module codegen_load_rpc_snapshot_test` enough to refresh `load_rpc_browser_app_gleam`; the command still runs unrelated wider tests and fails on known environment/downstream issues.
+• Scoreboard `gleam run -m rally -- load-rpc`
+• Scoreboard `gleam build --target erlang`
+• Scoreboard `gleam build --target javascript`
+• Scoreboard `node test/boundary_guard_test.mjs`
+• Scoreboard `node test/ws_result_smoke.mjs`

@@ -107,7 +107,10 @@ pub fn generate(
     GeneratedFile("src/generated/rally/browser.gleam", browser_module()),
     GeneratedFile("src/generated/rally/browser_ffi.mjs", browser_ffi()),
     GeneratedFile("src/generated/rally/browser_mount.gleam", browser_mount()),
-    GeneratedFile("src/generated/rally/browser_app.gleam", browser_app(loads:)),
+    GeneratedFile(
+      "src/generated/rally/browser_app.gleam",
+      browser_app(loads:, push_contract:),
+    ),
     GeneratedFile("src/generated/rally/result.gleam", result_module()),
   ]
 }
@@ -592,10 +595,18 @@ function bytes_from_bit_array(frame) {
 "
 }
 
-pub fn browser_app(loads loads: List(LoadRpc)) -> String {
+pub fn browser_app(
+  loads loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
+) -> String {
   let mounts = load_mounts(loads)
 
-  "@target(javascript)
+  "@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
 import generated/rally/browser_mount
 @target(javascript)
 import generated/rally/client_transport
@@ -612,6 +623,8 @@ import lustre/effect.{type Effect}
 @target(javascript)
 import lustre/element.{type Element}
 " <> browser_app_int_import(loads) <> "
+" <> browser_app_client_protocol_import(push_contract) <> "
+" <> push_import(push_contract, "@target(javascript)") <> "
 " <> browser_app_mount_imports(mounts) <> "
 " <> wire_imports(loads, "@target(javascript)", client_only: False) <> "
 " <> string.join(
@@ -679,16 +692,7 @@ pub fn map_page_effect(
   #(page, effect.map(page_effect, on_page))
 }
 
-@target(javascript)
-pub fn server_frame_effect(
-  page page: page,
-  bytes bytes: BitArray,
-  apply_frame apply_frame: fn(page, BitArray) -> #(page, Effect(page_msg)),
-  on_page on_page: fn(page_msg) -> msg,
-) -> #(page, Effect(msg)) {
-  let page_update = apply_frame(page, bytes)
-  map_page_effect(page_update, on_page)
-}
+" <> browser_app_server_frame_effect(push_contract) <> "
 
 @target(javascript)
 pub fn navigation_effects(
@@ -759,6 +763,48 @@ fn browser_app_int_import(loads: List(LoadRpc)) -> String {
   {
     True -> "\n@target(javascript)\nimport gleam/int"
     False -> ""
+  }
+}
+
+fn browser_app_client_protocol_import(
+  push_contract: Option(PushContract),
+) -> String {
+  case push_contract {
+    Some(_) -> "@target(javascript)\nimport generated/rally/client_protocol\n"
+    None -> ""
+  }
+}
+
+fn browser_app_server_frame_effect(
+  push_contract: Option(PushContract),
+) -> String {
+  case push_contract {
+    Some(contract) -> "@target(javascript)
+pub fn server_frame_effect(
+  page page: page,
+  bytes bytes: BitArray,
+  apply_push apply_push: fn(page, String, " <> push_type_ref(contract) <> ") ->
+    #(page, Effect(page_msg)),
+  on_page on_page: fn(page_msg) -> msg,
+) -> #(page, Effect(msg)) {
+  case client_protocol.decode_server_frame(bytes) {
+    Ok(client_protocol.Push(module:, message:)) ->
+      map_page_effect(apply_push(page, module, message), on_page)
+    Error(Nil) -> #(page, effect.none())
+  }
+}
+"
+    None ->
+      "@target(javascript)
+pub fn server_frame_effect(
+  page page: page,
+  bytes _bytes: BitArray,
+  apply_push _apply_push: fn(page, String, Nil) -> #(page, Effect(page_msg)),
+  on_page _on_page: fn(page_msg) -> msg,
+) -> #(page, Effect(msg)) {
+  #(page, effect.none())
+}
+"
   }
 }
 
