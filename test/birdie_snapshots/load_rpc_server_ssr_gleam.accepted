@@ -123,7 +123,10 @@ pub fn public_boot_page(
   case select_load(route) {
     PublicNoLoad -> #(page, [])
     PublicGamesLoad(to_message:) -> {
-      let result = public_games_page.load_wire(handlers.load_context())
+      let result = case public_games_page.load(handlers.load_context()) {
+        Ok(data) -> Ok(public_games_wire.PublicGamesLoaded(data))
+        Error(public_games_page.LoadError(message: message)) -> Error([message])
+      }
       boot_loaded_page(
         page: page,
         result: result,
@@ -137,10 +140,14 @@ pub fn public_boot_page(
         public_routes.GamesId(id:) ->
           case int.parse(id) {
             Ok(game_id) ->
-              public_game_detail_page.load_wire(
-                handlers.load_context(),
-                game_id,
-              )
+              case
+                public_game_detail_page.load(handlers.load_context(), game_id)
+              {
+                Ok(data) ->
+                  Ok(public_game_detail_wire.PublicGameDetailLoaded(data))
+                Error(public_game_detail_page.LoadError(message: message)) ->
+                  Error([message])
+              }
             Error(Nil) -> Error(["Invalid route parameter."])
           }
         _ -> Error(["Unexpected route."])

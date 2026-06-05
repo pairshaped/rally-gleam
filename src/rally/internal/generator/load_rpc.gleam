@@ -35,6 +35,8 @@ pub type LoadRpc {
     import_on_client: Bool,
     /// ServerMsg constructor used to request the page load.
     request_constructor: String,
+    /// LoadResult constructor used to wrap the loaded page data.
+    load_result_constructor: String,
     args: List(LoadArg),
     save_result_type: Option(String),
   )
@@ -1564,8 +1566,16 @@ fn discover_source(
             save_result_type:,
             modules:,
           ))
-          def.definition.variants
-          |> list.filter(fn(variant) { string.ends_with(variant.name, "Load") })
+          let load_variants =
+            def.definition.variants
+            |> list.filter(fn(variant) {
+              string.ends_with(variant.name, "Load")
+            })
+          use load_result_constructor <- result.try(load_result_constructor(
+            ast.custom_types,
+          ))
+
+          load_variants
           |> list.try_map(fn(variant) {
             let name =
               variant.name
@@ -1583,6 +1593,7 @@ fn discover_source(
               wire_module:,
               import_on_client:,
               request_constructor: variant.name,
+              load_result_constructor:,
               args:,
               save_result_type:,
             ))
@@ -1590,6 +1601,23 @@ fn discover_source(
         }
       }
     }
+  }
+}
+
+fn load_result_constructor(
+  custom_types: List(glance.Definition(glance.CustomType)),
+) -> Result(String, String) {
+  case
+    custom_types
+    |> list.find(fn(def) { def.definition.name == "LoadResult" })
+    |> result.map(fn(def) { def.definition.variants })
+  {
+    Ok([variant]) -> Ok(variant.name)
+    Ok(_) ->
+      Error(
+        "Rally can only generate load adapters for LoadResult types with one variant.",
+      )
+    Error(Nil) -> Error("Missing LoadResult type.")
   }
 }
 
@@ -2777,23 +2805,18 @@ fn server_ws_load_result_call(
 ) -> String {
   case server_ws_direct_load(load, load_context:) {
     True ->
-      page_alias(load)
-      <> ".load_wire(handlers.load_context(state)"
-      <> server_ws_page_load_args(load.args)
-      <> ")\n    |> map_page_load_result"
+      generated_direct_load_call(
+        load:,
+        load_context: "handlers.load_context(state)",
+        args: call_args(load.args),
+      )
+      <> "\n    |> map_page_load_result"
     False ->
       "handlers."
       <> load.name
       <> "_load("
       <> server_ws_handler_args_call(load)
       <> ")"
-  }
-}
-
-fn server_ws_page_load_args(args: List(LoadArg)) -> String {
-  case call_args(args) {
-    "" -> ""
-    args -> ", " <> args
   }
 }
 
@@ -3130,7 +3153,12 @@ fn server_ssr_load_result_call(
 
 fn server_ssr_page_load_call(load: LoadRpc) -> String {
   case load.args {
-    [] -> page_alias(load) <> ".load_wire(handlers.load_context())"
+    [] ->
+      generated_direct_load_call(
+        load:,
+        load_context: "handlers.load_context()",
+        args: "",
+      )
     _ -> "case route {
         " <> server_ssr_route_pattern(load) <> " -> " <> server_ssr_page_load_arg_body(
         load,
@@ -3147,10 +3175,11 @@ fn server_ssr_page_load_arg_body(load: LoadRpc) -> String {
 
   case list.any(load_args, fn(arg) { arg.type_ref == "Int" }) {
     False ->
-      page_alias(load)
-      <> ".load_wire(handlers.load_context(), "
-      <> call_args(load.args)
-      <> ")"
+      generated_direct_load_call(
+        load:,
+        load_context: "handlers.load_context()",
+        args: call_args(load.args),
+      )
     True -> server_ssr_int_load_arg_body(load, route_fields, load_args)
   }
 }
@@ -3177,13 +3206,43 @@ fn server_ssr_int_load_arg_body(
     |> string.join("\n")
 
   string.join(parsers, "")
-  <> page_alias(load)
-  <> ".load_wire(handlers.load_context(), "
-  <> call_args(load.args)
-  <> ")
+  <> generated_direct_load_call(
+    load:,
+    load_context: "handlers.load_context()",
+    args: call_args(load.args),
+  )
+  <> "
             Error(Nil) -> Error([\"Invalid route parameter.\"])
           "
   <> close_parens
+}
+
+fn generated_direct_load_call(
+  load load: LoadRpc,
+  load_context load_context: String,
+  args args: String,
+) -> String {
+  "case "
+  <> page_alias(load)
+  <> ".load("
+  <> call_args_with_context(load_context, args)
+  <> ") {
+      Ok(data) -> Ok("
+  <> wire_alias(load)
+  <> "."
+  <> load.load_result_constructor
+  <> "(data))
+      Error("
+  <> page_alias(load)
+  <> ".LoadError(message: message)) -> Error([message])
+    }"
+}
+
+fn call_args_with_context(load_context: String, args: String) -> String {
+  case args {
+    "" -> load_context
+    _ -> load_context <> ", " <> args
+  }
 }
 
 fn server_ssr_route_pattern(load: LoadRpc) -> String {

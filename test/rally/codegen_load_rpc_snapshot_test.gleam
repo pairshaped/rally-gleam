@@ -18,6 +18,7 @@ fn public_games_load() -> LoadRpc {
     wire_module: "public/pages/games/wire",
     import_on_client: True,
     request_constructor: "PublicGamesLoad",
+    load_result_constructor: "PublicGamesLoaded",
     args: [],
     save_result_type: None,
   )
@@ -30,6 +31,7 @@ fn public_game_detail_load() -> LoadRpc {
     wire_module: "public/pages/games/id_/wire",
     import_on_client: True,
     request_constructor: "PublicGameDetailLoad",
+    load_result_constructor: "PublicGameDetailLoaded",
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )
@@ -42,6 +44,7 @@ fn admin_games_load() -> LoadRpc {
     wire_module: "admin/pages/games",
     import_on_client: False,
     request_constructor: "AdminGamesLoad",
+    load_result_constructor: "AdminGamesLoaded",
     args: [],
     save_result_type: Some("GameUpdate"),
   )
@@ -317,6 +320,7 @@ pub type LoadResult {
     wire_module: "public/pages/games/wire",
     import_on_client: True,
     request_constructor: "PublicGamesLoad",
+    load_result_constructor: "PublicGamesLoaded",
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -327,6 +331,7 @@ pub type LoadResult {
     wire_module: "public/pages/games/id_/wire",
     import_on_client: True,
     request_constructor: "PublicGameDetailLoad",
+    load_result_constructor: "PublicGameDetailLoaded",
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
@@ -337,6 +342,7 @@ pub type LoadResult {
     wire_module: "admin/pages/games",
     import_on_client: False,
     request_constructor: "AdminGamesLoad",
+    load_result_constructor: "AdminGamesLoaded",
     args: [],
     save_result_type: Some("GameUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
@@ -376,6 +382,7 @@ pub type GameSummary {
     wire_module: "public/pages/games",
     import_on_client: False,
     request_constructor: "PublicGamesLoad",
+    load_result_constructor: "PublicGamesLoaded",
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -609,6 +616,7 @@ pub type LoadResult {
     wire_module: "public/pages/games/wire",
     import_on_client: True,
     request_constructor: "PublicGamesLoad",
+    load_result_constructor: "PublicGamesLoaded",
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })

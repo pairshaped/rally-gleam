@@ -236,7 +236,10 @@ fn send_public_games_load_result(
   handlers handlers: Handlers(state),
 ) -> Nil {
   let result =
-    public_games_page.load_wire(handlers.load_context(state))
+    case public_games_page.load(handlers.load_context(state)) {
+      Ok(data) -> Ok(public_games_wire.PublicGamesLoaded(data))
+      Error(public_games_page.LoadError(message: message)) -> Error([message])
+    }
     |> map_page_load_result
     |> map_load_result
 
@@ -260,7 +263,11 @@ fn send_public_game_detail_load_result(
   game_id game_id: Int,
 ) -> Nil {
   let result =
-    public_game_detail_page.load_wire(handlers.load_context(state), game_id)
+    case public_game_detail_page.load(handlers.load_context(state), game_id) {
+      Ok(data) -> Ok(public_game_detail_wire.PublicGameDetailLoaded(data))
+      Error(public_game_detail_page.LoadError(message: message)) ->
+        Error([message])
+    }
     |> map_page_load_result
     |> map_load_result
 
