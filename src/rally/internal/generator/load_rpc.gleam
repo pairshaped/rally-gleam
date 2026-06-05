@@ -2069,13 +2069,15 @@ import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
 @target(erlang)
+import gleam/erlang/process.{type Selector}
+@target(erlang)
 import gleam/list
 @target(erlang)
 import gleam/option.{type Option, None, Some}
 @target(erlang)
 import gleam/string
 @target(erlang)
-import mist.{type WebsocketConnection}
+import mist.{type Next, type WebsocketConnection, type WebsocketMessage}
 @target(erlang)
 import rally/runtime/topics
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> server_ws_page_imports(
@@ -2101,6 +2103,7 @@ pub type " <> server_ws_handlers_type_definition(loads, load_context:) <> " {
 " <> server_ws_handler_fields(loads, load_context:) <> "
   )
 }
+" <> server_ws_transport_loop(load_context) <> "
 
 @target(erlang)
 pub fn handle_client_frame(
@@ -3211,6 +3214,83 @@ fn map_page_load_result(
 }
 "
     False -> ""
+  }
+}
+
+fn server_ws_transport_loop(load_context: Option(LoadContext)) -> String {
+  case load_context {
+    Some(load_context) -> {
+      let load_context_type = load_context_type_ref(load_context)
+      "
+@target(erlang)
+pub type ConnectionState(admin_auth) {
+  ConnectionState(
+    load_context: " <> load_context_type <> ",
+    admin_auth: Option(admin_auth),
+    topics: List(String),
+  )
+}
+
+@target(erlang)
+pub fn on_init(
+  load_context load_context: " <> load_context_type <> ",
+  admin_auth admin_auth: Option(admin_auth),
+) -> #(ConnectionState(admin_auth), Option(Selector(BitArray))) {
+  topics.start()
+  #(
+    ConnectionState(load_context:, admin_auth:, topics: []),
+    Some(topics.frame_selector()),
+  )
+}
+
+@target(erlang)
+pub fn on_close(state: ConnectionState(admin_auth)) -> Nil {
+  state.topics
+  |> list.each(topics.leave)
+}
+
+@target(erlang)
+pub fn handler(
+  state state: ConnectionState(admin_auth),
+  msg msg: WebsocketMessage(BitArray),
+  conn conn: WebsocketConnection,
+) -> Next(ConnectionState(admin_auth), BitArray) {
+  let handlers =
+    Handlers(
+      load_context: fn(state: ConnectionState(admin_auth)) {
+        state.load_context
+      },
+      admin_auth: fn(state: ConnectionState(admin_auth)) { state.admin_auth },
+    )
+
+  case msg {
+    mist.Binary(data) -> {
+      handle_client_frame(
+        state: state,
+        conn: conn,
+        data: data,
+        handlers: handlers,
+      )
+      mist.continue(state)
+    }
+    mist.Custom(frame) -> {
+      let _sent = mist.send_binary_frame(conn, frame)
+      mist.continue(state)
+    }
+    mist.Text(frame) -> {
+      case sync_topic_frame(state.topics, frame) {
+        Ok(next_topics) ->
+          mist.continue(ConnectionState(..state, topics: next_topics))
+        Error(Nil) -> mist.continue(state)
+      }
+    }
+    mist.Closed -> mist.stop()
+    mist.Shutdown -> mist.stop()
+  }
+}
+"
+    }
+    None -> ""
   }
 }
 

@@ -16,13 +16,15 @@ import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
 @target(erlang)
+import gleam/erlang/process.{type Selector}
+@target(erlang)
 import gleam/list
 @target(erlang)
 import gleam/option.{type Option, None, Some}
 @target(erlang)
 import gleam/string
 @target(erlang)
-import mist.{type WebsocketConnection}
+import mist.{type Next, type WebsocketConnection, type WebsocketMessage}
 @target(erlang)
 import public/pages/games as public_games_page
 @target(erlang)
@@ -52,6 +54,73 @@ pub type Handlers(state, admin_auth) {
     load_context: fn(state) -> load_context.Connection,
     admin_auth: fn(state) -> Option(admin_auth),
   )
+}
+
+@target(erlang)
+pub type ConnectionState(admin_auth) {
+  ConnectionState(
+    load_context: load_context.Connection,
+    admin_auth: Option(admin_auth),
+    topics: List(String),
+  )
+}
+
+@target(erlang)
+pub fn on_init(
+  load_context load_context: load_context.Connection,
+  admin_auth admin_auth: Option(admin_auth),
+) -> #(ConnectionState(admin_auth), Option(Selector(BitArray))) {
+  topics.start()
+  #(
+    ConnectionState(load_context:, admin_auth:, topics: []),
+    Some(topics.frame_selector()),
+  )
+}
+
+@target(erlang)
+pub fn on_close(state: ConnectionState(admin_auth)) -> Nil {
+  state.topics
+  |> list.each(topics.leave)
+}
+
+@target(erlang)
+pub fn handler(
+  state state: ConnectionState(admin_auth),
+  msg msg: WebsocketMessage(BitArray),
+  conn conn: WebsocketConnection,
+) -> Next(ConnectionState(admin_auth), BitArray) {
+  let handlers =
+    Handlers(
+      load_context: fn(state: ConnectionState(admin_auth)) {
+        state.load_context
+      },
+      admin_auth: fn(state: ConnectionState(admin_auth)) { state.admin_auth },
+    )
+
+  case msg {
+    mist.Binary(data) -> {
+      handle_client_frame(
+        state: state,
+        conn: conn,
+        data: data,
+        handlers: handlers,
+      )
+      mist.continue(state)
+    }
+    mist.Custom(frame) -> {
+      let _sent = mist.send_binary_frame(conn, frame)
+      mist.continue(state)
+    }
+    mist.Text(frame) -> {
+      case sync_topic_frame(state.topics, frame) {
+        Ok(next_topics) ->
+          mist.continue(ConnectionState(..state, topics: next_topics))
+        Error(Nil) -> mist.continue(state)
+      }
+    }
+    mist.Closed -> mist.stop()
+    mist.Shutdown -> mist.stop()
+  }
 }
 
 @target(erlang)
