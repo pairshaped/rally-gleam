@@ -50,6 +50,8 @@ pub type LoadRpc {
     route_modules: List(String),
     /// Page message constructors that navigate to this load route.
     navigation_sources: List(PageNavigation),
+    /// Whether this load's Proute mount update dispatcher needs PageContext.
+    update_uses_page_context: Bool,
     args: List(LoadArg),
     save_result_type: Option(String),
   )
@@ -98,6 +100,7 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
       ..load,
       route_modules:,
       navigation_sources: navigation_sources(load, modules),
+      update_uses_page_context: mount_update_uses_page_context(load, modules),
     )
   })
   |> Ok
@@ -1782,6 +1785,8 @@ import gleam/list
 @target(erlang)
 import lustre/effect.{type Effect}
 @target(erlang)
+import lustre/element.{type Element}
+@target(erlang)
 import page_context.{type PageContext}
 " <> server_ssr_mount_imports(mounts) <> wire_imports(
     loads,
@@ -1791,6 +1796,10 @@ import page_context.{type PageContext}
     direct_loads,
     load_context:,
   ) <> "\n" <> string.join(
+    list.map(mounts, fn(mount) { server_ssr_mount_output_type(mount) }),
+    "\n",
+  ) <> "
+" <> string.join(
     list.map(mounts, fn(mount) {
       server_ssr_mount_route_type(mount, mount_loads(loads, mount))
     }),
@@ -1809,6 +1818,12 @@ import page_context.{type PageContext}
         mount_loads(loads, mount),
         load_context:,
       )
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      server_ssr_mount_render_path(mount, mount_loads(loads, mount))
     }),
     "\n",
   ) <> "
@@ -1982,6 +1997,7 @@ fn discover_source(
               load_result_constructor:,
               route_modules: [module_path],
               navigation_sources: [],
+              update_uses_page_context: False,
               args:,
               save_result_type:,
             ))
@@ -2120,6 +2136,41 @@ fn navigation_args(
       _ -> Error(Nil)
     }
   })
+}
+
+fn mount_update_uses_page_context(
+  load: LoadRpc,
+  modules: List(SourceModule),
+) -> Bool {
+  modules
+  |> list.any(fn(source) {
+    load_mount_from_module(source.module_path) == load_mount(load)
+    && source_update_uses_page_context(source)
+  })
+}
+
+fn source_update_uses_page_context(source: SourceModule) -> Bool {
+  case
+    list.find(source.ast.functions, fn(def) { def.definition.name == "update" })
+  {
+    Ok(def) ->
+      case def.definition.parameters {
+        [first, ..] -> function_parameter_name(first) == Ok("page_context")
+        [] -> False
+      }
+    Error(Nil) -> False
+  }
+}
+
+fn function_parameter_name(
+  param: glance.FunctionParameter,
+) -> Result(String, Nil) {
+  case param {
+    glance.FunctionParameter(label: Some(label), ..) -> Ok(label)
+    glance.FunctionParameter(label: None, name: glance.Named(name), ..) ->
+      Ok(name)
+    _ -> Error(Nil)
+  }
 }
 
 fn type_alias_targets_module(
@@ -3588,6 +3639,20 @@ fn server_ssr_page_imports(loads: List(LoadRpc)) -> String {
   }
 }
 
+fn server_ssr_mount_output_type(mount: String) -> String {
+  let prefix = mount_type_prefix(mount)
+
+  "@target(erlang)
+pub type " <> prefix <> "SsrOutput {
+  " <> prefix <> "SsrOutput(
+    current_path: String,
+    content: Element(Nil),
+    hydration: List(String),
+  )
+}
+"
+}
+
 fn server_ssr_mount_route_type(mount: String, loads: List(LoadRpc)) -> String {
   let prefix = mount_type_prefix(mount)
   let pages = mount_alias(mount, "pages")
@@ -3638,6 +3703,51 @@ pub type " <> prefix <> "LoadHandlers {
   )
 }
 "
+}
+
+fn server_ssr_mount_render_path(mount: String, loads: List(LoadRpc)) -> String {
+  let prefix = mount_type_prefix(mount)
+  let page_input = mount_alias(mount, "page_input")
+  let routes = mount_alias(mount, "routes")
+  let pages = mount_alias(mount, "pages")
+
+  "@target(erlang)
+pub fn " <> mount <> "_render_path(
+  page_context page_context: PageContext,
+  query_params query_params: " <> page_input <> ".QueryParams,
+  path path: String,
+  handlers handlers: " <> prefix <> "LoadHandlers,
+) -> " <> prefix <> "SsrOutput {
+  let route = " <> routes <> ".parse_path(path)
+  let #(page, hydration) =
+    " <> mount <> "_boot_page(
+      page_context:,
+      query_params:,
+      route:,
+      handlers:,
+      update_page: fn(page, message) {
+        " <> server_ssr_mount_update_call(pages, loads) <> "
+      },
+    )
+
+  " <> prefix <> "SsrOutput(
+    current_path: " <> routes <> ".route_to_path(route),
+    content: " <> pages <> ".view(page) |> element.map(fn(_) { Nil }),
+    hydration:,
+  )
+}
+"
+}
+
+fn server_ssr_mount_update_call(pages: String, loads: List(LoadRpc)) -> String {
+  case mount_loads_update_uses_page_context(loads) {
+    True -> pages <> ".update(page_context, page, message)"
+    False -> pages <> ".update(page, message)"
+  }
+}
+
+fn mount_loads_update_uses_page_context(loads: List(LoadRpc)) -> Bool {
+  list.any(loads, fn(load) { load.update_uses_page_context })
 }
 
 fn server_ssr_mount_boot_page(

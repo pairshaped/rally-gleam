@@ -21,6 +21,7 @@ fn public_games_load() -> LoadRpc {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [],
     save_result_type: None,
   )
@@ -36,6 +37,7 @@ fn public_game_detail_load() -> LoadRpc {
     load_result_constructor: "PublicGameDetailLoaded",
     route_modules: ["public/pages/games/id_"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )
@@ -51,6 +53,7 @@ fn admin_games_load() -> LoadRpc {
     load_result_constructor: "AdminGamesLoaded",
     route_modules: ["admin/pages/games"],
     navigation_sources: [],
+    update_uses_page_context: True,
     args: [],
     save_result_type: Some("GameUpdate"),
   )
@@ -258,6 +261,7 @@ pub fn load_rpc_hydration_snapshot_test() {
 
 pub fn load_rpc_browser_app_snapshot_test() {
   content_for("src/generated/rally/browser_app.gleam")
+  |> drop_terminal_newline
   |> birdie.snap("load_rpc_browser_app_gleam")
 }
 
@@ -349,6 +353,7 @@ pub type LoadResult {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games", "public/pages/home_"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -362,6 +367,7 @@ pub type LoadResult {
     load_result_constructor: "PublicGameDetailLoaded",
     route_modules: ["public/pages/games/id_"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
@@ -375,6 +381,7 @@ pub type LoadResult {
     load_result_constructor: "AdminGamesLoaded",
     route_modules: ["admin/pages/games"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [],
     save_result_type: Some("GameUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
@@ -417,6 +424,7 @@ pub type GameSummary {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -653,6 +661,7 @@ pub type LoadResult {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
     navigation_sources: [],
+    update_uses_page_context: False,
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -669,4 +678,11 @@ fn content_for_files(files: List(GeneratedFile), path: String) -> String {
       file_path == path
     })
   format.format_gleam(content)
+}
+
+fn drop_terminal_newline(content: String) -> String {
+  case string.ends_with(content, "\n") {
+    True -> string.drop_end(content, 1)
+    False -> content
+  }
 }
