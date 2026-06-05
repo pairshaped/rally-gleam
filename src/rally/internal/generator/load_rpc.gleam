@@ -49,40 +49,31 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   })
 }
 
-pub fn generate(
-  loads loads: List(LoadRpc),
-  to_client_module to_client_module: String,
-  to_server_module to_server_module: String,
-) -> List(GeneratedFile) {
+pub fn generate(loads loads: List(LoadRpc)) -> List(GeneratedFile) {
   [
     GeneratedFile(
       "src/generated/rally/client_protocol.gleam",
-      client_protocol(loads:, to_client_module:, to_server_module:),
+      client_protocol(loads:),
     ),
     GeneratedFile(
       "src/generated/rally/server_protocol.gleam",
-      server_protocol(loads:, to_client_module:, to_server_module:),
+      server_protocol(loads:),
     ),
     GeneratedFile(
       "src/generated/rally/client_transport.gleam",
-      client_transport(loads:, to_client_module:, to_server_module:),
+      client_transport(loads:),
     ),
     GeneratedFile(
-      "src/generated/rally/server.gleam",
-      page_server(loads:, to_client_module:, to_server_module:),
+      "src/generated/rally/client_transport_ffi.mjs",
+      client_transport_ffi(),
     ),
-    GeneratedFile(
-      "src/generated/rally/server_ws.gleam",
-      server_ws(loads:, to_client_module:, to_server_module:),
-    ),
-    GeneratedFile(
-      "src/generated/rally/server_ssr.gleam",
-      server_ssr(loads:, to_client_module:, to_server_module:),
-    ),
-    GeneratedFile(
-      "src/generated/rally/hydration.gleam",
-      hydration(loads:, to_client_module:),
-    ),
+    GeneratedFile("src/generated/rally/server.gleam", page_server(loads:)),
+    GeneratedFile("src/generated/rally/server_ws.gleam", server_ws(loads:)),
+    GeneratedFile("src/generated/rally/server_ssr.gleam", server_ssr(loads:)),
+    GeneratedFile("src/generated/rally/hydration.gleam", hydration(loads:)),
+    GeneratedFile("src/generated/rally/browser.gleam", browser_module()),
+    GeneratedFile("src/generated/rally/browser_ffi.mjs", browser_ffi()),
+    GeneratedFile("src/generated/rally/browser_mount.gleam", browser_mount()),
     GeneratedFile("src/generated/rally/browser_app.gleam", browser_app()),
     GeneratedFile("src/generated/rally/result.gleam", result_module()),
   ]
@@ -118,6 +109,445 @@ pub type ApiLoadError {
 
 pub type ApiSaveError {
   ApiSaveError(field: Option(String), message: String)
+}
+"
+}
+
+pub fn browser_module() -> String {
+  "@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"path\")
+pub fn path() -> String {
+  \"/\"
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"websocket_url\")
+pub fn websocket_url() -> String {
+  \"ws://localhost:8080/ws\"
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"boot_int\")
+pub fn boot_int(_name: String, _fallback: Int) -> Int {
+  0
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"boot_string\")
+pub fn boot_string(_name: String) -> String {
+  \"\"
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"boot_bool\")
+pub fn boot_bool(_name: String) -> Bool {
+  False
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"take_boot_string\")
+pub fn take_boot_string(_name: String) -> String {
+  \"\"
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"query_string\")
+pub fn query_string() -> String {
+  \"\"
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"push_path\")
+pub fn push_path(_path: String) -> Nil {
+  Nil
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"listen_popstate\")
+pub fn listen_popstate(_dispatch: fn(String) -> Nil) -> Nil {
+  Nil
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"listen_spa_navigation\")
+pub fn listen_spa_navigation(_dispatch: fn(String) -> Nil) -> Nil {
+  Nil
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"device_dark_mode\")
+pub fn device_dark_mode(_cookie_name: String) -> Bool {
+  False
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"apply_dark_mode\")
+pub fn apply_dark_mode(_dark_mode: Bool) -> Nil {
+  Nil
+}
+
+@target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"persist_dark_mode\")
+pub fn persist_dark_mode(_cookie_name: String, _dark_mode: Bool) -> Nil {
+  Nil
+}
+"
+}
+
+pub fn browser_ffi() -> String {
+  "export function path() {
+  return globalThis.location?.pathname || \"/\";
+}
+
+export function websocket_url() {
+  const location = globalThis.location;
+  if (!location) return \"ws://localhost:8080/ws\";
+  const protocol = location.protocol === \"https:\" ? \"wss:\" : \"ws:\";
+  return `${protocol}//${location.host}/ws`;
+}
+
+function bootData() {
+  return globalThis.document?.querySelector?.(\"#app\")?.dataset ?? {};
+}
+
+export function boot_int(name, fallback) {
+  const value = Number.parseInt(bootData()[name] ?? String(fallback), 10);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+export function boot_string(name) {
+  return bootData()[name] ?? \"\";
+}
+
+export function boot_bool(name) {
+  return bootData()[name] === \"1\";
+}
+
+export function take_boot_string(name) {
+  const data = bootData();
+  const value = data[name] ?? \"\";
+  delete data[name];
+  return value;
+}
+
+export function query_string() {
+  const search = globalThis.location?.search ?? \"\";
+  const params = new URLSearchParams(search);
+  return Array.from(params.entries())
+    .map(([key, value]) => `${key}=${value}`)
+    .join(\"&\");
+}
+
+export function push_path(path) {
+  const history = globalThis.history;
+  const location = globalThis.location;
+  if (!history || !location || location.pathname === path) return;
+  history.pushState(null, \"\", path);
+}
+
+export function listen_popstate(dispatch) {
+  globalThis.addEventListener?.(\"popstate\", () => {
+    dispatch(path());
+  });
+}
+
+export function listen_spa_navigation(dispatch) {
+  globalThis.document?.addEventListener?.(\"click\", event => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+    const link = event.target?.closest?.(\"a[data-rally-spa-nav]\");
+    if (!link) return;
+
+    const location = globalThis.location;
+    if (!location) return;
+
+    const url = new URL(link.href, location.href);
+    if (url.origin !== location.origin) return;
+
+    const destination = url.pathname + url.search;
+    if (destination === location.pathname + location.search) {
+      event.preventDefault();
+      return;
+    }
+
+    event.preventDefault();
+    dispatch(destination);
+  });
+}
+
+export function device_dark_mode(cookieName) {
+  const raw = getCookie(cookieName);
+  if (raw) {
+    const params = new URLSearchParams(raw);
+    return params.get(\"dark_mode\") === \"1\";
+  }
+
+  return typeof globalThis.matchMedia === \"function\"
+    ? globalThis.matchMedia(\"(prefers-color-scheme: dark)\").matches
+    : false;
+}
+
+export function apply_dark_mode(darkMode) {
+  const document = globalThis.document;
+  if (!document?.documentElement) return;
+  document.documentElement.dataset.theme = darkMode ? \"dark\" : \"light\";
+}
+
+export function persist_dark_mode(cookieName, darkMode) {
+  const value = \"v=1&dark_mode=\" + (darkMode ? \"1\" : \"0\");
+  setCookie(cookieName, value, 365);
+}
+
+function getCookie(name) {
+  const document = globalThis.document;
+  if (!document?.cookie) return null;
+
+  const prefix = name + \"=\";
+  const pair = document.cookie
+    .split(\"; \")
+    .find(cookie => cookie.startsWith(prefix));
+
+  return pair ? decodeURIComponent(pair.slice(prefix.length)) : null;
+}
+
+function setCookie(name, value, days) {
+  const document = globalThis.document;
+  if (!document) return;
+  const expires = days
+    ? \"; expires=\" + new Date(Date.now() + days * 864e5).toUTCString()
+    : \"\";
+  document.cookie = name + \"=\" + value + \"; Path=/; SameSite=Lax\" + expires;
+}
+"
+}
+
+pub fn browser_mount() -> String {
+  "@target(javascript)
+import generated/rally/browser
+@target(javascript)
+import generated/rally/client_transport
+@target(javascript)
+import gleam/list
+@target(javascript)
+import gleam/string
+@target(javascript)
+import lustre/effect.{type Effect}
+
+@target(javascript)
+pub fn device_dark_mode(cookie_name: String) -> Bool {
+  browser.device_dark_mode(cookie_name)
+}
+
+@target(javascript)
+fn apply_dark_mode(dark_mode: Bool) -> Effect(msg) {
+  effect.from(fn(_dispatch) { browser.apply_dark_mode(dark_mode) })
+}
+
+@target(javascript)
+fn persist_dark_mode(cookie_name: String, dark_mode: Bool) -> Effect(msg) {
+  effect.from(fn(_dispatch) {
+    browser.persist_dark_mode(cookie_name, dark_mode)
+  })
+}
+
+@target(javascript)
+pub fn dark_mode_changed_effects(
+  cookie_name cookie_name: String,
+  dark_mode dark_mode: Bool,
+) -> Effect(msg) {
+  effect.batch([
+    persist_dark_mode(cookie_name, dark_mode),
+    apply_dark_mode(dark_mode),
+  ])
+}
+
+@target(javascript)
+pub fn startup_effects(
+  dark_mode dark_mode: Bool,
+  on_frame on_frame: fn(BitArray) -> msg,
+  on_shell_navigation on_shell_navigation: fn(String) -> msg,
+  on_browser_navigation on_browser_navigation: fn(String) -> msg,
+) -> Effect(msg) {
+  effect.batch([
+    apply_dark_mode(dark_mode),
+    client_transport.connect(url: browser.websocket_url(), on_frame: on_frame),
+    listen_for_shell_navigation(on_shell_navigation),
+    listen_for_browser_navigation(on_browser_navigation),
+  ])
+}
+
+@target(javascript)
+pub fn push_path(path: String) -> Effect(msg) {
+  effect.from(fn(_dispatch) { browser.push_path(path) })
+}
+
+@target(javascript)
+fn listen_for_browser_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    browser.listen_popstate(fn(path) { dispatch(to_message(path)) })
+  })
+}
+
+@target(javascript)
+fn listen_for_shell_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    browser.listen_spa_navigation(fn(path) { dispatch(to_message(path)) })
+  })
+}
+
+@target(javascript)
+pub fn query_pairs() -> List(#(String, String)) {
+  browser.query_string()
+  |> string.split(\"&\")
+  |> list.filter_map(fn(pair) {
+    case string.split(pair, \"=\") {
+      [key, value] -> Ok(#(key, value))
+      _ -> Error(Nil)
+    }
+  })
+}
+"
+}
+
+pub fn client_transport_ffi() -> String {
+  "let socket = null;
+let socketUrl = null;
+let pending = [];
+let pendingResults = new Map();
+let listeners = new Set();
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let requestId = 0;
+
+import { BitArray, Ok } from \"../../gleam.mjs\";
+import { decode_result_envelope } from \"./client_protocol.mjs\";
+
+export function next_request_id() {
+  requestId += 1;
+  return requestId;
+}
+
+export function connect(url, onFrame) {
+  socketUrl = url;
+  listeners.add(onFrame);
+  ensure_socket();
+  return undefined;
+}
+
+export function send_frame(frame) {
+  const bytes = bytes_from_bit_array(frame);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(bytes);
+    return undefined;
+  }
+
+  pending.push(bytes);
+  ensure_socket();
+
+  globalThis.dispatchEvent(
+    new CustomEvent(\"rally:to-server\", {
+      detail: { bytes, frame },
+    }),
+  );
+  return undefined;
+}
+
+export function send_load_frame(requestId, frame, onResult, dispatch) {
+  pendingResults.set(requestId, { onResult, dispatch });
+  send_frame(frame);
+  return undefined;
+}
+
+export function send_save_frame(requestId, frame, onResult, dispatch) {
+  pendingResults.set(requestId, { onResult, dispatch });
+  send_frame(frame);
+  return undefined;
+}
+
+function ensure_socket() {
+  if (!socketUrl || socket) return;
+
+  try {
+    socket = new WebSocket(socketUrl);
+  } catch (_) {
+    socket = null;
+    schedule_reconnect();
+    return;
+  }
+
+  globalThis.__rallySocket = socket;
+  socket.binaryType = \"arraybuffer\";
+
+  socket.addEventListener(\"open\", () => {
+    reconnectAttempts = 0;
+    const queued = pending;
+    pending = [];
+    for (const bytes of queued) socket.send(bytes);
+  });
+
+  socket.addEventListener(\"message\", event => {
+    const bytes = event.data instanceof ArrayBuffer
+      ? new Uint8Array(event.data)
+      : event.data instanceof Uint8Array
+      ? event.data
+      : null;
+    if (!bytes) return;
+
+    const frame = new BitArray(bytes);
+    if (dispatch_result_frame(frame)) return;
+
+    for (const listener of listeners) {
+      try { listener(frame); } catch (_) {}
+    }
+  });
+
+  socket.addEventListener(\"close\", () => {
+    socket = null;
+    schedule_reconnect();
+  });
+
+  socket.addEventListener(\"error\", () => {
+    const current = socket;
+    socket = null;
+    if (current) current.close();
+    schedule_reconnect();
+  });
+}
+
+function dispatch_result_frame(frame) {
+  if (frame.byteAt(0) !== 2) return false;
+
+  const decoded = decode_result_envelope(frame);
+  if (!(decoded instanceof Ok)) return true;
+
+  const [requestId, result] = decoded[0];
+  const pending = pendingResults.get(requestId);
+  if (!pending) return true;
+
+  pendingResults.delete(requestId);
+  pending.dispatch(pending.onResult(result));
+  return true;
+}
+
+function schedule_reconnect() {
+  if (reconnectTimer || !socketUrl) return;
+  const cap = Math.min(500 * Math.pow(2, reconnectAttempts), 30_000);
+  reconnectAttempts += 1;
+  const delay = cap / 2 + Math.random() * (cap / 2);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    ensure_socket();
+  }, delay);
+}
+
+function bytes_from_bit_array(frame) {
+  if (frame?.rawBuffer instanceof Uint8Array) return frame.rawBuffer;
+  if (frame?.buffer instanceof Uint8Array) return frame.buffer;
+  if (frame instanceof Uint8Array) return frame;
+  if (frame instanceof ArrayBuffer) return new Uint8Array(frame);
+  throw new Error(\"Expected a Gleam BitArray frame\");
 }
 "
 }
@@ -212,11 +642,7 @@ pub fn navigation_effects(
 "
 }
 
-pub fn client_protocol(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-  to_server_module _to_server_module: String,
-) -> String {
+pub fn client_protocol(loads loads: List(LoadRpc)) -> String {
   "@target(javascript)
 import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
@@ -273,11 +699,7 @@ fn decode_any(bytes: BitArray) -> Result(a, Nil) {
 "
 }
 
-pub fn server_protocol(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-  to_server_module _to_server_module: String,
-) -> String {
+pub fn server_protocol(loads loads: List(LoadRpc)) -> String {
   "@target(erlang)
 import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
@@ -348,11 +770,7 @@ fn encode_any(value: a) -> BitArray {
 "
 }
 
-pub fn client_transport(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-  to_server_module _to_server_module: String,
-) -> String {
+pub fn client_transport(loads loads: List(LoadRpc)) -> String {
   "@target(javascript)
 import generated/rally/client_protocol
 @target(javascript)
@@ -390,11 +808,7 @@ fn next_request_id() -> Int {
 "
 }
 
-pub fn page_server(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-  to_server_module _to_server_module: String,
-) -> String {
+pub fn page_server(loads loads: List(LoadRpc)) -> String {
   "@target(javascript)
 import generated/rally/client_transport
 @target(javascript)
@@ -452,11 +866,7 @@ fn map_save_result(
 "
 }
 
-pub fn server_ws(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-  to_server_module _to_server_module: String,
-) -> String {
+pub fn server_ws(loads loads: List(LoadRpc)) -> String {
   "@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
@@ -531,11 +941,7 @@ fn map_save_result(
 "
 }
 
-pub fn server_ssr(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-  to_server_module _to_server_module: String,
-) -> String {
+pub fn server_ssr(loads loads: List(LoadRpc)) -> String {
   let mounts = load_mounts(loads)
 
   "@target(erlang)
@@ -598,10 +1004,7 @@ fn boot_loaded_page(
 "
 }
 
-pub fn hydration(
-  loads loads: List(LoadRpc),
-  to_client_module _to_client_module: String,
-) -> String {
+pub fn hydration(loads loads: List(LoadRpc)) -> String {
   "@target(javascript)
 import generated/rally/client_protocol
 @target(javascript)

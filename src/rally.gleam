@@ -289,15 +289,7 @@ fn run_load_rpc() -> Result(String, RallyError) {
     package: package_name_from_toml(toml_map),
     dependency_packages: dependency_names_from_toml(toml_map),
   ))
-  let files =
-    list.append(
-      load_rpc.generate(
-        loads:,
-        to_client_module: "api/to_client",
-        to_server_module: "api/to_server",
-      ),
-      libero_files,
-    )
+  let files = list.append(load_rpc.generate(loads:), libero_files)
   use Nil <- result.try(
     write_load_rpc_files(files)
     |> result.map_error(fn(msg) { RallyError("write error: " <> msg) }),
@@ -357,7 +349,6 @@ fn generate_load_rpc_libero_files(
   let decoders_gleam = libero.generate_decoders_gleam()
   let etf_gleam =
     libero.generate_etf_codec_module(atoms_module:, decoders_module:)
-  let messages_gleam = libero.generate_client_msg_module(endpoints:)
   let contract =
     libero.generate_json_contract(
       endpoints:,
@@ -369,11 +360,7 @@ fn generate_load_rpc_libero_files(
   Ok([
     load_rpc.GeneratedFile(
       "src/generated/libero/dispatch.gleam",
-      messages_gleam,
-    ),
-    load_rpc.GeneratedFile(
-      "src/generated/libero/messages.gleam",
-      messages_gleam,
+      libero.generate_client_msg_module(endpoints:),
     ),
     load_rpc.GeneratedFile(
       "src/generated/libero/rpc_decoders_ffi.mjs",

@@ -51,11 +51,7 @@ fn loads() -> List(LoadRpc) {
 }
 
 fn generated_files() -> List(GeneratedFile) {
-  generate(
-    loads(),
-    to_client_module: "api/to_client",
-    to_server_module: "api/to_server",
-  )
+  generate(loads())
 }
 
 pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
@@ -70,15 +66,39 @@ pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
     "src/generated/rally/client_protocol.gleam",
     "src/generated/rally/server_protocol.gleam",
     "src/generated/rally/client_transport.gleam",
+    "src/generated/rally/client_transport_ffi.mjs",
     "src/generated/rally/server.gleam",
     "src/generated/rally/server_ws.gleam",
     "src/generated/rally/server_ssr.gleam",
     "src/generated/rally/hydration.gleam",
+    "src/generated/rally/browser.gleam",
+    "src/generated/rally/browser_ffi.mjs",
+    "src/generated/rally/browser_mount.gleam",
     "src/generated/rally/browser_app.gleam",
     "src/generated/rally/result.gleam",
   ])
   paths
   |> list.any(fn(path) { string.starts_with(path, "src/generated/libero/") })
+  |> should.be_false()
+}
+
+pub fn load_rpc_browser_runtime_helpers_are_app_neutral_test() {
+  content_for("src/generated/rally/browser_ffi.mjs")
+  |> string.contains("data-rally-spa-nav")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("rally:to-server")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("__rallySocket")
+  |> should.be_true()
+
+  [
+    "src/generated/rally/browser_ffi.mjs",
+    "src/generated/rally/browser_mount.gleam",
+    "src/generated/rally/client_transport_ffi.mjs",
+  ]
+  |> list.any(fn(path) { content_for(path) |> string.contains("scoreboard") })
   |> should.be_false()
 }
 
