@@ -1,7 +1,7 @@
 ---
 # rally-02qj
 title: Generate or provide Rally HTTP server shell routing
-status: todo
+status: in-progress
 type: task
 priority: normal
 tags:
@@ -40,3 +40,16 @@ Acceptance criteria:
 - Move standard routing/upgrade/static/SSR dispatch ceremony behind Rally APIs or generated code.
 - Keep product authorization and resource initialization in app code.
 - Scoreboard server behavior remains unchanged.
+
+Progress slice:
+
+- Added `rally/runtime/static.gleam` with a standard build-asset response helper for `build/dev/javascript`.
+- Rally now declares `gleam_http` and `mist` directly because this runtime API exposes their response types.
+- Scoreboard moved `/_build/*` file serving to the Rally helper while keeping database startup, auth routes, websocket authorization, admin policy, and document rendering app-owned.
+
+Still open:
+
+- Websocket upgrade route wiring.
+- SSR public/admin dispatch shell.
+- Template-auth route plumbing.
+- Standard server startup shell around an app config.
