@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T21:03:01Z
+updated_at: 2026-06-05T21:11:08Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -45,3 +45,11 @@ Starting implementation pass: inspect ADRs and current Scoreboard auth/session r
 - Validated: Rally `gleam test` passed (444 tests; existing generator-format warnings still printed).
 - Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `node test/boundary_guard_test.mjs` passed.
 - Validated: `npm run test:browser` failed once with transient startup `ERR_CONNECTION_REFUSED` at `/games`, then passed on immediate rerun through sign-in, admin save ack, and peer broadcast.
+
+- Progress slice implemented: Rally runtime auth_http now owns generic sign-in form parsing, standard sign-in and invalid-code redirects, sign-out cookie expiry, safe local return path handling, and user-session cookie issuing.
+- Progress slice implemented: Scoreboard app_auth_http now keeps product policy only: admin return-path narrowing, demo-code verification, user lookup, and admin role checks.
+- Guarded: Scoreboard boundary guard rejects app_auth_http-local form parsing and standard auth response construction so generic auth HTTP mechanics stay in Rally.
+- Style cleanup: the one-line issue_session wrapper was removed instead of preserving an unearned helper boundary. Gleam format keeps @target above function docs in the touched auth file, so that layout is formatter-owned here.
+- Still remaining in this epic: protected SSR route wiring, boot identity, websocket auth context, and generated auth route glue remain app-root owned and should move through the same Rally-owned template surface.
+- Validated: Rally `gleam test` passed (449 tests; existing generator-format warnings still printed).
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
