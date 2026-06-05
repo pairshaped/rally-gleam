@@ -342,6 +342,94 @@ pub type LoadResult {
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
 }
 
+pub fn load_rpc_discover_rejects_app_owned_wire_payload_types_test() {
+  let root = "./tmp/load_rpc_boundary_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games")
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/public/helpers")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/helpers/display.gleam",
+      "pub type GameRow {
+  GameRow(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/wire.gleam",
+      "import public/helpers/display
+
+pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(rows: List(display.GameRow))
+}
+",
+    )
+
+  let assert Error(message) = discover(src)
+
+  message
+  |> string.contains(
+    "Invalid wire boundary in public/pages/games/wire.LoadResult",
+  )
+  |> should.be_true()
+  message
+  |> string.contains("LoadResult.PublicGamesLoaded.rows")
+  |> should.be_true()
+  message
+  |> string.contains("public/helpers/display.GameRow")
+  |> should.be_true()
+}
+
+pub fn load_rpc_discover_allows_shared_wire_payload_types_test() {
+  let root = "./tmp/load_rpc_boundary_valid_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games")
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/wire")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/wire/game.gleam",
+      "pub type GameSummary {
+  GameSummary(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/wire.gleam",
+      "import wire/game
+
+pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(games: List(game.GameSummary))
+}
+",
+    )
+
+  let assert Ok(discovered) = discover(src)
+
+  let assert Ok(LoadRpc(
+    name: "public_games",
+    module_path: "public/pages/games",
+    wire_module: "public/pages/games/wire",
+    import_on_client: True,
+    request_constructor: "PublicGamesLoad",
+    args: [],
+    save_result_type: None,
+  )) = list.find(discovered, fn(load) { load.name == "public_games" })
+}
+
 fn content_for(path: String) -> String {
   content_for_files(generated_files(), path)
 }

@@ -11,7 +11,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import libero/field_type
-import libero/glance_type_resolver.{RejectUnsupported}
+import libero/glance_type_resolver.{type TypeResolver, RejectUnsupported}
 import simplifile
 
 pub type GeneratedFile {
@@ -1420,6 +1420,13 @@ fn discover_source(
         False, True -> Some("GameUpdate")
         _, _ -> None
       }
+      use _ <- result.try(validate_wire_boundary(
+        ast:,
+        resolver:,
+        module_path:,
+        wire_module:,
+        save_result_type:,
+      ))
       case
         list.find(ast.custom_types, fn(def) {
           def.definition.name == "ServerMsg"
@@ -1490,6 +1497,161 @@ fn load_args(
         )
     }
   })
+}
+
+fn validate_wire_boundary(
+  ast ast: glance.Module,
+  resolver resolver: TypeResolver,
+  module_path module_path: String,
+  wire_module wire_module: String,
+  save_result_type save_result_type: Option(String),
+) -> Result(Nil, String) {
+  let contract_types = case save_result_type {
+    Some(save_type) -> ["ServerMsg", "LoadResult", save_type]
+    None -> ["ServerMsg", "LoadResult"]
+  }
+
+  contract_types
+  |> list.try_fold(Nil, fn(_, type_name) {
+    validate_wire_custom_type(
+      custom_types: ast.custom_types,
+      resolver:,
+      module_path:,
+      wire_module:,
+      type_name:,
+    )
+  })
+}
+
+fn validate_wire_custom_type(
+  custom_types custom_types: List(glance.Definition(glance.CustomType)),
+  resolver resolver: TypeResolver,
+  module_path module_path: String,
+  wire_module wire_module: String,
+  type_name type_name: String,
+) -> Result(Nil, String) {
+  case list.find(custom_types, fn(def) { def.definition.name == type_name }) {
+    Error(Nil) -> Ok(Nil)
+    Ok(def) ->
+      def.definition.variants
+      |> list.try_fold(Nil, fn(_, variant) {
+        validate_wire_variant(
+          variant:,
+          resolver:,
+          module_path:,
+          wire_module:,
+          type_name:,
+        )
+      })
+  }
+}
+
+fn validate_wire_variant(
+  variant variant: glance.Variant,
+  resolver resolver: TypeResolver,
+  module_path module_path: String,
+  wire_module wire_module: String,
+  type_name type_name: String,
+) -> Result(Nil, String) {
+  variant.fields
+  |> list.try_fold(Nil, fn(_, field) {
+    validate_wire_variant_field(
+      field:,
+      resolver:,
+      module_path:,
+      wire_module:,
+      type_name:,
+      variant_name: variant.name,
+    )
+  })
+}
+
+fn validate_wire_variant_field(
+  field field: glance.VariantField,
+  resolver resolver: TypeResolver,
+  module_path module_path: String,
+  wire_module wire_module: String,
+  type_name type_name: String,
+  variant_name variant_name: String,
+) -> Result(Nil, String) {
+  case field {
+    glance.LabelledVariantField(label:, item:) ->
+      validate_wire_field_type(
+        type_: item,
+        field_path: type_name <> "." <> variant_name <> "." <> label,
+        resolver:,
+        module_path:,
+        wire_module:,
+        contract_name: type_name,
+      )
+    glance.UnlabelledVariantField(item:) ->
+      validate_wire_field_type(
+        type_: item,
+        field_path: type_name <> "." <> variant_name <> ".field",
+        resolver:,
+        module_path:,
+        wire_module:,
+        contract_name: type_name,
+      )
+  }
+}
+
+fn validate_wire_field_type(
+  type_ type_: glance.Type,
+  field_path field_path: String,
+  resolver resolver: TypeResolver,
+  module_path module_path: String,
+  wire_module wire_module: String,
+  contract_name contract_name: String,
+) -> Result(Nil, String) {
+  use resolved <- result.try(
+    glance_type_resolver.type_to_field_type(
+      type_:,
+      resolver:,
+      current_module: wire_module,
+      policy: RejectUnsupported(wire_module <> "." <> field_path),
+    )
+    |> result.map_error(fn(_) {
+      "Unsupported wire contract type in " <> wire_module <> "." <> field_path
+    }),
+  )
+
+  resolved
+  |> field_type.collect_user_types
+  |> list.unique
+  |> list.try_fold(Nil, fn(_, ref) {
+    let #(ref_module, ref_type_name) = ref
+    case allowed_wire_reference(ref_module, module_path, wire_module) {
+      True -> Ok(Nil)
+      False ->
+        Error(
+          "Invalid wire boundary in "
+          <> wire_module
+          <> "."
+          <> contract_name
+          <> ": "
+          <> field_path
+          <> " references "
+          <> ref_module
+          <> "."
+          <> ref_type_name
+          <> ". Rally wire contracts may reference page-local types, src/wire/**, broadcasts.gleam, primitives, and containers.",
+        )
+    }
+  })
+}
+
+fn allowed_wire_reference(
+  ref_module ref_module: String,
+  module_path module_path: String,
+  wire_module wire_module: String,
+) -> Bool {
+  ref_module == wire_module
+  || ref_module == module_path
+  || string.starts_with(ref_module, wire_module <> "/")
+  || string.starts_with(ref_module, module_path <> "/")
+  || ref_module == "broadcasts"
+  || string.starts_with(ref_module, "wire/")
 }
 
 fn walk_directory(path path: String) -> Result(List(String), String) {
