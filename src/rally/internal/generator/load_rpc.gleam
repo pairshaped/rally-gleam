@@ -702,6 +702,8 @@ pub fn ensure() -> Nil {
 }
 
 @target(javascript)
+import generated/rally/browser
+@target(javascript)
 import generated/rally/browser_mount
 @target(javascript)
 import generated/rally/client_transport
@@ -760,6 +762,10 @@ import lustre/element.{type Element}
     list.map(mounts, fn(mount) {
       browser_app_mount_initial_page(mount, mount_loads(loads, mount))
     }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) { browser_app_mount_lifecycle(mount) }),
     "\n",
   ) <> "
 
@@ -885,6 +891,195 @@ import generated/proute/" <> mount <> "/routes as " <> mount_alias(
       _ -> imports <> "\n"
     }
   }
+}
+
+fn browser_app_mount_lifecycle(mount: String) -> String {
+  let prefix = mount_type_prefix(mount)
+  let page_input = mount_alias(mount, "page_input")
+  let pages = mount_alias(mount, "pages")
+  let model = prefix <> "MountModel"
+  let msg = prefix <> "MountMsg"
+  let config = prefix <> "MountConfig"
+  let page_msg = prefix <> "PageMsg"
+  let server_frame = prefix <> "ServerFrame"
+  let dark_mode_changed = prefix <> "DarkModeChanged"
+  let shell_navigate = prefix <> "ShellNavigate"
+  let browser_path_changed = prefix <> "BrowserPathChanged"
+
+  "@target(javascript)
+pub type " <> model <> "(shared_state) {
+  " <> model <> "(page: " <> pages <> ".Page, shared_state: shared_state)
+}
+
+@target(javascript)
+pub type " <> msg <> " {
+  " <> page_msg <> "(" <> pages <> ".Message)
+  " <> server_frame <> "(BitArray)
+  " <> dark_mode_changed <> "(Bool)
+  " <> shell_navigate <> "(String)
+  " <> browser_path_changed <> "(String)
+}
+
+@target(javascript)
+pub type " <> config <> "(shared_state) {
+  " <> config <> "(
+    page_context: PageContext,
+    shared_state: fn(String, Bool) -> shared_state,
+    set_active_path: fn(shared_state, String) -> shared_state,
+    set_dark_mode: fn(shared_state, Bool) -> shared_state,
+    update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) ->
+      #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+    view: fn(
+      " <> model <> "(shared_state),
+      fn(" <> pages <> ".Message) -> " <> msg <> ",
+      fn(Bool) -> " <> msg <> ",
+      fn(String) -> " <> msg <> ",
+    ) -> Element(" <> msg <> "),
+  )
+}
+
+@target(javascript)
+pub fn start_" <> mount <> "_mount(config config: " <> config <> "(shared_state)) -> Nil {
+  start(
+    init: fn(_flags) { " <> mount <> "_mount_init(config) },
+    update: fn(model, msg) { " <> mount <> "_mount_update(config, model, msg) },
+    view: fn(model) {
+      config.view(model, " <> page_msg <> ", " <> dark_mode_changed <> ", " <> shell_navigate <> ")
+    },
+  )
+}
+
+@target(javascript)
+fn " <> mount <> "_mount_init(
+  config config: " <> config <> "(shared_state),
+) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
+  let current_path = browser.path()
+  let dark_mode = browser_mount.device_dark_mode()
+  let query_params = " <> page_input <> ".QueryParams(values: browser_mount.query_pairs())
+  let #(page, page_effect) =
+    " <> mount <> "_initial_page_from_path(
+      page_context: config.page_context,
+      query_params: query_params,
+      path: current_path,
+      update_page: config.update_page,
+    )
+  let shared_state = config.shared_state(current_path, dark_mode)
+
+  #(
+    " <> model <> "(page: page, shared_state:),
+    effect.batch([
+      startup_effects(
+        page_effect: page_effect,
+        dark_mode: dark_mode,
+        on_page: " <> page_msg <> ",
+        on_frame: " <> server_frame <> ",
+        on_shell_navigation: " <> shell_navigate <> ",
+        on_browser_navigation: " <> browser_path_changed <> ",
+      ),
+      sync_topics(" <> mount <> "_page_topics(page)),
+    ]),
+  )
+}
+
+@target(javascript)
+fn " <> mount <> "_mount_update(
+  config config: " <> config <> "(shared_state),
+  model model: " <> model <> "(shared_state),
+  msg msg: " <> msg <> ",
+) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
+  case msg {
+    " <> page_msg <> "(inner) -> {
+      case " <> mount <> "_message_path(inner) {
+        Some(path) -> " <> mount <> "_mount_navigate(
+          config: config,
+          model: model,
+          path: path,
+          push_history: True,
+        )
+        None -> {
+          let #(page, page_effect) =
+            map_page_effect(config.update_page(model.page, inner), " <> page_msg <> ")
+          #(
+            " <> model <> "(..model, page: page),
+            effect.batch([
+              page_effect,
+              sync_topics(" <> mount <> "_page_topics(page)),
+            ]),
+          )
+        }
+      }
+    }
+    " <> server_frame <> "(bytes) -> {
+      let #(page, page_effect) =
+        server_frame_effect(
+          page: model.page,
+          bytes: bytes,
+          apply_push: " <> mount <> "_apply_push,
+          on_page: " <> page_msg <> ",
+        )
+      #(
+        " <> model <> "(..model, page: page),
+        effect.batch([
+          page_effect,
+          sync_topics(" <> mount <> "_page_topics(page)),
+        ]),
+      )
+    }
+    " <> dark_mode_changed <> "(dark_mode) -> {
+      let shared_state = config.set_dark_mode(model.shared_state, dark_mode)
+      #(
+        " <> model <> "(..model, shared_state:),
+        browser_mount.dark_mode_changed_effects(dark_mode),
+      )
+    }
+    " <> shell_navigate <> "(path) -> {
+      " <> mount <> "_mount_navigate(
+        config: config,
+        model: model,
+        path: path,
+        push_history: True,
+      )
+    }
+    " <> browser_path_changed <> "(path) -> {
+      " <> mount <> "_mount_navigate(
+        config: config,
+        model: model,
+        path: path,
+        push_history: False,
+      )
+    }
+  }
+}
+
+@target(javascript)
+fn " <> mount <> "_mount_navigate(
+  config config: " <> config <> "(shared_state),
+  model model: " <> model <> "(shared_state),
+  path path: String,
+  push_history push_history: Bool,
+) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
+  let #(canonical_path, page, page_effect) =
+    " <> mount <> "_load_path(
+      page_context: config.page_context,
+      query_params: " <> page_input <> ".empty_query_params(),
+      path:,
+    )
+  let shared_state = config.set_active_path(model.shared_state, canonical_path)
+
+  #(
+    " <> model <> "(page: page, shared_state:),
+    effect.batch([
+      navigation_effects(
+        path: canonical_path,
+        push_history: push_history,
+        page_effect: page_effect,
+        on_page: " <> page_msg <> ",
+      ),
+      sync_topics(" <> mount <> "_page_topics(page)),
+    ]),
+  )
+}
+"
 }
 
 fn browser_app_int_import(loads: List(LoadRpc)) -> String {

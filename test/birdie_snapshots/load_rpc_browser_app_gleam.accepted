@@ -24,6 +24,8 @@ import generated/proute/public/pages as public_pages
 @target(javascript)
 import generated/proute/public/routes as public_routes
 @target(javascript)
+import generated/rally/browser
+@target(javascript)
 import generated/rally/browser_mount
 @target(javascript)
 import generated/rally/client_protocol
@@ -403,6 +405,368 @@ fn public_request_effect(
         _ -> effect.none()
       }
   }
+}
+
+@target(javascript)
+pub type AdminMountModel(shared_state) {
+  AdminMountModel(page: admin_pages.Page, shared_state: shared_state)
+}
+
+@target(javascript)
+pub type AdminMountMsg {
+  AdminPageMsg(admin_pages.Message)
+  AdminServerFrame(BitArray)
+  AdminDarkModeChanged(Bool)
+  AdminShellNavigate(String)
+  AdminBrowserPathChanged(String)
+}
+
+@target(javascript)
+pub type AdminMountConfig(shared_state) {
+  AdminMountConfig(
+    page_context: PageContext,
+    shared_state: fn(String, Bool) -> shared_state,
+    set_active_path: fn(shared_state, String) -> shared_state,
+    set_dark_mode: fn(shared_state, Bool) -> shared_state,
+    update_page: fn(admin_pages.Page, admin_pages.Message) ->
+      #(admin_pages.Page, Effect(admin_pages.Message)),
+    view: fn(
+      AdminMountModel(shared_state),
+      fn(admin_pages.Message) -> AdminMountMsg,
+      fn(Bool) -> AdminMountMsg,
+      fn(String) -> AdminMountMsg,
+    ) -> Element(AdminMountMsg),
+  )
+}
+
+@target(javascript)
+pub fn start_admin_mount(config config: AdminMountConfig(shared_state)) -> Nil {
+  start(
+    init: fn(_flags) { admin_mount_init(config) },
+    update: fn(model, msg) { admin_mount_update(config, model, msg) },
+    view: fn(model) {
+      config.view(model, AdminPageMsg, AdminDarkModeChanged, AdminShellNavigate)
+    },
+  )
+}
+
+@target(javascript)
+fn admin_mount_init(
+  config config: AdminMountConfig(shared_state),
+) -> #(AdminMountModel(shared_state), Effect(AdminMountMsg)) {
+  let current_path = browser.path()
+  let dark_mode = browser_mount.device_dark_mode()
+  let query_params =
+    admin_page_input.QueryParams(values: browser_mount.query_pairs())
+  let #(page, page_effect) =
+    admin_initial_page_from_path(
+      page_context: config.page_context,
+      query_params: query_params,
+      path: current_path,
+      update_page: config.update_page,
+    )
+  let shared_state = config.shared_state(current_path, dark_mode)
+
+  #(
+    AdminMountModel(page: page, shared_state:),
+    effect.batch([
+      startup_effects(
+        page_effect: page_effect,
+        dark_mode: dark_mode,
+        on_page: AdminPageMsg,
+        on_frame: AdminServerFrame,
+        on_shell_navigation: AdminShellNavigate,
+        on_browser_navigation: AdminBrowserPathChanged,
+      ),
+      sync_topics(admin_page_topics(page)),
+    ]),
+  )
+}
+
+@target(javascript)
+fn admin_mount_update(
+  config config: AdminMountConfig(shared_state),
+  model model: AdminMountModel(shared_state),
+  msg msg: AdminMountMsg,
+) -> #(AdminMountModel(shared_state), Effect(AdminMountMsg)) {
+  case msg {
+    AdminPageMsg(inner) -> {
+      case admin_message_path(inner) {
+        Some(path) ->
+          admin_mount_navigate(
+            config: config,
+            model: model,
+            path: path,
+            push_history: True,
+          )
+        None -> {
+          let #(page, page_effect) =
+            map_page_effect(config.update_page(model.page, inner), AdminPageMsg)
+          #(
+            AdminMountModel(..model, page: page),
+            effect.batch([
+              page_effect,
+              sync_topics(admin_page_topics(page)),
+            ]),
+          )
+        }
+      }
+    }
+    AdminServerFrame(bytes) -> {
+      let #(page, page_effect) =
+        server_frame_effect(
+          page: model.page,
+          bytes: bytes,
+          apply_push: admin_apply_push,
+          on_page: AdminPageMsg,
+        )
+      #(
+        AdminMountModel(..model, page: page),
+        effect.batch([
+          page_effect,
+          sync_topics(admin_page_topics(page)),
+        ]),
+      )
+    }
+    AdminDarkModeChanged(dark_mode) -> {
+      let shared_state = config.set_dark_mode(model.shared_state, dark_mode)
+      #(
+        AdminMountModel(..model, shared_state:),
+        browser_mount.dark_mode_changed_effects(dark_mode),
+      )
+    }
+    AdminShellNavigate(path) -> {
+      admin_mount_navigate(
+        config: config,
+        model: model,
+        path: path,
+        push_history: True,
+      )
+    }
+    AdminBrowserPathChanged(path) -> {
+      admin_mount_navigate(
+        config: config,
+        model: model,
+        path: path,
+        push_history: False,
+      )
+    }
+  }
+}
+
+@target(javascript)
+fn admin_mount_navigate(
+  config config: AdminMountConfig(shared_state),
+  model model: AdminMountModel(shared_state),
+  path path: String,
+  push_history push_history: Bool,
+) -> #(AdminMountModel(shared_state), Effect(AdminMountMsg)) {
+  let #(canonical_path, page, page_effect) =
+    admin_load_path(
+      page_context: config.page_context,
+      query_params: admin_page_input.empty_query_params(),
+      path:,
+    )
+  let shared_state = config.set_active_path(model.shared_state, canonical_path)
+
+  #(
+    AdminMountModel(page: page, shared_state:),
+    effect.batch([
+      navigation_effects(
+        path: canonical_path,
+        push_history: push_history,
+        page_effect: page_effect,
+        on_page: AdminPageMsg,
+      ),
+      sync_topics(admin_page_topics(page)),
+    ]),
+  )
+}
+
+@target(javascript)
+pub type PublicMountModel(shared_state) {
+  PublicMountModel(page: public_pages.Page, shared_state: shared_state)
+}
+
+@target(javascript)
+pub type PublicMountMsg {
+  PublicPageMsg(public_pages.Message)
+  PublicServerFrame(BitArray)
+  PublicDarkModeChanged(Bool)
+  PublicShellNavigate(String)
+  PublicBrowserPathChanged(String)
+}
+
+@target(javascript)
+pub type PublicMountConfig(shared_state) {
+  PublicMountConfig(
+    page_context: PageContext,
+    shared_state: fn(String, Bool) -> shared_state,
+    set_active_path: fn(shared_state, String) -> shared_state,
+    set_dark_mode: fn(shared_state, Bool) -> shared_state,
+    update_page: fn(public_pages.Page, public_pages.Message) ->
+      #(public_pages.Page, Effect(public_pages.Message)),
+    view: fn(
+      PublicMountModel(shared_state),
+      fn(public_pages.Message) -> PublicMountMsg,
+      fn(Bool) -> PublicMountMsg,
+      fn(String) -> PublicMountMsg,
+    ) -> Element(PublicMountMsg),
+  )
+}
+
+@target(javascript)
+pub fn start_public_mount(
+  config config: PublicMountConfig(shared_state),
+) -> Nil {
+  start(
+    init: fn(_flags) { public_mount_init(config) },
+    update: fn(model, msg) { public_mount_update(config, model, msg) },
+    view: fn(model) {
+      config.view(
+        model,
+        PublicPageMsg,
+        PublicDarkModeChanged,
+        PublicShellNavigate,
+      )
+    },
+  )
+}
+
+@target(javascript)
+fn public_mount_init(
+  config config: PublicMountConfig(shared_state),
+) -> #(PublicMountModel(shared_state), Effect(PublicMountMsg)) {
+  let current_path = browser.path()
+  let dark_mode = browser_mount.device_dark_mode()
+  let query_params =
+    public_page_input.QueryParams(values: browser_mount.query_pairs())
+  let #(page, page_effect) =
+    public_initial_page_from_path(
+      page_context: config.page_context,
+      query_params: query_params,
+      path: current_path,
+      update_page: config.update_page,
+    )
+  let shared_state = config.shared_state(current_path, dark_mode)
+
+  #(
+    PublicMountModel(page: page, shared_state:),
+    effect.batch([
+      startup_effects(
+        page_effect: page_effect,
+        dark_mode: dark_mode,
+        on_page: PublicPageMsg,
+        on_frame: PublicServerFrame,
+        on_shell_navigation: PublicShellNavigate,
+        on_browser_navigation: PublicBrowserPathChanged,
+      ),
+      sync_topics(public_page_topics(page)),
+    ]),
+  )
+}
+
+@target(javascript)
+fn public_mount_update(
+  config config: PublicMountConfig(shared_state),
+  model model: PublicMountModel(shared_state),
+  msg msg: PublicMountMsg,
+) -> #(PublicMountModel(shared_state), Effect(PublicMountMsg)) {
+  case msg {
+    PublicPageMsg(inner) -> {
+      case public_message_path(inner) {
+        Some(path) ->
+          public_mount_navigate(
+            config: config,
+            model: model,
+            path: path,
+            push_history: True,
+          )
+        None -> {
+          let #(page, page_effect) =
+            map_page_effect(
+              config.update_page(model.page, inner),
+              PublicPageMsg,
+            )
+          #(
+            PublicMountModel(..model, page: page),
+            effect.batch([
+              page_effect,
+              sync_topics(public_page_topics(page)),
+            ]),
+          )
+        }
+      }
+    }
+    PublicServerFrame(bytes) -> {
+      let #(page, page_effect) =
+        server_frame_effect(
+          page: model.page,
+          bytes: bytes,
+          apply_push: public_apply_push,
+          on_page: PublicPageMsg,
+        )
+      #(
+        PublicMountModel(..model, page: page),
+        effect.batch([
+          page_effect,
+          sync_topics(public_page_topics(page)),
+        ]),
+      )
+    }
+    PublicDarkModeChanged(dark_mode) -> {
+      let shared_state = config.set_dark_mode(model.shared_state, dark_mode)
+      #(
+        PublicMountModel(..model, shared_state:),
+        browser_mount.dark_mode_changed_effects(dark_mode),
+      )
+    }
+    PublicShellNavigate(path) -> {
+      public_mount_navigate(
+        config: config,
+        model: model,
+        path: path,
+        push_history: True,
+      )
+    }
+    PublicBrowserPathChanged(path) -> {
+      public_mount_navigate(
+        config: config,
+        model: model,
+        path: path,
+        push_history: False,
+      )
+    }
+  }
+}
+
+@target(javascript)
+fn public_mount_navigate(
+  config config: PublicMountConfig(shared_state),
+  model model: PublicMountModel(shared_state),
+  path path: String,
+  push_history push_history: Bool,
+) -> #(PublicMountModel(shared_state), Effect(PublicMountMsg)) {
+  let #(canonical_path, page, page_effect) =
+    public_load_path(
+      page_context: config.page_context,
+      query_params: public_page_input.empty_query_params(),
+      path:,
+    )
+  let shared_state = config.set_active_path(model.shared_state, canonical_path)
+
+  #(
+    PublicMountModel(page: page, shared_state:),
+    effect.batch([
+      navigation_effects(
+        path: canonical_path,
+        push_history: push_history,
+        page_effect: page_effect,
+        on_page: PublicPageMsg,
+      ),
+      sync_topics(public_page_topics(page)),
+    ]),
+  )
 }
 
 @target(javascript)
