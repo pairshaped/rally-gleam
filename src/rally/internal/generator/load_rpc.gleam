@@ -48,11 +48,26 @@ pub type LoadContext {
   LoadContext(module_path: String, type_name: String)
 }
 
+type SourceModule {
+  SourceModule(
+    source_module: String,
+    module_path: String,
+    wire_module: String,
+    import_on_client: Bool,
+    ast: glance.Module,
+    resolver: TypeResolver,
+  )
+}
+
 pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   use files <- result.try(walk_directory(path: src_root))
-  files
-  |> list.try_fold([], fn(loads, path) {
-    use discovered <- result.try(discover_file(src_root, path))
+  use modules <- result.try(
+    files
+    |> list.try_map(fn(path) { source_module_from_file(src_root, path) }),
+  )
+  modules
+  |> list.try_fold([], fn(loads, info) {
+    use discovered <- result.try(discover_source_module(info, modules))
     Ok(list.append(loads, discovered))
   })
 }
@@ -1372,10 +1387,10 @@ import gleam/string
 " <> string.join(list.map(loads, hydration_decode_result), "\n")
 }
 
-fn discover_file(
+fn source_module_from_file(
   src_root: String,
   path: String,
-) -> Result(List(LoadRpc), String) {
+) -> Result(SourceModule, String) {
   use source <- result.try(
     simplifile.read(path)
     |> result.map_error(fn(e) {
@@ -1388,28 +1403,46 @@ fn discover_file(
     True -> string.drop_end(source_module, string.length("/wire"))
     False -> source_module
   }
-  discover_source(
-    source:,
+  use ast <- result.try(
+    glance.module(source)
+    |> result.map_error(fn(_) { "Cannot parse " <> source_module }),
+  )
+  use resolver <- result.try(
+    glance_type_resolver.resolver_from_imports(ast.imports)
+    |> result.map_error(fn(_) { "Cannot resolve imports for " <> source_module }),
+  )
+  Ok(SourceModule(
+    source_module:,
     module_path:,
     wire_module: source_module,
     import_on_client: is_wire,
+    ast:,
+    resolver:,
+  ))
+}
+
+fn discover_source_module(
+  info info: SourceModule,
+  modules modules: List(SourceModule),
+) -> Result(List(LoadRpc), String) {
+  discover_source(
+    module_path: info.module_path,
+    wire_module: info.wire_module,
+    import_on_client: info.import_on_client,
+    ast: info.ast,
+    resolver: info.resolver,
+    modules:,
   )
 }
 
 fn discover_source(
-  source source: String,
   module_path module_path: String,
   wire_module wire_module: String,
   import_on_client import_on_client: Bool,
+  ast ast: glance.Module,
+  resolver resolver: TypeResolver,
+  modules modules: List(SourceModule),
 ) -> Result(List(LoadRpc), String) {
-  use ast <- result.try(
-    glance.module(source)
-    |> result.map_error(fn(_) { "Cannot parse " <> wire_module }),
-  )
-  use resolver <- result.try(
-    glance_type_resolver.resolver_from_imports(ast.imports)
-    |> result.map_error(fn(_) { "Cannot resolve imports for " <> wire_module }),
-  )
   case has_custom_type(ast.custom_types, "LoadResult") {
     False -> Ok([])
     True -> {
@@ -1426,6 +1459,7 @@ fn discover_source(
         module_path:,
         wire_module:,
         save_result_type:,
+        modules:,
       ))
       case
         list.find(ast.custom_types, fn(def) {
@@ -1505,6 +1539,7 @@ fn validate_wire_boundary(
   module_path module_path: String,
   wire_module wire_module: String,
   save_result_type save_result_type: Option(String),
+  modules modules: List(SourceModule),
 ) -> Result(Nil, String) {
   let contract_types = case save_result_type {
     Some(save_type) -> ["ServerMsg", "LoadResult", save_type]
@@ -1519,6 +1554,8 @@ fn validate_wire_boundary(
       module_path:,
       wire_module:,
       type_name:,
+      modules:,
+      seen: [],
     )
   })
 }
@@ -1529,6 +1566,8 @@ fn validate_wire_custom_type(
   module_path module_path: String,
   wire_module wire_module: String,
   type_name type_name: String,
+  modules modules: List(SourceModule),
+  seen seen: List(#(String, String)),
 ) -> Result(Nil, String) {
   case list.find(custom_types, fn(def) { def.definition.name == type_name }) {
     Error(Nil) -> Ok(Nil)
@@ -1541,6 +1580,8 @@ fn validate_wire_custom_type(
           module_path:,
           wire_module:,
           type_name:,
+          modules:,
+          seen: [#(wire_module, type_name), ..seen],
         )
       })
   }
@@ -1552,6 +1593,8 @@ fn validate_wire_variant(
   module_path module_path: String,
   wire_module wire_module: String,
   type_name type_name: String,
+  modules modules: List(SourceModule),
+  seen seen: List(#(String, String)),
 ) -> Result(Nil, String) {
   variant.fields
   |> list.try_fold(Nil, fn(_, field) {
@@ -1562,6 +1605,8 @@ fn validate_wire_variant(
       wire_module:,
       type_name:,
       variant_name: variant.name,
+      modules:,
+      seen:,
     )
   })
 }
@@ -1573,6 +1618,8 @@ fn validate_wire_variant_field(
   wire_module wire_module: String,
   type_name type_name: String,
   variant_name variant_name: String,
+  modules modules: List(SourceModule),
+  seen seen: List(#(String, String)),
 ) -> Result(Nil, String) {
   case field {
     glance.LabelledVariantField(label:, item:) ->
@@ -1583,6 +1630,8 @@ fn validate_wire_variant_field(
         module_path:,
         wire_module:,
         contract_name: type_name,
+        modules:,
+        seen:,
       )
     glance.UnlabelledVariantField(item:) ->
       validate_wire_field_type(
@@ -1592,6 +1641,8 @@ fn validate_wire_variant_field(
         module_path:,
         wire_module:,
         contract_name: type_name,
+        modules:,
+        seen:,
       )
   }
 }
@@ -1603,6 +1654,8 @@ fn validate_wire_field_type(
   module_path module_path: String,
   wire_module wire_module: String,
   contract_name contract_name: String,
+  modules modules: List(SourceModule),
+  seen seen: List(#(String, String)),
 ) -> Result(Nil, String) {
   use resolved <- result.try(
     glance_type_resolver.type_to_field_type(
@@ -1622,7 +1675,21 @@ fn validate_wire_field_type(
   |> list.try_fold(Nil, fn(_, ref) {
     let #(ref_module, ref_type_name) = ref
     case allowed_wire_reference(ref_module, module_path, wire_module) {
-      True -> Ok(Nil)
+      True ->
+        validate_referenced_wire_type(
+          ref_module:,
+          ref_type_name:,
+          reference_path: field_path
+            <> " -> "
+            <> ref_module
+            <> "."
+            <> ref_type_name,
+          module_path:,
+          wire_module:,
+          contract_name:,
+          modules:,
+          seen:,
+        )
       False ->
         Error(
           "Invalid wire boundary in "
@@ -1639,6 +1706,75 @@ fn validate_wire_field_type(
         )
     }
   })
+}
+
+fn validate_referenced_wire_type(
+  ref_module ref_module: String,
+  ref_type_name ref_type_name: String,
+  reference_path reference_path: String,
+  module_path module_path: String,
+  wire_module wire_module: String,
+  contract_name contract_name: String,
+  modules modules: List(SourceModule),
+  seen seen: List(#(String, String)),
+) -> Result(Nil, String) {
+  use <- bool.guard(
+    when: list.contains(seen, #(ref_module, ref_type_name)),
+    return: Ok(Nil),
+  )
+  case find_source_module(modules, ref_module) {
+    Error(Nil) -> Ok(Nil)
+    Ok(info) ->
+      case find_custom_type(info.ast.custom_types, ref_type_name) {
+        Error(Nil) -> Ok(Nil)
+        Ok(def) ->
+          def.definition.variants
+          |> list.try_fold(Nil, fn(_, variant) {
+            variant.fields
+            |> list.try_fold(Nil, fn(_, field) {
+              let #(field_label, field_type) =
+                variant_field_label_and_type(field)
+              validate_wire_field_type(
+                type_: field_type,
+                field_path: reference_path
+                  <> "."
+                  <> variant.name
+                  <> "."
+                  <> field_label,
+                resolver: info.resolver,
+                module_path:,
+                wire_module:,
+                contract_name:,
+                modules:,
+                seen: [#(ref_module, ref_type_name), ..seen],
+              )
+            })
+          })
+      }
+  }
+}
+
+fn variant_field_label_and_type(
+  field: glance.VariantField,
+) -> #(String, glance.Type) {
+  case field {
+    glance.LabelledVariantField(label:, item:) -> #(label, item)
+    glance.UnlabelledVariantField(item:) -> #("field", item)
+  }
+}
+
+fn find_source_module(
+  modules: List(SourceModule),
+  module_path: String,
+) -> Result(SourceModule, Nil) {
+  list.find(modules, fn(info) { info.source_module == module_path })
+}
+
+fn find_custom_type(
+  custom_types: List(glance.Definition(glance.CustomType)),
+  type_name: String,
+) -> Result(glance.Definition(glance.CustomType), Nil) {
+  list.find(custom_types, fn(def) { def.definition.name == type_name })
 }
 
 fn allowed_wire_reference(

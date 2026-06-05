@@ -387,6 +387,57 @@ pub type LoadResult {
   |> should.be_true()
 }
 
+pub fn load_rpc_discover_rejects_transitive_wire_payload_leaks_test() {
+  let root = "./tmp/load_rpc_boundary_transitive_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games")
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/public/helpers")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/helpers/display.gleam",
+      "pub type GameRow {
+  GameRow(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/wire.gleam",
+      "import public/helpers/display
+
+pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(games: List(GameSummary))
+}
+
+pub type GameSummary {
+  GameSummary(row: display.GameRow)
+}
+",
+    )
+
+  let assert Error(message) = discover(src)
+
+  message
+  |> string.contains(
+    "Invalid wire boundary in public/pages/games/wire.LoadResult",
+  )
+  |> should.be_true()
+  message
+  |> string.contains(
+    "LoadResult.PublicGamesLoaded.games -> public/pages/games/wire.GameSummary.GameSummary.row",
+  )
+  |> should.be_true()
+  message
+  |> string.contains("public/helpers/display.GameRow")
+  |> should.be_true()
+}
+
 pub fn load_rpc_discover_allows_shared_wire_payload_types_test() {
   let root = "./tmp/load_rpc_boundary_valid_test"
   let src = root <> "/src"
