@@ -761,8 +761,8 @@ import generated/proute/" <> mount <> "/routes as " <> mount_alias(
 fn browser_app_int_import(loads: List(LoadRpc)) -> String {
   case
     list.any(loads, fn(load) {
-      load.args
-      |> list.any(fn(arg) { arg.type_ref == "Int" })
+      load.import_on_client
+      && list.any(load.args, fn(arg) { arg.type_ref == "Int" })
     })
   {
     True -> "\n@target(javascript)\nimport gleam/int"
@@ -958,6 +958,13 @@ fn browser_app_send_load(load: LoadRpc) -> String {
 }
 
 fn browser_app_send_load_arg_body(load: LoadRpc) -> String {
+  case load.import_on_client {
+    False -> browser_app_transport_call(load)
+    True -> browser_app_send_load_arg_body_from_route(load)
+  }
+}
+
+fn browser_app_send_load_arg_body_from_route(load: LoadRpc) -> String {
   let args = browser_app_route_args(load)
   let route_fields = list.map(args, fn(pair) { pair.0 })
   let load_args = list.map(args, fn(pair) { pair.1 })
@@ -1032,7 +1039,23 @@ fn browser_app_route_pattern(load: LoadRpc) -> String {
   mount_alias(load_mount(load), "routes")
   <> "."
   <> server_ssr_route_constructor(load)
-  <> server_ssr_route_pattern_args(load)
+  <> browser_app_route_pattern_args(load)
+}
+
+fn browser_app_route_pattern_args(load: LoadRpc) -> String {
+  let args =
+    browser_app_route_args(load)
+    |> list.map(fn(pair) {
+      case load.import_on_client {
+        True -> pair.0 <> ":"
+        False -> pair.0 <> ": _"
+      }
+    })
+
+  case args {
+    [] -> ""
+    _ -> "(" <> string.join(args, ", ") <> ")"
+  }
 }
 
 fn browser_app_route_args(load: LoadRpc) -> List(#(String, LoadArg)) {
@@ -1244,7 +1267,12 @@ pub fn server_ws(
   push_contract push_contract: Option(PushContract),
   load_context load_context: Option(LoadContext),
 ) -> String {
-  "@target(erlang)
+  "@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
@@ -1256,7 +1284,7 @@ import gleam/option.{type Option}
 import mist.{type WebsocketConnection}
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
 " <> server_ws_page_imports(loads, load_context:) <> "
-" <> load_context_import(load_context, "@target(erlang)") <> "
+" <> server_ws_load_context_import(loads, load_context:) <> "
 " <> push_import(push_contract, "@target(erlang)") <> "
 @target(erlang)
 pub type LoadError {
@@ -1303,18 +1331,7 @@ pub fn handle_client_frame(
     ),
     "\n",
   ) <> "
-
-@target(erlang)
-fn map_page_load_result(
-  result: Result(a, List(String)),
-) -> Result(a, List(LoadError)) {
-  case result {
-    Ok(value) -> Ok(value)
-    Error(errors) ->
-      Error(list.map(errors, fn(message) { LoadError(message:) }))
-  }
-}
-
+" <> server_ws_map_page_load_result(loads, load_context:) <> "
 @target(erlang)
 fn map_load_result(
   result: Result(a, List(LoadError)),
@@ -1350,7 +1367,12 @@ pub fn server_ssr(
   let mounts = load_mounts(loads)
   let direct_loads = server_ssr_direct_loads(loads, load_context:)
 
-  "@target(erlang)
+  "@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
@@ -1366,7 +1388,7 @@ import page_context.{type PageContext}
 " <> server_ssr_mount_imports(mounts) <> "
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
 " <> server_ssr_page_imports(direct_loads) <> "
-" <> load_context_import(load_context, "@target(erlang)") <> "
+" <> server_ssr_load_context_import(direct_loads, load_context:) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
       server_ssr_mount_route_type(mount, mount_loads(loads, mount))
@@ -1496,28 +1518,33 @@ fn discover_source(
   case has_custom_type(ast.custom_types, "LoadResult") {
     False -> Ok([])
     True -> {
-      let save_result_type = case
-        import_on_client,
-        has_custom_type(ast.custom_types, "GameUpdate")
-      {
-        False, True -> Some("GameUpdate")
-        _, _ -> None
-      }
-      use _ <- result.try(validate_wire_boundary(
-        ast:,
-        resolver:,
-        module_path:,
-        wire_module:,
-        save_result_type:,
-        modules:,
-      ))
       case
         list.find(ast.custom_types, fn(def) {
           def.definition.name == "ServerMsg"
         })
       {
         Error(Nil) -> Ok([])
-        Ok(def) ->
+        Ok(def) -> {
+          let has_save_message =
+            list.any(def.definition.variants, fn(variant) {
+              !string.ends_with(variant.name, "Load")
+            })
+          let save_result_type = case
+            import_on_client,
+            has_custom_type(ast.custom_types, "GameUpdate"),
+            has_save_message
+          {
+            False, True, True -> Some("GameUpdate")
+            _, _, _ -> None
+          }
+          use _ <- result.try(validate_wire_boundary(
+            ast:,
+            resolver:,
+            module_path:,
+            wire_module:,
+            save_result_type:,
+            modules:,
+          ))
           def.definition.variants
           |> list.filter(fn(variant) { string.ends_with(variant.name, "Load") })
           |> list.try_map(fn(variant) {
@@ -1541,6 +1568,7 @@ fn discover_source(
               save_result_type:,
             ))
           })
+        }
       }
     }
   }
@@ -2063,6 +2091,7 @@ fn server_ws_page_imports(
 ) -> String {
   loads
   |> list.filter(fn(load) { server_ws_direct_load(load, load_context:) })
+  |> list.filter(fn(load) { load.module_path != load.wire_module })
   |> list.map(fn(load) {
     "@target(erlang)\nimport " <> load.module_path <> " as " <> page_alias(load)
   })
@@ -2080,7 +2109,7 @@ fn server_ws_direct_load(
   load: LoadRpc,
   load_context load_context: Option(LoadContext),
 ) -> Bool {
-  load.import_on_client && option.is_some(load_context)
+  load_mount(load) == "public" && option.is_some(load_context)
 }
 
 fn server_ws_has_direct_loads(
@@ -2088,6 +2117,38 @@ fn server_ws_has_direct_loads(
   load_context load_context: Option(LoadContext),
 ) -> Bool {
   list.any(loads, fn(load) { server_ws_direct_load(load, load_context:) })
+}
+
+fn server_ws_load_context_import(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case server_ws_has_direct_loads(loads, load_context:) {
+    True -> load_context_import(load_context, "@target(erlang)")
+    False -> ""
+  }
+}
+
+fn server_ws_map_page_load_result(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case server_ws_has_direct_loads(loads, load_context:) {
+    True ->
+      "
+@target(erlang)
+fn map_page_load_result(
+  result: Result(a, List(String)),
+) -> Result(a, List(LoadError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) ->
+      Error(list.map(errors, fn(message) { LoadError(message:) }))
+  }
+}
+"
+    False -> ""
+  }
 }
 
 fn server_ws_handlers_type_definition(_loads: List(LoadRpc)) -> String {
@@ -2215,7 +2276,10 @@ fn wire_alias(load: LoadRpc) -> String {
 }
 
 fn page_alias(load: LoadRpc) -> String {
-  load.name <> "_page"
+  case load.module_path == load.wire_module {
+    True -> wire_alias(load)
+    False -> load.name <> "_page"
+  }
 }
 
 fn pascal_name(load: LoadRpc) -> String {
@@ -2872,7 +2936,7 @@ fn server_ssr_direct_load(
   load: LoadRpc,
   load_context load_context: Option(LoadContext),
 ) -> Bool {
-  load.import_on_client
+  load_mount(load) == "public"
   && option.is_some(load_context)
   && server_ssr_supported_route_args(load)
 }
@@ -2898,6 +2962,16 @@ fn server_ssr_has_direct_loads(
   list.any(loads, fn(load) { server_ssr_direct_load(load, load_context:) })
 }
 
+fn server_ssr_load_context_import(
+  direct_loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case direct_loads {
+    [] -> ""
+    _ -> load_context_import(load_context, "@target(erlang)")
+  }
+}
+
 fn server_ssr_int_import(loads: List(LoadRpc)) -> String {
   case
     list.any(loads, fn(load) {
@@ -2911,6 +2985,7 @@ fn server_ssr_int_import(loads: List(LoadRpc)) -> String {
 
 fn server_ssr_page_imports(loads: List(LoadRpc)) -> String {
   loads
+  |> list.filter(fn(load) { load.module_path != load.wire_module })
   |> list.map(fn(load) {
     "@target(erlang)\nimport " <> load.module_path <> " as " <> page_alias(load)
   })

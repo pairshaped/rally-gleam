@@ -7,7 +7,7 @@ priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:22Z
-updated_at: 2026-06-05T12:00:00Z
+updated_at: 2026-06-05T12:40:00Z
 ---
 
 Scoreboard's root `src` directory still contains too much Rally/Proute framework glue for the size of the app. The authored application should mostly express pages, domain/session behavior, authorization policy, shell/style, and product decisions. Route and page shape should come from Proute output. Rally should consume that output with Libero-backed protocol glue and app-provided callbacks.
@@ -41,9 +41,8 @@ Progress:
 
 - Child beans for browser boot, SSR composition, websocket dispatch, topic plumbing, push-frame encoding, static assets, and the HTTP server shell are complete.
 - Scoreboard now keeps database/session setup, auth policy, shell rendering, page behavior, and broadcast meaning app-owned while Rally owns the repeated transport and framework shell glue.
+- Clean Scoreboard regeneration from an empty `src/generated` now succeeds after moving public page load contracts into the owning page modules. Rally no longer treats a page-local `GameUpdate` type as a save RPC unless `ServerMsg` has a non-load constructor, and generated server-side public WS/SSR glue can call page-owned `load_wire` functions directly from configured DB context.
 
 Still blocked:
 
-- Clean regeneration from empty `src/generated` failed on 2026-06-05 before Rally ran. `gleam run -m proute` treats page-local `wire.gleam` files under `src/public/pages/**` as page modules and reports missing `Model`, `Message`, `init`, `update`, and `view`.
-- Proute currently has no documented ignore or exclude config for nested non-page modules. Moving Scoreboard's page-local wire modules would break the current Rally convention that `public/pages/foo/wire.gleam` belongs to `public/pages/foo.gleam`.
 - Template auth remains in `rally-mhn4` and needs a product/framework decision before implementation.

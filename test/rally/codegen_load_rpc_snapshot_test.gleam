@@ -342,6 +342,45 @@ pub type LoadResult {
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
 }
 
+pub fn load_rpc_discover_does_not_infer_saves_from_page_updates_test() {
+  let root = "./tmp/load_rpc_page_owned_load_only_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/public/pages")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games.gleam",
+      "pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(games: List(GameSummary))
+}
+
+pub type GameUpdate {
+  GameUpdated(id: Int)
+}
+
+pub type GameSummary {
+  GameSummary(id: Int)
+}
+",
+    )
+
+  let assert Ok(discovered) = discover(src)
+
+  let assert Ok(LoadRpc(
+    name: "public_games",
+    module_path: "public/pages/games",
+    wire_module: "public/pages/games",
+    import_on_client: False,
+    request_constructor: "PublicGamesLoad",
+    args: [],
+    save_result_type: None,
+  )) = list.find(discovered, fn(load) { load.name == "public_games" })
+}
+
 pub fn load_rpc_discover_rejects_app_owned_wire_payload_types_test() {
   let root = "./tmp/load_rpc_boundary_test"
   let src = root <> "/src"
