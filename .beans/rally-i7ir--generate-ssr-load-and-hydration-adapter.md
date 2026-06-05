@@ -41,4 +41,4 @@ Acceptance:
 Progress notes:
 - Added generated `src/generated/rally/server_ssr.gleam` for hydration payload encoding and `LoadError` to transport error mapping.
 - Scoreboard `app_ssr` no longer imports `generated/rally/result`, calls `server_protocol`, or performs base64 hydration encoding directly.
-- Route-to-page load selection and page message application remain in app code. That is the remaining part of this bean and needs a boundary decision before Rally consumes more Proute page shape.
+- Route-to-page load selection and page message application remain in app code. The boundary decision is now explicit: Rally should consume Proute page identity and page-owned load adapters, not infer route aliases or generate route/page shape.

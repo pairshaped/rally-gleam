@@ -49,5 +49,5 @@ Progress notes:
 Completion notes:
 - Added generated `browser_app.initial_page`, `browser_app.map_page_effect`, and `browser_app.server_frame_effect`.
 - Scoreboard public/admin browser modules now delegate hydrate-or-load fallback and server-frame page-effect mapping to generated Rally code.
-- Remaining route alias/load mapping is tracked separately in `rally-tabm`; those choices are app/product behavior until made explicit.
+- Remaining root-page load behavior is tracked separately in `rally-tabm`; root pages are real Proute pages, and any delegation to another page belongs in page-owned code or a page-owned adapter.
 - Validation passed: Rally `gleam build`, focused load-RPC snapshot test, Scoreboard Erlang/JS builds, and browser smoke.

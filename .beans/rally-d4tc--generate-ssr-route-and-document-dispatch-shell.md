@@ -7,11 +7,11 @@ priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:52Z
-updated_at: 2026-06-05T03:59:21Z
+updated_at: 2026-06-05T12:00:00Z
 parent: rally-kobq
 ---
 
-`app_ssr.gleam` still owns route parsing, route-to-load selection, page update invocation, and hydration composition. This is standard framework plumbing and violates the desired shape where routes are represented by file paths and generated Proute/Rally glue.
+`app_ssr.gleam` still owns too much SSR glue around route-to-load selection, page update invocation, and hydration composition. This is standard framework plumbing and violates the desired shape where Proute provides route/page shape and Rally composes SSR/hydration glue around it.
 
 App-owned behavior that should remain authored:
 
@@ -22,19 +22,26 @@ App-owned behavior that should remain authored:
 
 Framework/generated behavior to move:
 
-- public/admin route selection for SSR
+- consuming Proute-generated public/admin route and page identity for SSR
 - load handler dispatch from route values
 - hydration payload selection
 - applying page load messages during SSR
 - composing Proute page output with Rally hydration helpers
 
+Boundary constraints:
+
+- Proute owns route parsing, route params, query params, route values, page enums, and page dispatch shape.
+- Rally consumes Proute output. It must not infer route aliases, generate route/page shape, or rediscover route files.
+- Root routes are real pages. `Home` and `AdminHome` should be generated from `home_.gleam`; any delegation to games pages is page-owned behavior.
+- Rally is not generating a Lustre server-component mount. SSR glue may render an initial document and hydration payload, but Rally must not introduce server-side VDOM state, DOM-event forwarding, or VDOM patch transport.
+
 Acceptance criteria:
 
 - `app_ssr.gleam` no longer contains broad case expressions over generated route constructors just to choose load handlers.
-- Generated Rally/Proute glue performs SSR route dispatch from generated route metadata.
+- Generated Rally glue performs SSR dispatch by consuming Proute-generated route/page metadata.
 - Application supplies only product callbacks/config needed by the generated shell.
 - Clean regenerate and Scoreboard validation pass.
 
 
 
-Progress slice: rally-7wan completed direct public SSR page load adapters. Generated server_ssr now calls page-owned public load_wire functions from configured load_context for String/Int route args, and Scoreboard app_ssr no longer owns public load handler callbacks. Route-to-message selection remains app-owned for now, so this bean stays open.
+Progress slice: rally-7wan completed direct public SSR page load adapters. Generated server_ssr now calls page-owned public load_wire functions from configured load_context for String/Int route args, and Scoreboard app_ssr no longer owns public load handler callbacks. Route-to-message selection remains app-owned until Rally can consume the Proute page identity and a page-owned load adapter without inventing aliases or product behavior.

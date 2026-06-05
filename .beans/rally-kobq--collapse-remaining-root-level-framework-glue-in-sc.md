@@ -7,10 +7,10 @@ priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:22Z
-updated_at: 2026-06-05T03:18:22Z
+updated_at: 2026-06-05T12:00:00Z
 ---
 
-Scoreboard's root `src` directory still contains too much Rally/Proute framework glue for the size of the app. The authored application should mostly express pages, domain/auth/session behavior, shell/style, and product decisions. Routing and handler composition should come from file paths, generated page metadata, and app-provided callbacks.
+Scoreboard's root `src` directory still contains too much Rally/Proute framework glue for the size of the app. The authored application should mostly express pages, domain/session behavior, authorization policy, shell/style, and product decisions. Route and page shape should come from Proute output. Rally should consume that output with Libero-backed protocol glue and app-provided callbacks.
 
 Current root modules that are suspicious or partly framework-owned:
 
@@ -25,9 +25,11 @@ Current root modules that are suspicious or partly framework-owned:
 
 Goal:
 
-- The only routing code authored by the app should be route file names and product-level authorization decisions.
-- Rally/Proute generated code should own repetitive route selection, SSR/browser boot composition, websocket dispatch ceremony, server-frame dispatch ceremony, and transport/topic plumbing.
-- App code should retain product decisions: auth, admin access policy, shell view/style, domain load/save behavior, broadcast event meaning, and when broadcasts occur.
+- The only route shape authored by the app should be route file names and page-owned behavior.
+- Proute generated code should own route parsing, route params, query params, route values, page enums, and page dispatch shape.
+- Rally generated code should consume Proute output and own repetitive SSR/browser boot composition, websocket dispatch ceremony, server-frame dispatch ceremony, and transport/topic plumbing.
+- App code should retain product decisions: authorization policy, shell view/style, domain load/save behavior, broadcast event meaning, and when broadcasts occur.
+- Rally must stay Rally-shaped: browser TEA with typed domain messages. Do not generate Lustre server-component runtime code, DOM-event forwarding, server-side VDOM state, or VDOM patch transport.
 
 Acceptance criteria:
 
