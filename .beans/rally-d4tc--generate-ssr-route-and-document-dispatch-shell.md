@@ -1,13 +1,13 @@
 ---
 # rally-d4tc
 title: Generate SSR route and document dispatch shell
-status: todo
+status: in-progress
 type: task
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:52Z
-updated_at: 2026-06-05T12:00:00Z
+updated_at: 2026-06-05T04:45:53Z
 parent: rally-kobq
 ---
 
@@ -45,3 +45,16 @@ Acceptance criteria:
 
 
 Progress slice: rally-7wan completed direct public SSR page load adapters. Generated server_ssr now calls page-owned public load_wire functions from configured load_context for String/Int route args, and Scoreboard app_ssr no longer owns public load handler callbacks. Route-to-message selection remains app-owned until Rally can consume the Proute page identity and a page-owned load adapter without inventing aliases or product behavior.
+
+
+
+Progress slice: Scoreboard moved the remaining SSR route-to-message callbacks out of app_ssr.gleam and into public_boot.gleam/admin_boot.gleam as page boot adapters. app_ssr.gleam now consumes generated/rally/server_ssr with app-owned callback functions and no broad route constructor switch. This does not complete the full generated document dispatch shell, but it removes the root SSR case noise without making Rally own page semantics.
+
+Validated in Scoreboard with:
+
+• gleam build --target erlang
+• gleam build --target javascript
+• node test/boundary_guard_test.mjs
+• node test/ws_result_smoke.mjs
+
+Validation caveat: Scoreboard gleam test remains blocked in this workspace by stale /tmp/scoreboard-unified-*.db files owned by debian.
