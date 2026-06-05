@@ -5,8 +5,8 @@ import gleam/string
 import gleeunit/should
 import rally/internal/format
 import rally/internal/generator/load_rpc.{
-  type GeneratedFile, type LoadRpc, GeneratedFile, LoadArg, LoadRpc, discover,
-  generate, libero_type_seeds, result_module,
+  type GeneratedFile, type LoadRpc, type PushContract, GeneratedFile, LoadArg,
+  LoadRpc, PushContract, discover, generate, libero_type_seeds, result_module,
 }
 import simplifile
 
@@ -50,8 +50,12 @@ fn loads() -> List(LoadRpc) {
   [admin_games_load(), public_games_load(), public_game_detail_load()]
 }
 
+fn push_contract() -> PushContract {
+  PushContract(module_path: "broadcasts", type_name: "Event")
+}
+
 fn generated_files() -> List(GeneratedFile) {
-  generate(loads())
+  generate(loads(), push_contract: Some(push_contract()))
 }
 
 pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
@@ -163,7 +167,7 @@ pub fn load_rpc_server_protocol_uses_libero_wire_encoders_test() {
 }
 
 pub fn load_rpc_derives_libero_type_seeds_test() {
-  libero_type_seeds(loads: loads())
+  libero_type_seeds(loads: loads(), push_contract: Some(push_contract()))
   |> should.equal([
     #("broadcasts", "Event"),
     #("admin/pages/games", "ServerMsg"),
@@ -174,6 +178,27 @@ pub fn load_rpc_derives_libero_type_seeds_test() {
     #("public/pages/games/id_/wire", "ServerMsg"),
     #("public/pages/games/id_/wire", "LoadResult"),
   ])
+}
+
+pub fn load_rpc_can_generate_without_push_contract_test() {
+  let files = generate(loads(), push_contract: None)
+  let client =
+    content_for_files(files, "src/generated/rally/client_protocol.gleam")
+  let server =
+    content_for_files(files, "src/generated/rally/server_protocol.gleam")
+  let server_ws =
+    content_for_files(files, "src/generated/rally/server_ws.gleam")
+
+  client |> string.contains("import broadcasts") |> should.be_false()
+  server |> string.contains("import broadcasts") |> should.be_false()
+  server_ws |> string.contains("import broadcasts") |> should.be_false()
+  client |> string.contains("UnsupportedPushFrame") |> should.be_true()
+  server |> string.contains("encode_push") |> should.be_false()
+  server_ws |> string.contains("push_frame") |> should.be_false()
+
+  libero_type_seeds(loads: loads(), push_contract: None)
+  |> list.any(fn(seed) { seed == #("broadcasts", "Event") })
+  |> should.be_false()
 }
 
 pub fn load_rpc_result_module_defines_boundary_errors_test() {
@@ -308,8 +333,12 @@ pub type LoadResult {
 }
 
 fn content_for(path: String) -> String {
+  content_for_files(generated_files(), path)
+}
+
+fn content_for_files(files: List(GeneratedFile), path: String) -> String {
   let assert Ok(GeneratedFile(content:, ..)) =
-    list.find(generated_files(), fn(file) {
+    list.find(files, fn(file) {
       let GeneratedFile(path: file_path, ..) = file
       file_path == path
     })

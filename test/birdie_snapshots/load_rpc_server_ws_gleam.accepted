@@ -5,8 +5,6 @@ title: load_rpc_server_ws_gleam
 @target(erlang)
 import admin/pages/games as admin_games_wire
 @target(erlang)
-import broadcasts
-@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
@@ -20,6 +18,9 @@ import mist.{type WebsocketConnection}
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(erlang)
 import public/pages/games/wire as public_games_wire
+
+@target(erlang)
+import broadcasts as push_payload
 
 @target(erlang)
 pub type LoadError {
@@ -96,7 +97,7 @@ pub fn handle_client_frame(
 @target(erlang)
 pub fn push_frame(
   module module: String,
-  message message: broadcasts.Event,
+  message message: push_payload.Event,
 ) -> BitArray {
   server_protocol.encode_push(module, message)
 }

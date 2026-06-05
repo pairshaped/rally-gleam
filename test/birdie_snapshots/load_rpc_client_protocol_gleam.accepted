@@ -1,8 +1,6 @@
 ---
 version: 2.0.0
 title: load_rpc_client_protocol_gleam
-file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
-test_name: load_rpc_client_protocol_snapshot_test
 ---
 @target(javascript)
 import generated/libero/etf as libero_etf
@@ -14,11 +12,11 @@ import public/pages/games/id_/wire as public_game_detail_wire
 import public/pages/games/wire as public_games_wire
 
 @target(javascript)
-import broadcasts
+import broadcasts as push_payload
 
 @target(javascript)
 pub type ServerFrame {
-  Push(module: String, message: broadcasts.Event)
+  Push(module: String, message: push_payload.Event)
 }
 
 @target(javascript)

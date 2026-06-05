@@ -14,7 +14,7 @@ import public/pages/games/id_/wire as public_game_detail_wire
 import public/pages/games/wire as public_games_wire
 
 @target(erlang)
-import broadcasts
+import broadcasts as push_payload
 
 @target(erlang)
 pub fn ensure() -> Nil {
@@ -187,23 +187,23 @@ fn encode_admin_games_save_result_value(
 
 @target(erlang)
 @external(erlang, "generated@rpc_wire", "encode_broadcasts__event")
-fn encode_push_payload(_message: broadcasts.Event) -> a {
+fn encode_push_payload(_message: push_payload.Event) -> a {
   panic as "generated/rally/server_protocol.encode_push_payload external missing"
+}
+
+@target(erlang)
+pub fn encode_push(
+  module module: String,
+  message message: push_payload.Event,
+) -> BitArray {
+  let payload = encode_any(#(module, encode_push_payload(message)))
+  <<1, payload:bits>>
 }
 
 @target(erlang)
 fn encode_result_frame(request_id: Int, result: a) -> BitArray {
   let payload = encode_any(#(request_id, result))
   <<2, payload:bits>>
-}
-
-@target(erlang)
-pub fn encode_push(
-  module module: String,
-  message message: broadcasts.Event,
-) -> BitArray {
-  let payload = encode_any(#(module, encode_push_payload(message)))
-  <<1, payload:bits>>
 }
 
 @target(erlang)

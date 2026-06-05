@@ -40,6 +40,10 @@ pub type LoadRpc {
   )
 }
 
+pub type PushContract {
+  PushContract(module_path: String, type_name: String)
+}
+
 pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   use files <- result.try(walk_directory(path: src_root))
   files
@@ -49,15 +53,18 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   })
 }
 
-pub fn generate(loads loads: List(LoadRpc)) -> List(GeneratedFile) {
+pub fn generate(
+  loads loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
+) -> List(GeneratedFile) {
   [
     GeneratedFile(
       "src/generated/rally/client_protocol.gleam",
-      client_protocol(loads:),
+      client_protocol(loads:, push_contract:),
     ),
     GeneratedFile(
       "src/generated/rally/server_protocol.gleam",
-      server_protocol(loads:),
+      server_protocol(loads:, push_contract:),
     ),
     GeneratedFile(
       "src/generated/rally/client_transport.gleam",
@@ -68,7 +75,10 @@ pub fn generate(loads loads: List(LoadRpc)) -> List(GeneratedFile) {
       client_transport_ffi(),
     ),
     GeneratedFile("src/generated/rally/server.gleam", page_server(loads:)),
-    GeneratedFile("src/generated/rally/server_ws.gleam", server_ws(loads:)),
+    GeneratedFile(
+      "src/generated/rally/server_ws.gleam",
+      server_ws(loads:, push_contract:),
+    ),
     GeneratedFile("src/generated/rally/server_ssr.gleam", server_ssr(loads:)),
     GeneratedFile("src/generated/rally/hydration.gleam", hydration(loads:)),
     GeneratedFile("src/generated/rally/browser.gleam", browser_module()),
@@ -81,6 +91,7 @@ pub fn generate(loads loads: List(LoadRpc)) -> List(GeneratedFile) {
 
 pub fn libero_type_seeds(
   loads loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
 ) -> List(#(String, String)) {
   let load_seeds =
     loads
@@ -96,7 +107,13 @@ pub fn libero_type_seeds(
       ]
     })
 
-  [#("broadcasts", "Event"), ..load_seeds]
+  case push_contract {
+    Some(PushContract(module_path:, type_name:)) -> [
+      #(module_path, type_name),
+      ..load_seeds
+    ]
+    None -> load_seeds
+  }
   |> list.unique
 }
 
@@ -642,33 +659,20 @@ pub fn navigation_effects(
 "
 }
 
-pub fn client_protocol(loads loads: List(LoadRpc)) -> String {
+pub fn client_protocol(
+  loads loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
+) -> String {
   "@target(javascript)
 import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
 import generated/libero/etf as libero_etf
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
-@target(javascript)
-import broadcasts
-
-@target(javascript)
-pub type ServerFrame {
-  Push(module: String, message: broadcasts.Event)
-}
+" <> push_import(push_contract, "@target(javascript)") <> "
+" <> client_server_frame_type(push_contract) <> "
 
 " <> string.join(list.map(loads, client_encode_request), "\n") <> "
-@target(javascript)
-pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
-  case bytes {
-    <<1, payload:bits>> -> {
-      case decode_any(payload) {
-        Ok(#(module, message)) -> Ok(Push(module:, message:))
-        Error(Nil) -> Error(Nil)
-      }
-    }
-    _ -> Error(Nil)
-  }
-}
+" <> client_decode_server_frame(push_contract) <> "
 
 " <> string.join(list.map(loads, client_decode_load_result), "\n") <> "
 " <> string.join(
@@ -699,14 +703,16 @@ fn decode_any(bytes: BitArray) -> Result(a, Nil) {
 "
 }
 
-pub fn server_protocol(loads loads: List(LoadRpc)) -> String {
+pub fn server_protocol(
+  loads loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
+) -> String {
   "@target(erlang)
 import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
 import generated/libero/etf as libero_etf
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
-@target(erlang)
-import broadcasts
+" <> push_import(push_contract, "@target(erlang)") <> "
 
 @target(erlang)
 pub fn ensure() -> Nil {
@@ -726,25 +732,12 @@ pub fn ensure() -> Nil {
     "\n",
   ) <> "
 
-@target(erlang)
-@external(erlang, \"generated@rpc_wire\", \"encode_broadcasts__event\")
-fn encode_push_payload(_message: broadcasts.Event) -> a {
-  panic as \"generated/rally/server_protocol.encode_push_payload external missing\"
-}
+" <> server_protocol_push_helpers(push_contract) <> "
 
 @target(erlang)
 fn encode_result_frame(request_id: Int, result: a) -> BitArray {
   let payload = encode_any(#(request_id, result))
   <<2, payload:bits>>
-}
-
-@target(erlang)
-pub fn encode_push(
-  module module: String,
-  message message: broadcasts.Event,
-) -> BitArray {
-  let payload = encode_any(#(module, encode_push_payload(message)))
-  <<1, payload:bits>>
 }
 
 @target(erlang)
@@ -866,10 +859,11 @@ fn map_save_result(
 "
 }
 
-pub fn server_ws(loads loads: List(LoadRpc)) -> String {
+pub fn server_ws(
+  loads loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
+) -> String {
   "@target(erlang)
-import broadcasts
-@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
@@ -880,6 +874,7 @@ import gleam/option.{type Option}
 @target(erlang)
 import mist.{type WebsocketConnection}
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+" <> push_import(push_contract, "@target(erlang)") <> "
 @target(erlang)
 pub type LoadError {
   LoadError(message: String)
@@ -907,14 +902,7 @@ pub fn handle_client_frame(
   server_protocol.ensure()
   " <> server_ws_dispatch_cases(loads) <> "
 }
-
-@target(erlang)
-pub fn push_frame(
-  module module: String,
-  message message: broadcasts.Event,
-) -> BitArray {
-  server_protocol.encode_push(module, message)
-}
+" <> server_ws_push_frame(push_contract) <> "
 
 " <> string.join(list.map(loads, server_ws_try_request), "\n") <> "
 " <> string.join(list.map(loads, server_ws_send_load_result), "\n") <> "
@@ -1205,6 +1193,102 @@ fn wire_imports(
       "" -> ""
       _ -> imports <> "\n"
     }
+  }
+}
+
+fn push_import(push_contract: Option(PushContract), target: String) -> String {
+  case push_contract {
+    Some(PushContract(module_path:, type_name: _)) ->
+      target <> "\nimport " <> module_path <> " as push_payload\n"
+    None -> ""
+  }
+}
+
+fn push_type_ref(push_contract: PushContract) -> String {
+  let PushContract(module_path: _, type_name:) = push_contract
+  "push_payload." <> type_name
+}
+
+fn client_server_frame_type(push_contract: Option(PushContract)) -> String {
+  case push_contract {
+    Some(contract) -> "@target(javascript)
+pub type ServerFrame {
+  Push(module: String, message: " <> push_type_ref(contract) <> ")
+}
+"
+    None ->
+      "@target(javascript)
+pub type ServerFrame {
+  UnsupportedPushFrame
+}
+"
+  }
+}
+
+fn client_decode_server_frame(push_contract: Option(PushContract)) -> String {
+  case push_contract {
+    Some(_) ->
+      "@target(javascript)
+pub fn decode_server_frame(bytes: BitArray) -> Result(ServerFrame, Nil) {
+  case bytes {
+    <<1, payload:bits>> -> {
+      case decode_any(payload) {
+        Ok(#(module, message)) -> Ok(Push(module:, message:))
+        Error(Nil) -> Error(Nil)
+      }
+    }
+    _ -> Error(Nil)
+  }
+}
+"
+    None ->
+      "@target(javascript)
+pub fn decode_server_frame(_bytes: BitArray) -> Result(ServerFrame, Nil) {
+  Error(Nil)
+}
+"
+  }
+}
+
+fn server_protocol_push_helpers(push_contract: Option(PushContract)) -> String {
+  case push_contract {
+    Some(contract) -> {
+      let PushContract(module_path:, type_name:) = contract
+      "@target(erlang)
+@external(erlang, \"generated@rpc_wire\", \"" <> wire_encoder_function(
+        module_path,
+        type_name,
+      ) <> "\")
+fn encode_push_payload(_message: " <> push_type_ref(contract) <> ") -> a {
+  panic as \"generated/rally/server_protocol.encode_push_payload external missing\"
+}
+
+@target(erlang)
+pub fn encode_push(
+  module module: String,
+  message message: " <> push_type_ref(contract) <> ",
+) -> BitArray {
+  let payload = encode_any(#(module, encode_push_payload(message)))
+  <<1, payload:bits>>
+}
+"
+    }
+    None -> ""
+  }
+}
+
+fn server_ws_push_frame(push_contract: Option(PushContract)) -> String {
+  case push_contract {
+    Some(contract) -> "
+@target(erlang)
+pub fn push_frame(
+  module module: String,
+  message message: " <> push_type_ref(contract) <> ",
+) -> BitArray {
+  server_protocol.encode_push(module, message)
+}
+"
+    None -> ""
   }
 }
 
