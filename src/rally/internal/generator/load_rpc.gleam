@@ -22,6 +22,15 @@ pub type LoadArg {
   LoadArg(label: String, type_ref: String)
 }
 
+pub type PageNavigation {
+  PageNavigation(
+    source_module: String,
+    message_module: String,
+    message_constructor: String,
+    args: List(LoadArg),
+  )
+}
+
 pub type LoadRpc {
   LoadRpc(
     /// Stable snake_case name used in generated function names.
@@ -39,6 +48,8 @@ pub type LoadRpc {
     load_result_constructor: String,
     /// Route modules whose page message type can receive this load result.
     route_modules: List(String),
+    /// Page message constructors that navigate to this load route.
+    navigation_sources: List(PageNavigation),
     args: List(LoadArg),
     save_result_type: Option(String),
   )
@@ -82,7 +93,12 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   )
   loads
   |> list.map(fn(load) {
-    LoadRpc(..load, route_modules: load_route_modules(load, modules))
+    let route_modules = load_route_modules(load, modules)
+    LoadRpc(
+      ..load,
+      route_modules:,
+      navigation_sources: navigation_sources(load, modules),
+    )
   })
   |> Ok
 }
@@ -630,6 +646,8 @@ import generated/rally/hydration
 @target(javascript)
 import generated/rally/result.{type ApiLoadError, ApiLoadError}
 @target(javascript)
+import gleam/option.{type Option, None, Some}
+@target(javascript)
 import page_context.{type PageContext}
 @target(javascript)
 import lustre
@@ -655,6 +673,12 @@ import lustre/element.{type Element}
 " <> string.join(
     list.map(mounts, fn(mount) {
       browser_app_mount_load_route_function(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      browser_app_mount_navigation_functions(mount, mount_loads(loads, mount))
     }),
     "\n",
   ) <> "
@@ -808,15 +832,31 @@ fn browser_app_client_protocol_import(
 }
 
 fn browser_app_page_imports(loads: List(LoadRpc)) -> String {
-  loads
-  |> list.filter(fn(load) { load.module_path != load.wire_module })
-  |> list.map(fn(load) {
-    "@target(javascript)\nimport "
-    <> load.module_path
-    <> " as "
-    <> page_alias(load)
-  })
+  let page_modules =
+    loads
+    |> list.filter(fn(load) { load.module_path != load.wire_module })
+    |> list.map(fn(load) { load.module_path })
+  let navigation_modules =
+    loads
+    |> list.flat_map(fn(load) {
+      list.map(load.navigation_sources, fn(navigation) {
+        navigation.message_module
+      })
+    })
+
+  list.append(page_modules, navigation_modules)
   |> list.unique
+  |> list.filter(fn(module_path) {
+    !list.any(loads, fn(load) {
+      load.module_path == module_path && load.module_path == load.wire_module
+    })
+  })
+  |> list.map(fn(module_path) {
+    "@target(javascript)\nimport "
+    <> module_path
+    <> " as "
+    <> browser_app_source_page_alias(module_path, loads)
+  })
   |> string.join("\n")
   |> fn(imports) {
     case imports {
@@ -909,6 +949,19 @@ pub fn " <> mount <> "_load_client(
 }
 
 @target(javascript)
+pub fn " <> mount <> "_load_path(
+  page_context page_context: PageContext,
+  query_params query_params: " <> page_input <> ".QueryParams,
+  path path: String,
+) -> #(String, " <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
+  let route = " <> routes <> ".parse_path(path)
+  let canonical_path = " <> routes <> ".route_to_path(route)
+  let #(page, page_effect) =
+    " <> mount <> "_load_client(page_context:, query_params:, route:)
+  #(canonical_path, page, page_effect)
+}
+
+@target(javascript)
 pub fn " <> mount <> "_initial_page(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
@@ -924,6 +977,21 @@ pub fn " <> mount <> "_initial_page(
 }
 
 @target(javascript)
+pub fn " <> mount <> "_initial_page_from_path(
+  page_context page_context: PageContext,
+  query_params query_params: " <> page_input <> ".QueryParams,
+  path path: String,
+  update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
+  " <> mount <> "_initial_page(
+    page_context:,
+    query_params:,
+    route: " <> routes <> ".parse_path(path),
+    update_page:,
+  )
+}
+
+@target(javascript)
 fn " <> mount <> "_request_effect(
   route " <> request_route_label <> ": " <> routes <> ".Route,
   selected selected: " <> prefix <> "LoadRoute,
@@ -934,6 +1002,106 @@ fn " <> mount <> "_request_effect(
   }
 }
 "
+}
+
+fn browser_app_mount_navigation_functions(
+  mount: String,
+  loads: List(LoadRpc),
+) -> String {
+  let pages = mount_alias(mount, "pages")
+
+  "@target(javascript)
+pub fn " <> mount <> "_message_path(message message: " <> pages <> ".Message) -> Option(String) {
+  case message {
+" <> string.join(
+    list.flat_map(loads, fn(load) { browser_app_navigation_cases(load, loads) }),
+    "\n",
+  ) <> "
+    _ -> None
+  }
+}
+"
+}
+
+fn browser_app_navigation_cases(
+  load: LoadRpc,
+  loads: List(LoadRpc),
+) -> List(String) {
+  load.navigation_sources
+  |> list.map(fn(navigation) {
+    "    "
+    <> mount_alias(load_mount(load), "pages")
+    <> "."
+    <> route_message_constructor(navigation.source_module)
+    <> "("
+    <> browser_app_navigation_message_pattern(loads, navigation)
+    <> ") -> Some("
+    <> mount_alias(load_mount(load), "routes")
+    <> ".route_to_path("
+    <> browser_app_navigation_route(load, navigation)
+    <> "))"
+  })
+}
+
+fn browser_app_navigation_message_pattern(
+  loads: List(LoadRpc),
+  navigation: PageNavigation,
+) -> String {
+  browser_app_source_page_alias(navigation.message_module, loads)
+  <> "."
+  <> navigation.message_constructor
+  <> browser_app_navigation_pattern_args(navigation.args)
+}
+
+fn browser_app_navigation_pattern_args(args: List(LoadArg)) -> String {
+  case args {
+    [] -> ""
+    _ ->
+      "("
+      <> string.join(list.map(args, fn(arg) { arg.label <> ":" }), ", ")
+      <> ")"
+  }
+}
+
+fn browser_app_navigation_route(
+  load: LoadRpc,
+  navigation: PageNavigation,
+) -> String {
+  let route_args =
+    list.zip(dynamic_segments_from_module(load.module_path), navigation.args)
+    |> list.map(fn(pair) {
+      let #(route_field, arg) = pair
+      route_field <> ": " <> browser_app_navigation_route_arg(arg)
+    })
+
+  mount_alias(load_mount(load), "routes")
+  <> "."
+  <> route_constructor_for_module(load.module_path)
+  <> case route_args {
+    [] -> ""
+    _ -> "(" <> string.join(route_args, ", ") <> ")"
+  }
+}
+
+fn browser_app_navigation_route_arg(arg: LoadArg) -> String {
+  case arg.type_ref {
+    "Int" -> "int.to_string(" <> arg.label <> ")"
+    _ -> arg.label
+  }
+}
+
+fn browser_app_source_page_alias(
+  module_path: String,
+  loads: List(LoadRpc),
+) -> String {
+  case list.find(loads, fn(load) { load.module_path == module_path }) {
+    Ok(load) ->
+      case load.module_path == load.wire_module {
+        True -> wire_alias(load)
+        False -> page_alias(load)
+      }
+    Error(Nil) -> page_module_alias(module_path)
+  }
 }
 
 fn browser_app_mount_load_route_function(
@@ -1813,6 +1981,7 @@ fn discover_source(
               request_constructor: variant.name,
               load_result_constructor:,
               route_modules: [module_path],
+              navigation_sources: [],
               args:,
               save_result_type:,
             ))
@@ -1846,6 +2015,111 @@ fn source_module_aliases_load(info: SourceModule, load_module: String) -> Bool {
   == load_mount_from_module(load_module)
   && type_alias_targets_module(info, "Model", load_module)
   && type_alias_targets_module(info, "Message", load_module)
+}
+
+fn navigation_sources(
+  load: LoadRpc,
+  modules: List(SourceModule),
+) -> List(PageNavigation) {
+  let constructor = navigation_message_constructor(load.module_path)
+
+  modules
+  |> list.filter_map(fn(source) {
+    case load_mount_from_module(source.module_path) == load_mount(load) {
+      True -> Ok(Nil)
+      False -> Error(Nil)
+    }
+    |> result.try(fn(_) {
+      use message_module <- result.try(source_message_module(source))
+      use message_source <- result.try(find_source_module(
+        modules,
+        message_module,
+      ))
+      use message_type <- result.try(find_custom_type(
+        message_source.ast.custom_types,
+        "Message",
+      ))
+      use variant <- result.try(
+        list.find(message_type.definition.variants, fn(variant) {
+          variant.name == constructor
+        }),
+      )
+      use args <- result.try(navigation_args(
+        load:,
+        source: message_source,
+        fields: variant.fields,
+      ))
+      Ok(PageNavigation(
+        source_module: source.module_path,
+        message_module:,
+        message_constructor: constructor,
+        args:,
+      ))
+    })
+  })
+}
+
+fn source_message_module(source: SourceModule) -> Result(String, Nil) {
+  case has_custom_type(source.ast.custom_types, "Message") {
+    True -> Ok(source.module_path)
+    False -> message_alias_module(source)
+  }
+}
+
+fn message_alias_module(source: SourceModule) -> Result(String, Nil) {
+  case
+    list.find(source.ast.type_aliases, fn(def) {
+      def.definition.name == "Message"
+    })
+  {
+    Ok(def) ->
+      case
+        glance_type_resolver.type_to_field_type(
+          type_: def.definition.aliased,
+          resolver: source.resolver,
+          current_module: source.module_path,
+          policy: glance_type_resolver.PreserveUnsupported,
+        )
+      {
+        Ok(field_type.UserType(module_path:, type_name: "Message", args: [])) ->
+          Ok(module_path)
+        _ -> Error(Nil)
+      }
+    Error(Nil) -> Error(Nil)
+  }
+}
+
+fn navigation_args(
+  load load: LoadRpc,
+  source source: SourceModule,
+  fields fields: List(glance.VariantField),
+) -> Result(List(LoadArg), Nil) {
+  let route_args = dynamic_segments_from_module(load.module_path)
+  use _ <- result.try(case list.length(route_args) == list.length(fields) {
+    True -> Ok(Nil)
+    False -> Error(Nil)
+  })
+
+  fields
+  |> list.try_map(fn(field) {
+    let #(label, type_) = variant_field_label_and_type(field)
+    use _ <- result.try(case list.contains(route_args, label) {
+      True -> Ok(Nil)
+      False -> Error(Nil)
+    })
+    case
+      glance_type_resolver.type_to_field_type(
+        type_:,
+        resolver: source.resolver,
+        current_module: source.module_path,
+        policy: glance_type_resolver.PreserveUnsupported,
+      )
+    {
+      Ok(field_type.IntField) -> Ok(LoadArg(label:, type_ref: "Int"))
+      Ok(field_type.StringField) -> Ok(LoadArg(label:, type_ref: "String"))
+      _ -> Error(Nil)
+    }
+  })
 }
 
 fn type_alias_targets_module(
@@ -3622,6 +3896,31 @@ fn route_message_constructor(module_path: String) -> String {
   route_constructor_for_module(module_path) <> "Msg"
 }
 
+fn navigation_message_constructor(module_path: String) -> String {
+  "Navigate" <> navigation_target_name(module_path)
+}
+
+fn navigation_target_name(module_path: String) -> String {
+  module_path
+  |> page_segments_from_module
+  |> list.filter(fn(segment) {
+    !string.ends_with(segment, "_")
+    && segment != "home_"
+    && segment != "not_found_"
+  })
+  |> list.last
+  |> result.unwrap("")
+  |> singular_path_segment
+  |> pascal_path_segment
+}
+
+fn singular_path_segment(segment: String) -> String {
+  case string.ends_with(segment, "s") {
+    True -> string.drop_end(segment, 1)
+    False -> segment
+  }
+}
+
 fn route_constructor_for_module(module_path: String) -> String {
   let mount = load_mount_from_module(module_path)
   let base =
@@ -3663,6 +3962,13 @@ fn pascal_path_segment(segment: String) -> String {
     False -> 0
   })
   |> pascal_segment
+}
+
+fn page_module_alias(module_path: String) -> String {
+  module_path
+  |> to_snake_case
+  |> string.replace("/", "_")
+  |> fn(name) { name <> "_page" }
 }
 
 fn drop_pages_prefix(parts: List(String)) -> List(String) {

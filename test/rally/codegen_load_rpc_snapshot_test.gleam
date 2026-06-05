@@ -20,6 +20,7 @@ fn public_games_load() -> LoadRpc {
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
+    navigation_sources: [],
     args: [],
     save_result_type: None,
   )
@@ -34,6 +35,7 @@ fn public_game_detail_load() -> LoadRpc {
     request_constructor: "PublicGameDetailLoad",
     load_result_constructor: "PublicGameDetailLoaded",
     route_modules: ["public/pages/games/id_"],
+    navigation_sources: [],
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )
@@ -48,6 +50,7 @@ fn admin_games_load() -> LoadRpc {
     request_constructor: "AdminGamesLoad",
     load_result_constructor: "AdminGamesLoaded",
     route_modules: ["admin/pages/games"],
+    navigation_sources: [],
     args: [],
     save_result_type: Some("GameUpdate"),
   )
@@ -345,6 +348,7 @@ pub type LoadResult {
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games", "public/pages/home_"],
+    navigation_sources: [],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -357,6 +361,7 @@ pub type LoadResult {
     request_constructor: "PublicGameDetailLoad",
     load_result_constructor: "PublicGameDetailLoaded",
     route_modules: ["public/pages/games/id_"],
+    navigation_sources: [],
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
@@ -369,6 +374,7 @@ pub type LoadResult {
     request_constructor: "AdminGamesLoad",
     load_result_constructor: "AdminGamesLoaded",
     route_modules: ["admin/pages/games"],
+    navigation_sources: [],
     args: [],
     save_result_type: Some("GameUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
@@ -410,6 +416,7 @@ pub type GameSummary {
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
+    navigation_sources: [],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -645,6 +652,7 @@ pub type LoadResult {
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
+    navigation_sources: [],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
