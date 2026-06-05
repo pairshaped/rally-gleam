@@ -1,7 +1,7 @@
 ---
 # rally-02qj
 title: Generate or provide Rally HTTP server shell routing
-status: in-progress
+status: completed
 type: task
 priority: normal
 tags:
@@ -46,10 +46,6 @@ Progress slice:
 - Added `rally/runtime/static.gleam` with a standard build-asset response helper for `build/dev/javascript`.
 - Rally now declares `gleam_http` and `mist` directly because this runtime API exposes their response types.
 - Scoreboard moved `/_build/*` file serving to the Rally helper while keeping database startup, auth routes, websocket authorization, admin policy, and document rendering app-owned.
-
-Still open:
-
-- Websocket upgrade route wiring.
-- SSR public/admin dispatch shell.
-- Template-auth route plumbing.
-- Standard server startup shell around an app config.
+- Added `rally/runtime/http_server.gleam` to own the standard HTTP shell: app auth preflight callback, websocket path dispatch, generated asset serving, admin/public document dispatch, Mist startup, and forever sleep.
+- Scoreboard now provides app callbacks for auth routes, websocket upgrade details, admin authorization, public document rendering, and resource/session setup.
+- Template-auth route plumbing is deliberately deferred to `rally-mhn4`; this bean keeps auth policy callback-driven and does not make Rally own product authorization.
