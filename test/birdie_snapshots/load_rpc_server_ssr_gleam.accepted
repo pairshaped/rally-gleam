@@ -5,6 +5,13 @@ file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
 test_name: load_rpc_server_ssr_snapshot_test
 ---
 @target(erlang)
+import generated/rally/result as transport_result
+@target(erlang)
+import generated/rally/server_protocol
+@target(erlang)
+import gleam/bit_array
+
+@target(erlang)
 import generated/proute/admin/page_input as admin_page_input
 @target(erlang)
 import generated/proute/admin/pages as admin_pages
@@ -17,11 +24,7 @@ import generated/proute/public/pages as public_pages
 @target(erlang)
 import generated/proute/public/routes as public_routes
 @target(erlang)
-import generated/rally/result as transport_result
-@target(erlang)
-import generated/rally/server_protocol
-@target(erlang)
-import gleam/bit_array
+import gleam/int
 @target(erlang)
 import gleam/list
 @target(erlang)
@@ -35,6 +38,14 @@ import admin/pages/games as admin_games_wire
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(erlang)
 import public/pages/games/wire as public_games_wire
+
+@target(erlang)
+import public/pages/games as public_games_page
+@target(erlang)
+import public/pages/games/id_ as public_game_detail_page
+
+@target(erlang)
+import sqlight as load_context
 
 @target(erlang)
 pub type AdminLoadRoute {
@@ -68,12 +79,7 @@ pub type AdminLoadHandlers {
 
 @target(erlang)
 pub type PublicLoadHandlers {
-  PublicLoadHandlers(
-    public_games_load: fn(public_routes.Route) ->
-      Result(public_games_wire.LoadResult, List(String)),
-    public_game_detail_load: fn(public_routes.Route) ->
-      Result(public_game_detail_wire.LoadResult, List(String)),
-  )
+  PublicLoadHandlers(load_context: fn() -> load_context.Connection)
 }
 
 @target(erlang)
@@ -118,7 +124,7 @@ pub fn public_boot_page(
   case select_load(route) {
     PublicNoLoad -> #(page, [])
     PublicGamesLoad(to_message:) -> {
-      let result = handlers.public_games_load(route)
+      let result = public_games_page.load_wire(handlers.load_context())
       boot_loaded_page(
         page: page,
         result: result,
@@ -128,7 +134,18 @@ pub fn public_boot_page(
       )
     }
     PublicGameDetailLoad(to_message:) -> {
-      let result = handlers.public_game_detail_load(route)
+      let result = case route {
+        public_routes.GamesId(id:) ->
+          case int.parse(id) {
+            Ok(game_id) ->
+              public_game_detail_page.load_wire(
+                handlers.load_context(),
+                game_id,
+              )
+            Error(Nil) -> Error(["Invalid route parameter."])
+          }
+        _ -> Error(["Unexpected route."])
+      }
       boot_loaded_page(
         page: page,
         result: result,

@@ -84,7 +84,10 @@ pub fn generate(
       "src/generated/rally/server_ws.gleam",
       server_ws(loads:, push_contract:, load_context:),
     ),
-    GeneratedFile("src/generated/rally/server_ssr.gleam", server_ssr(loads:)),
+    GeneratedFile(
+      "src/generated/rally/server_ssr.gleam",
+      server_ssr(loads:, load_context:),
+    ),
     GeneratedFile("src/generated/rally/hydration.gleam", hydration(loads:)),
     GeneratedFile("src/generated/rally/browser.gleam", browser_module()),
     GeneratedFile("src/generated/rally/browser_ffi.mjs", browser_ffi()),
@@ -968,8 +971,12 @@ fn map_save_result(
 "
 }
 
-pub fn server_ssr(loads loads: List(LoadRpc)) -> String {
+pub fn server_ssr(
+  loads loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
   let mounts = load_mounts(loads)
+  let direct_loads = server_ssr_direct_loads(loads, load_context:)
 
   "@target(erlang)
 import generated/rally/result as transport_result
@@ -977,6 +984,7 @@ import generated/rally/result as transport_result
 import generated/rally/server_protocol
 @target(erlang)
 import gleam/bit_array
+" <> server_ssr_int_import(direct_loads) <> "
 @target(erlang)
 import gleam/list
 @target(erlang)
@@ -985,6 +993,8 @@ import lustre/effect.{type Effect}
 import page_context.{type PageContext}
 " <> server_ssr_mount_imports(mounts) <> "
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+" <> server_ssr_page_imports(direct_loads) <> "
+" <> load_context_import(load_context, "@target(erlang)") <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
       server_ssr_mount_route_type(mount, mount_loads(loads, mount))
@@ -993,13 +1003,21 @@ import page_context.{type PageContext}
   ) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
-      server_ssr_mount_handlers_type(mount, mount_loads(loads, mount))
+      server_ssr_mount_handlers_type(
+        mount,
+        mount_loads(loads, mount),
+        load_context:,
+      )
     }),
     "\n",
   ) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
-      server_ssr_mount_boot_page(mount, mount_loads(loads, mount))
+      server_ssr_mount_boot_page(
+        mount,
+        mount_loads(loads, mount),
+        load_context:,
+      )
     }),
     "\n",
   ) <> "
@@ -2028,6 +2046,70 @@ import generated/proute/" <> mount <> "/routes as " <> mount_alias(
   }
 }
 
+fn server_ssr_direct_loads(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> List(LoadRpc) {
+  loads
+  |> list.filter(fn(load) { server_ssr_direct_load(load, load_context:) })
+}
+
+fn server_ssr_direct_load(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  load.import_on_client
+  && option.is_some(load_context)
+  && server_ssr_supported_route_args(load)
+}
+
+fn server_ssr_supported_route_args(load: LoadRpc) -> Bool {
+  let route_args = server_ssr_route_args(load)
+
+  list.length(route_args) == list.length(load.args)
+  && list.all(route_args, fn(pair) {
+    let #(route_field, arg) = pair
+    case arg.type_ref {
+      "Int" -> True
+      "String" -> route_field == arg.label
+      _ -> False
+    }
+  })
+}
+
+fn server_ssr_has_direct_loads(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  list.any(loads, fn(load) { server_ssr_direct_load(load, load_context:) })
+}
+
+fn server_ssr_int_import(loads: List(LoadRpc)) -> String {
+  case
+    list.any(loads, fn(load) {
+      list.any(load.args, fn(arg) { arg.type_ref == "Int" })
+    })
+  {
+    True -> "\n@target(erlang)\nimport gleam/int"
+    False -> ""
+  }
+}
+
+fn server_ssr_page_imports(loads: List(LoadRpc)) -> String {
+  loads
+  |> list.map(fn(load) {
+    "@target(erlang)\nimport " <> load.module_path <> " as " <> page_alias(load)
+  })
+  |> list.unique
+  |> string.join("\n")
+  |> fn(imports) {
+    case imports {
+      "" -> ""
+      _ -> imports <> "\n"
+    }
+  }
+}
+
 fn server_ssr_mount_route_type(mount: String, loads: List(LoadRpc)) -> String {
   let prefix = mount_type_prefix(mount)
   let pages = mount_alias(mount, "pages")
@@ -2045,15 +2127,23 @@ pub type " <> prefix <> "LoadRoute {
 fn server_ssr_mount_handlers_type(
   mount: String,
   loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
 ) -> String {
   let prefix = mount_type_prefix(mount)
   let routes = mount_alias(mount, "routes")
-
-  "@target(erlang)
-pub type " <> prefix <> "LoadHandlers {
-  " <> prefix <> "LoadHandlers(
-" <> string.join(
-    list.map(loads, fn(load) {
+  let load_context_fields = case
+    server_ssr_has_direct_loads(loads, load_context:),
+    load_context
+  {
+    True, Some(context) -> [
+      "    load_context: fn() -> " <> load_context_type_ref(context) <> ",",
+    ]
+    _, _ -> []
+  }
+  let load_fields =
+    loads
+    |> list.filter(fn(load) { !server_ssr_direct_load(load, load_context:) })
+    |> list.map(fn(load) {
       "    "
       <> load.name
       <> "_load: fn("
@@ -2061,15 +2151,22 @@ pub type " <> prefix <> "LoadHandlers {
       <> ".Route) -> Result("
       <> wire_alias(load)
       <> ".LoadResult, List(String)),"
-    }),
-    "\n",
-  ) <> "
+    })
+
+  "@target(erlang)
+pub type " <> prefix <> "LoadHandlers {
+  " <> prefix <> "LoadHandlers(
+" <> string.join(list.append(load_context_fields, load_fields), "\n") <> "
   )
 }
 "
 }
 
-fn server_ssr_mount_boot_page(mount: String, loads: List(LoadRpc)) -> String {
+fn server_ssr_mount_boot_page(
+  mount: String,
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
   let prefix = mount_type_prefix(mount)
   let page_input = mount_alias(mount, "page_input")
   let pages = mount_alias(mount, "pages")
@@ -2088,15 +2185,21 @@ pub fn " <> mount <> "_boot_page(
 
   case select_load(route) {
     " <> prefix <> "NoLoad -> #(page, [])
-" <> string.join(list.map(loads, server_ssr_mount_boot_case), "\n") <> "
+" <> string.join(
+    list.map(loads, fn(load) { server_ssr_mount_boot_case(load, load_context:) }),
+    "\n",
+  ) <> "
   }
 }
 "
 }
 
-fn server_ssr_mount_boot_case(load: LoadRpc) -> String {
+fn server_ssr_mount_boot_case(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> String {
   "    " <> pascal_name(load) <> "Load(to_message:) -> {
-      let result = handlers." <> load.name <> "_load(route)
+      let result = " <> server_ssr_load_result_call(load, load_context:) <> "
       boot_loaded_page(
         page: page,
         result: result,
@@ -2105,6 +2208,143 @@ fn server_ssr_mount_boot_case(load: LoadRpc) -> String {
         update_page: update_page,
       )
     }"
+}
+
+fn server_ssr_load_result_call(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case server_ssr_direct_load(load, load_context:) {
+    True -> server_ssr_page_load_call(load)
+    False -> "handlers." <> load.name <> "_load(route)"
+  }
+}
+
+fn server_ssr_page_load_call(load: LoadRpc) -> String {
+  case load.args {
+    [] -> page_alias(load) <> ".load_wire(handlers.load_context())"
+    _ -> "case route {
+        " <> server_ssr_route_pattern(load) <> " -> " <> server_ssr_page_load_arg_body(
+        load,
+      ) <> "
+        _ -> Error([\"Unexpected route.\"])
+      }"
+  }
+}
+
+fn server_ssr_page_load_arg_body(load: LoadRpc) -> String {
+  let args = server_ssr_route_args(load)
+  let route_fields = list.map(args, fn(pair) { pair.0 })
+  let load_args = list.map(args, fn(pair) { pair.1 })
+
+  case list.any(load_args, fn(arg) { arg.type_ref == "Int" }) {
+    False ->
+      page_alias(load)
+      <> ".load_wire(handlers.load_context(), "
+      <> call_args(load.args)
+      <> ")"
+    True -> server_ssr_int_load_arg_body(load, route_fields, load_args)
+  }
+}
+
+fn server_ssr_int_load_arg_body(
+  load: LoadRpc,
+  route_fields: List(String),
+  load_args: List(LoadArg),
+) -> String {
+  let parsers =
+    list.zip(route_fields, load_args)
+    |> list.map(fn(pair) {
+      let #(route_field, arg) = pair
+      case arg.type_ref {
+        "Int" -> Some("case int.parse(" <> route_field <> ") {
+            Ok(" <> arg.label <> ") -> ")
+        _ -> None
+      }
+    })
+    |> option.values
+
+  let close_parens =
+    list.repeat("}", list.length(parsers))
+    |> string.join("\n")
+
+  string.join(parsers, "")
+  <> page_alias(load)
+  <> ".load_wire(handlers.load_context(), "
+  <> call_args(load.args)
+  <> ")
+            Error(Nil) -> Error([\"Invalid route parameter.\"])
+          "
+  <> close_parens
+}
+
+fn server_ssr_route_pattern(load: LoadRpc) -> String {
+  mount_alias(load_mount(load), "routes")
+  <> "."
+  <> server_ssr_route_constructor(load)
+  <> server_ssr_route_pattern_args(load)
+}
+
+fn server_ssr_route_pattern_args(load: LoadRpc) -> String {
+  let args =
+    server_ssr_route_args(load)
+    |> list.map(fn(pair) { pair.0 <> ":" })
+
+  case args {
+    [] -> ""
+    _ -> "(" <> string.join(args, ", ") <> ")"
+  }
+}
+
+fn server_ssr_route_args(load: LoadRpc) -> List(#(String, LoadArg)) {
+  list.zip(server_ssr_dynamic_segments(load), load.args)
+}
+
+fn server_ssr_dynamic_segments(load: LoadRpc) -> List(String) {
+  load
+  |> page_segments
+  |> list.map(fn(segment) {
+    case string.ends_with(segment, "_") {
+      True -> Some(string.drop_end(segment, 1))
+      False -> None
+    }
+  })
+  |> option.values
+}
+
+fn server_ssr_route_constructor(load: LoadRpc) -> String {
+  load
+  |> page_segments
+  |> list.map(fn(segment) {
+    segment
+    |> string.drop_end(case string.ends_with(segment, "_") {
+      True -> 1
+      False -> 0
+    })
+    |> pascal_segment
+  })
+  |> string.join("")
+}
+
+fn page_segments(load: LoadRpc) -> List(String) {
+  load.module_path
+  |> string.split("/")
+  |> drop_pages_prefix
+}
+
+fn drop_pages_prefix(parts: List(String)) -> List(String) {
+  case parts {
+    [_, "pages", ..rest] -> rest
+    [_, ..rest] -> drop_pages_prefix(rest)
+    [] -> []
+  }
+}
+
+fn pascal_segment(segment: String) -> String {
+  case string.pop_grapheme(segment) {
+    Ok(#(first, rest)) -> string.uppercase(first) <> rest
+    Error(Nil) -> segment
+  }
 }
 
 fn server_ssr_hydration_payload(load: LoadRpc) -> String {

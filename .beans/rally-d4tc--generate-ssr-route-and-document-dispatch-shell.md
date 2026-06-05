@@ -7,7 +7,7 @@ priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:52Z
-updated_at: 2026-06-05T03:18:52Z
+updated_at: 2026-06-05T03:59:21Z
 parent: rally-kobq
 ---
 
@@ -34,3 +34,7 @@ Acceptance criteria:
 - Generated Rally/Proute glue performs SSR route dispatch from generated route metadata.
 - Application supplies only product callbacks/config needed by the generated shell.
 - Clean regenerate and Scoreboard validation pass.
+
+
+
+Progress slice: rally-7wan completed direct public SSR page load adapters. Generated server_ssr now calls page-owned public load_wire functions from configured load_context for String/Int route args, and Scoreboard app_ssr no longer owns public load handler callbacks. Route-to-message selection remains app-owned for now, so this bean stays open.
