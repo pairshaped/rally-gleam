@@ -1,13 +1,13 @@
 ---
 # rally-kobq
 title: Collapse remaining root-level framework glue in Scoreboard
-status: todo
+status: completed
 type: epic
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:22Z
-updated_at: 2026-06-05T19:02:20Z
+updated_at: 2026-06-05T22:39:07Z
 ---
 
 Scoreboard's root `src` directory still contains too much Rally/Proute framework glue for the size of the app. The authored application should mostly express pages, domain/session behavior, authorization policy, shell/style, and product decisions. Route and page shape should come from Proute output. Rally should consume that output with Libero-backed protocol glue and app-provided callbacks.
@@ -43,9 +43,9 @@ Progress:
 - Scoreboard now keeps database/session setup, auth policy, shell rendering, page behavior, and broadcast meaning app-owned while Rally owns the repeated transport and framework shell glue.
 - Clean Scoreboard regeneration from an empty `src/generated` now succeeds after moving public page load contracts into the owning page modules. Rally no longer treats a page-local `GameUpdate` type as a save RPC unless `ServerMsg` has a non-load constructor, and generated server-side public WS/SSR glue can call page-owned `load_wire` functions directly from configured DB context.
 
-Still blocked:
+Completion:
 
-- Template auth remains in `rally-mhn4` and needs a product/framework decision before implementation.
+- Template auth moved into `rally-mhn4`, which is now complete. The only remaining auth-provider work is tracked separately in `rally-5ztp`, so this root-framework cleanup epic is no longer blocked.
 
 ## Notes
 
@@ -59,4 +59,4 @@ Validation:
 
 - `gleam test`
 
-Remaining work is still template auth in `rally-mhn4`.
+Root-framework cleanup is complete; provider auth expansion is tracked in `rally-5ztp`.
