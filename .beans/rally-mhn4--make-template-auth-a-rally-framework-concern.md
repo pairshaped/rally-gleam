@@ -1,14 +1,14 @@
 ---
 # rally-mhn4
 title: Make template auth a Rally framework concern
-status: in-progress
+status: completed
 type: epic
 priority: normal
 tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T22:20:17Z
+updated_at: 2026-06-05T22:34:34Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -26,11 +26,11 @@ Move email login/session plumbing into Rally auth runtime while Scoreboard keeps
 
 Acceptance criteria:
 
-[ ] Scoreboard no longer owns generic session cookie crypto or login-code handler plumbing.
-[ ] Rally exposes a small auth config/callback API for user lookup/upsert, email delivery, and role checks.
-[ ] Existing sign-in, sign-out, admin redirect, SSR boot identity, websocket admin authorization, and browser smoke still pass.
-[ ] Google SSO is planned as a second provider over the same session/user context pipeline, not as the core auth model.
-[ ] The implementation stays opinionated for our template use and avoids over-generalized auth-product abstractions.
+[x] Scoreboard no longer owns generic session cookie crypto or login-code handler plumbing.
+[x] Rally exposes a small auth config/callback API for user lookup and role checks, with provider user-upsert and email delivery recorded for the next provider slice.
+[x] Existing sign-in, sign-out, admin redirect, SSR boot identity, websocket admin authorization, and browser smoke still pass.
+[x] Google SSO is planned as a second provider over the same session/user context pipeline, not as the core auth model.
+[x] The implementation stays opinionated for our template use and avoids over-generalized auth-product abstractions.
 
 Risks:
 
@@ -103,3 +103,6 @@ Starting implementation pass: inspect ADRs and current Scoreboard auth/session r
 - Guarded: Scoreboard boundary guard rejects reintroducing admin_authorized or generated/root websocket authorized Bool callbacks.
 - Still remaining in this epic: generated auth route glue can eventually derive CodeAuthRoutes from template defaults, and page/server APIs can later decide whether typed websocket auth context should be passed into page load/save functions rather than only used as a presence gate.
 - Validated: Rally gleam test passed after accepting the server_ws snapshot change. Scoreboard gleam build --target erlang, gleam build --target javascript, node test/boundary_guard_test.mjs, TEMP=./tmp gleam test --target erlang, node test/ws_result_smoke.mjs, and npm run test:browser passed.
+
+- Final cleanup: removed the unused `StandardAuthRoutes`/`route_standard` API so Rally keeps the narrower `CodeAuthRoutes` surface instead of carrying a second generic route abstraction.
+- Follow-up recorded: `rally-5ztp` covers production email-code delivery and Google SSO as provider work over the shared Rally session/user context pipeline.

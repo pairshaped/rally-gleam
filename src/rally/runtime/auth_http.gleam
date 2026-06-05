@@ -33,16 +33,6 @@ pub type RequestAuth(user) {
 }
 
 @target(erlang)
-pub type StandardAuthRoutes(context) {
-  StandardAuthRoutes(
-    sign_in_post: fn(Request(Connection), context) ->
-      response.Response(ResponseData),
-    sign_out: fn(Request(Connection), context) ->
-      response.Response(ResponseData),
-  )
-}
-
-@target(erlang)
 pub type CodeAuthRoutes(context) {
   CodeAuthRoutes(
     session: fn(context) -> session.AuthSession,
@@ -57,20 +47,6 @@ pub type CodeAuthRoutes(context) {
 @target(javascript)
 pub fn ensure() -> Nil {
   Nil
-}
-
-@target(erlang)
-pub fn route_standard(
-  req req: Request(Connection),
-  context context: context,
-  routes routes: StandardAuthRoutes(context),
-) -> Result(response.Response(ResponseData), Nil) {
-  case req.method, req.path {
-    http.Post, "/sign_in" -> routes.sign_in_post(req, context) |> Ok
-    http.Get, "/sign_out" -> routes.sign_out(req, context) |> Ok
-    http.Post, "/sign_out" -> routes.sign_out(req, context) |> Ok
-    _, _ -> Error(Nil)
-  }
 }
 
 @target(erlang)
