@@ -1,14 +1,14 @@
 ---
 # rally-oymv
 title: Extract remaining Rally-owned app glue from Scoreboard
-status: todo
+status: completed
 type: epic
 priority: high
 tags:
     - codegen
     - architecture
 created_at: 2026-06-04T23:17:49Z
-updated_at: 2026-06-04T23:17:49Z
+updated_at: 2026-06-05T01:41:23Z
 ---
 
 Scoreboard is now a useful reality check for the Rally boundary: generated code owns more protocol and boot glue than before, but authored app modules still contain framework plumbing that should be generated from Rally/Proute/Libero metadata.
@@ -30,3 +30,16 @@ Acceptance:
 - Page modules use a stable Rally-facing API instead of generated transport internals.
 - Generated Rally modules may consume Libero runtime/codec modules directly when appropriate.
 - Regression guards enforce the intended import and responsibility boundaries.
+
+Completed:
+
+All child extraction tasks are complete:
+
+- Page-facing RPC effects API.
+- Server websocket dispatch adapter.
+- SSR hydration adapter.
+- Browser app boot wrapper.
+- Generated-boundary guard tests.
+- Explicit SSR route load adapter.
+
+Remaining separate work, such as hiding Libero from the app install surface, is tracked outside this epic.

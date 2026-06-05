@@ -536,6 +536,8 @@ pub fn server_ssr(
   to_client_module _to_client_module: String,
   to_server_module _to_server_module: String,
 ) -> String {
+  let mounts = load_mounts(loads)
+
   "@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
@@ -544,25 +546,54 @@ import generated/rally/server_protocol
 import gleam/bit_array
 @target(erlang)
 import gleam/list
-" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
 @target(erlang)
-pub type LoadError {
-  LoadError(message: String)
-}
-
+import lustre/effect.{type Effect}
+@target(erlang)
+import page_context.{type PageContext}
+" <> server_ssr_mount_imports(mounts) <> "
+" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      server_ssr_mount_route_type(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      server_ssr_mount_handlers_type(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      server_ssr_mount_boot_page(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
 " <> string.join(list.map(loads, server_ssr_hydration_payload), "\n") <> "
 
 @target(erlang)
 fn map_load_result(
-  result: Result(a, List(LoadError)),
+  result: Result(a, List(String)),
 ) -> Result(a, List(transport_result.ApiLoadError)) {
   case result {
     Ok(value) -> Ok(value)
     Error(errors) -> Error(list.map(errors, fn(error) {
-      let LoadError(message:) = error
-      transport_result.ApiLoadError(message:)
+      transport_result.ApiLoadError(message: error)
     }))
   }
+}
+
+@target(erlang)
+fn boot_loaded_page(
+  page page: page,
+  result result: Result(load_result, List(String)),
+  hydration_payload hydration_payload: fn(Result(load_result, List(String))) -> String,
+  to_message to_message: fn(Result(load_result, List(String))) -> message,
+  update_page update_page: fn(page, message) -> #(page, Effect(message)),
+) -> #(page, List(String)) {
+  let #(page, _) = update_page(page, to_message(result))
+  #(page, [hydration_payload(result)])
 }
 "
 }
@@ -1300,10 +1331,149 @@ fn server_ws_module_load_patterns(load: LoadRpc) -> String {
   "        " <> server_ws_load_pattern(load) <> " -> Error(Nil)\n"
 }
 
+fn load_mount(load: LoadRpc) -> String {
+  case string.split(load.module_path, "/") {
+    [mount, ..] -> mount
+    [] -> "app"
+  }
+}
+
+fn load_mounts(loads: List(LoadRpc)) -> List(String) {
+  loads
+  |> list.map(load_mount)
+  |> list.unique
+}
+
+fn mount_loads(loads: List(LoadRpc), mount: String) -> List(LoadRpc) {
+  loads
+  |> list.filter(fn(load) { load_mount(load) == mount })
+}
+
+fn mount_alias(mount: String, suffix: String) -> String {
+  mount <> "_" <> suffix
+}
+
+fn mount_type_prefix(mount: String) -> String {
+  mount
+  |> string.split("_")
+  |> list.map(fn(word) {
+    case string.pop_grapheme(word) {
+      Ok(#(first, rest)) -> string.uppercase(first) <> rest
+      Error(Nil) -> word
+    }
+  })
+  |> string.join("")
+}
+
+fn server_ssr_mount_imports(mounts: List(String)) -> String {
+  mounts
+  |> list.map(fn(mount) { "@target(erlang)
+import generated/proute/" <> mount <> "/page_input as " <> mount_alias(
+      mount,
+      "page_input",
+    ) <> "
+@target(erlang)
+import generated/proute/" <> mount <> "/pages as " <> mount_alias(
+      mount,
+      "pages",
+    ) <> "
+@target(erlang)
+import generated/proute/" <> mount <> "/routes as " <> mount_alias(
+      mount,
+      "routes",
+    ) })
+  |> string.join("\n")
+  |> fn(imports) {
+    case imports {
+      "" -> ""
+      _ -> imports <> "\n"
+    }
+  }
+}
+
+fn server_ssr_mount_route_type(mount: String, loads: List(LoadRpc)) -> String {
+  let prefix = mount_type_prefix(mount)
+  let pages = mount_alias(mount, "pages")
+
+  "@target(erlang)
+pub type " <> prefix <> "LoadRoute {
+  " <> prefix <> "NoLoad
+" <> string.join(list.map(loads, fn(load) { "  " <> pascal_name(load) <> "Load(
+    to_message: fn(Result(" <> wire_alias(load) <> ".LoadResult, List(String))) -> " <> pages <> ".Message,
+  )" }), "\n") <> "
+}
+"
+}
+
+fn server_ssr_mount_handlers_type(
+  mount: String,
+  loads: List(LoadRpc),
+) -> String {
+  let prefix = mount_type_prefix(mount)
+  let routes = mount_alias(mount, "routes")
+
+  "@target(erlang)
+pub type " <> prefix <> "LoadHandlers {
+  " <> prefix <> "LoadHandlers(
+" <> string.join(
+    list.map(loads, fn(load) {
+      "    "
+      <> load.name
+      <> "_load: fn("
+      <> routes
+      <> ".Route) -> Result("
+      <> wire_alias(load)
+      <> ".LoadResult, List(String)),"
+    }),
+    "\n",
+  ) <> "
+  )
+}
+"
+}
+
+fn server_ssr_mount_boot_page(mount: String, loads: List(LoadRpc)) -> String {
+  let prefix = mount_type_prefix(mount)
+  let page_input = mount_alias(mount, "page_input")
+  let pages = mount_alias(mount, "pages")
+  let routes = mount_alias(mount, "routes")
+
+  "@target(erlang)
+pub fn " <> mount <> "_boot_page(
+  page_context page_context: PageContext,
+  query_params query_params: " <> page_input <> ".QueryParams,
+  route route: " <> routes <> ".Route,
+  select_load select_load: fn(" <> routes <> ".Route) -> " <> prefix <> "LoadRoute,
+  handlers handlers: " <> prefix <> "LoadHandlers,
+  update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+) -> #(" <> pages <> ".Page, List(String)) {
+  let page = " <> pages <> ".load_sync(page_context, query_params, route)
+
+  case select_load(route) {
+    " <> prefix <> "NoLoad -> #(page, [])
+" <> string.join(list.map(loads, server_ssr_mount_boot_case), "\n") <> "
+  }
+}
+"
+}
+
+fn server_ssr_mount_boot_case(load: LoadRpc) -> String {
+  "    " <> pascal_name(load) <> "Load(to_message:) -> {
+      let result = handlers." <> load.name <> "_load(route)
+      boot_loaded_page(
+        page: page,
+        result: result,
+        hydration_payload: " <> load.name <> "_hydration_payload,
+        to_message: to_message,
+        update_page: update_page,
+      )
+    }"
+}
+
 fn server_ssr_hydration_payload(load: LoadRpc) -> String {
   "@target(erlang)
 pub fn " <> load.name <> "_hydration_payload(
-  result result: Result(" <> wire_alias(load) <> ".LoadResult, List(LoadError)),
+  result result: Result(" <> wire_alias(load) <> ".LoadResult, List(String)),
 ) -> String {
   server_protocol.ensure()
   result
