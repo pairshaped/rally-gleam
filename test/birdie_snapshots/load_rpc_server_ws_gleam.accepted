@@ -18,7 +18,7 @@ import generated/rally/server_protocol
 @target(erlang)
 import gleam/list
 @target(erlang)
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 @target(erlang)
 import gleam/string
 @target(erlang)
@@ -47,10 +47,10 @@ pub type SaveError {
 }
 
 @target(erlang)
-pub type Handlers(state) {
+pub type Handlers(state, admin_auth) {
   Handlers(
     load_context: fn(state) -> load_context.Connection,
-    admin_authorized: fn(state) -> Bool,
+    admin_auth: fn(state) -> Option(admin_auth),
   )
 }
 
@@ -59,7 +59,7 @@ pub fn handle_client_frame(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Nil {
   server_protocol.ensure()
   case
@@ -136,7 +136,7 @@ fn try_admin_games_request(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Result(Nil, Nil) {
   case server_protocol.decode_admin_games_request(data) {
     Ok(server_protocol.AdminGamesClientRequest(
@@ -180,7 +180,7 @@ fn try_public_games_request(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Result(Nil, Nil) {
   case server_protocol.decode_public_games_request(data) {
     Ok(server_protocol.PublicGamesClientRequest(
@@ -206,7 +206,7 @@ fn try_public_game_detail_request(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Result(Nil, Nil) {
   case server_protocol.decode_public_game_detail_request(data) {
     Ok(server_protocol.PublicGameDetailClientRequest(
@@ -233,12 +233,12 @@ fn send_admin_games_load_result(
   state state: state,
   conn conn: WebsocketConnection,
   request_id request_id: Int,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Nil {
   let result =
-    case handlers.admin_authorized(state) {
-      False -> Error([LoadError(message: "Unauthorized.")])
-      True ->
+    case handlers.admin_auth(state) {
+      None -> Error([LoadError(message: "Unauthorized.")])
+      Some(_) ->
         case admin_games_wire.load(handlers.load_context(state)) {
           Ok(data) -> Ok(admin_games_wire.AdminGamesLoaded(data))
           Error(admin_games_wire.LoadError(message: message)) ->
@@ -264,7 +264,7 @@ fn send_public_games_load_result(
   state state: state,
   conn conn: WebsocketConnection,
   request_id request_id: Int,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Nil {
   let result =
     case public_games_page.load(handlers.load_context(state)) {
@@ -290,7 +290,7 @@ fn send_public_game_detail_load_result(
   state state: state,
   conn conn: WebsocketConnection,
   request_id request_id: Int,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
   game_id game_id: Int,
 ) -> Nil {
   let result =
@@ -319,11 +319,11 @@ fn send_admin_games_save_result(
   conn conn: WebsocketConnection,
   request_id request_id: Int,
   message message: admin_games_wire.ServerMsg,
-  handlers handlers: Handlers(state),
+  handlers handlers: Handlers(state, admin_auth),
 ) -> Nil {
-  let result = case handlers.admin_authorized(state) {
-    False -> Error([SaveError(field: None, message: "Unauthorized.")])
-    True ->
+  let result = case handlers.admin_auth(state) {
+    None -> Error([SaveError(field: None, message: "Unauthorized.")])
+    Some(_) ->
       case admin_games_wire.handle(handlers.load_context(state), message) {
         Ok(value) -> Ok(value)
         Error(admin_games_wire.SaveError(message: message)) ->

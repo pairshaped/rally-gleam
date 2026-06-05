@@ -1876,7 +1876,7 @@ import generated/rally/server_protocol
 @target(erlang)
 import gleam/list
 @target(erlang)
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 @target(erlang)
 import gleam/string
 @target(erlang)
@@ -1901,7 +1901,7 @@ pub type SaveError {
 }
 
 @target(erlang)
-pub type " <> server_ws_handlers_type_definition(loads) <> " {
+pub type " <> server_ws_handlers_type_definition(loads, load_context:) <> " {
   Handlers(
 " <> server_ws_handler_fields(loads, load_context:) <> "
   )
@@ -1912,7 +1912,7 @@ pub fn handle_client_frame(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: " <> server_ws_handlers_type(loads) <> ",
+  handlers handlers: " <> server_ws_handlers_type(loads, load_context:) <> ",
 ) -> Nil {
   server_protocol.ensure()
   " <> server_ws_dispatch_cases(loads) <> "
@@ -1921,7 +1921,9 @@ pub fn handle_client_frame(
 " <> server_ws_push_frame(push_contract) <> "
 
 " <> string.join(
-    list.map(loads, fn(load) { server_ws_try_request(load, loads) }),
+    list.map(loads, fn(load) {
+      server_ws_try_request(load, loads, load_context:)
+    }),
     "\n",
   ) <> "
 " <> string.join(
@@ -3017,12 +3019,30 @@ fn map_page_load_result(
   }
 }
 
-fn server_ws_handlers_type_definition(_loads: List(LoadRpc)) -> String {
-  "Handlers(state)"
+fn server_ws_handlers_type_definition(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  "Handlers(" <> server_ws_handlers_type_params(loads, load_context:) <> ")"
 }
 
-fn server_ws_handlers_type(_loads: List(LoadRpc)) -> String {
-  "Handlers(state)"
+fn server_ws_handlers_type(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  "Handlers(" <> server_ws_handlers_type_params(loads, load_context:) <> ")"
+}
+
+fn server_ws_handlers_type_params(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  let auth_params =
+    server_ws_authorized_mounts(loads, load_context:)
+    |> list.map(fn(mount) { mount <> "_auth" })
+
+  ["state", ..auth_params]
+  |> string.join(", ")
 }
 
 fn load_context_import(
@@ -3501,7 +3521,7 @@ fn server_ws_handler_fields(
   let authorization_fields =
     server_ws_authorized_mounts(loads, load_context:)
     |> list.map(fn(mount) {
-      "    " <> mount <> "_authorized: fn(state) -> Bool,"
+      "    " <> mount <> "_auth: fn(state) -> Option(" <> mount <> "_auth),"
     })
   let load_fields =
     loads
@@ -3591,13 +3611,17 @@ fn server_ws_dispatch_case(load: LoadRpc, rest: List(LoadRpc)) -> String {
   }"
 }
 
-fn server_ws_try_request(load: LoadRpc, loads: List(LoadRpc)) -> String {
+fn server_ws_try_request(
+  load: LoadRpc,
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
   "@target(erlang)
 fn try_" <> load.name <> "_request(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: " <> server_ws_handlers_type(loads) <> ",
+  handlers handlers: " <> server_ws_handlers_type(loads, load_context:) <> ",
 ) -> Result(Nil, Nil) {
   case server_protocol.decode_" <> load.name <> "_request(data) {
     Ok(server_protocol." <> pascal_name(load) <> "ClientRequest(
@@ -3654,7 +3678,7 @@ fn send_" <> load.name <> "_load_result(
   state state: state,
   conn conn: WebsocketConnection,
   request_id request_id: Int,
-  handlers handlers: " <> server_ws_handlers_type(loads) <> server_ws_arg_params(
+  handlers handlers: " <> server_ws_handlers_type(loads, load_context:) <> server_ws_arg_params(
     load.args,
   ) <> ",
 ) -> Nil {
@@ -3707,9 +3731,9 @@ fn server_ws_authorized_result(
 ) -> String {
   case load_mount(load) {
     "public" -> body
-    mount -> "case handlers." <> mount <> "_authorized(state) {
-      False -> " <> error <> "
-      True -> " <> body <> "
+    mount -> "case handlers." <> mount <> "_auth(state) {
+      None -> " <> error <> "
+      Some(_) -> " <> body <> "
     }"
   }
 }
@@ -3728,7 +3752,7 @@ fn send_" <> load.name <> "_save_result(
   conn conn: WebsocketConnection,
   request_id request_id: Int,
   message message: " <> wire_alias(load) <> ".ServerMsg,
-  handlers handlers: " <> server_ws_handlers_type(loads) <> ",
+  handlers handlers: " <> server_ws_handlers_type(loads, load_context:) <> ",
 ) -> Nil {
   let result = " <> server_ws_save_result_call(load, load_context:) <> "
 

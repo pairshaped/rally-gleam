@@ -42,6 +42,18 @@ pub type StandardAuthRoutes(context) {
   )
 }
 
+@target(erlang)
+pub type CodeAuthRoutes(context) {
+  CodeAuthRoutes(
+    session: fn(context) -> session.AuthSession,
+    verify_code: fn(String, context) -> Result(Int, Nil),
+    sign_in_default_return_to: String,
+    sign_in_return_to: fn(String) -> String,
+    sign_out_default_return_to: String,
+    secure: Bool,
+  )
+}
+
 @target(javascript)
 pub fn ensure() -> Nil {
   Nil
@@ -57,6 +69,44 @@ pub fn route_standard(
     http.Post, "/sign_in" -> routes.sign_in_post(req, context) |> Ok
     http.Get, "/sign_out" -> routes.sign_out(req, context) |> Ok
     http.Post, "/sign_out" -> routes.sign_out(req, context) |> Ok
+    _, _ -> Error(Nil)
+  }
+}
+
+@target(erlang)
+pub fn route_code_auth(
+  req req: Request(Connection),
+  context context: context,
+  routes routes: CodeAuthRoutes(context),
+) -> Result(response.Response(ResponseData), Nil) {
+  case req.method, req.path {
+    http.Post, "/sign_in" ->
+      sign_in_with_code(
+        req: req,
+        session: routes.session(context),
+        verify_code: fn(code) { routes.verify_code(code, context) },
+        default_return_to: routes.sign_in_default_return_to,
+        return_to: routes.sign_in_return_to,
+        secure: routes.secure,
+      )
+      |> Ok
+
+    http.Get, "/sign_out" ->
+      sign_out(
+        req: req,
+        default_return_to: routes.sign_out_default_return_to,
+        secure: routes.secure,
+      )
+      |> Ok
+
+    http.Post, "/sign_out" ->
+      sign_out(
+        req: req,
+        default_return_to: routes.sign_out_default_return_to,
+        secure: routes.secure,
+      )
+      |> Ok
+
     _, _ -> Error(Nil)
   }
 }
