@@ -164,6 +164,38 @@ pub fn startup_effects(
 }
 
 @target(javascript)
+pub fn initial_page(
+  hydration hydration: Result(result, Nil),
+  load_hydrated load_hydrated: fn(result) -> page,
+  load_client load_client: fn() -> #(page, Effect(page_msg)),
+) -> #(page, Effect(page_msg)) {
+  case hydration {
+    Ok(result) -> #(load_hydrated(result), effect.none())
+    Error(Nil) -> load_client()
+  }
+}
+
+@target(javascript)
+pub fn map_page_effect(
+  page_update page_update: #(page, Effect(page_msg)),
+  on_page on_page: fn(page_msg) -> msg,
+) -> #(page, Effect(msg)) {
+  let #(page, page_effect) = page_update
+  #(page, effect.map(page_effect, on_page))
+}
+
+@target(javascript)
+pub fn server_frame_effect(
+  page page: page,
+  bytes bytes: BitArray,
+  apply_frame apply_frame: fn(page, BitArray) -> #(page, Effect(page_msg)),
+  on_page on_page: fn(page_msg) -> msg,
+) -> #(page, Effect(msg)) {
+  let page_update = apply_frame(page, bytes)
+  map_page_effect(page_update, on_page)
+}
+
+@target(javascript)
 pub fn navigation_effects(
   path path: String,
   push_history push_history: Bool,
