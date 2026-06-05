@@ -1,14 +1,14 @@
 ---
 # rally-qqpn
 title: Add generated-boundary guard tests
-status: todo
+status: completed
 type: task
 priority: normal
 tags:
     - tests
     - architecture
 created_at: 2026-06-04T23:18:50Z
-updated_at: 2026-06-04T23:18:50Z
+updated_at: 2026-06-05T01:29:15Z
 parent: rally-oymv
 blocked_by:
     - rally-tbnf
@@ -39,3 +39,19 @@ Acceptance:
 - Boundary guard tests fail before the extraction work or with a small fixture that reproduces the old pattern.
 - Boundary guard tests pass once the generated adapters are used.
 - The checks encode the responsibility boundary, not incidental file names beyond stable generated namespaces.
+
+
+
+Completed:
+
+- Added `test/boundary_guard_test.mjs` in the scoreboard example.
+- Guard checks authored page modules do not import Rally transport/result/protocol internals directly.
+- Guard checks `app_ws` consumes `server_ws` instead of protocol/result helpers.
+- Guard checks `app_ssr` consumes `server_ssr` instead of hand-authoring hydration payload encoding.
+- Guard checks browser apps consume `browser_app` for app startup and navigation plumbing.
+
+Validation:
+
+- `node test/boundary_guard_test.mjs`
+- `gleam build --target javascript`
+- `gleam build --target erlang`
