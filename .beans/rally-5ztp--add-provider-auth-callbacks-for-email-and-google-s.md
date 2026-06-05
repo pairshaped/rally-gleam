@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T22:34:09Z
-updated_at: 2026-06-05T22:34:09Z
+updated_at: 2026-06-05T22:57:55Z
 ---
 
 Rally now has the shared session/user context pipeline for the template apps. The next provider slice should build on that pipeline instead of changing the core model.
@@ -26,3 +26,9 @@ Acceptance criteria:
 [ ] Google SSO signs in through the same Rally session/user context pipeline.
 [ ] Apps provide explicit callbacks for user lookup/upsert and provider credentials.
 [ ] Existing Scoreboard sign-in, sign-out, admin redirect, SSR boot identity, websocket admin authorization, and browser smoke still pass.
+
+
+
+Convention boundary:
+
+Provider auth should follow ADR 0012. Rally owns provider routing mechanics, callback invocation, session issuing, config/env parsing, and standard bootstrap integration. Apps own user lookup/upsert policy, role policy, provider credentials/secret values, email copy/provider choice, and any product-specific route narrowing.
