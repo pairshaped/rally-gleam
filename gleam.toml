@@ -55,9 +55,9 @@ argv = ">= 1.0.0 and < 2.0.0"
 gleam_stdlib = ">= 0.60.0 and < 2.0.0"
 glance = "~> 6.0"
 glexer = ">= 2.0.0 and < 3.0.0"
-libero = { path = "../libero" }
+libero = { path = "../libero-gleam" }
 lustre = ">= 5.7.0 and < 6.0.0"
-marmot = ">= 1.4.1 and < 2.0.0"
+marmot = ">= 1.7.2 and < 2.0.0"
 simplifile = ">= 2.0.0 and < 3.0.0"
 sqlight = ">= 1.0.0 and < 2.0.0"
 tom = ">= 2.1.0 and < 3.0.0"

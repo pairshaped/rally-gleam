@@ -1,7 +1,7 @@
 ---
 # rally-rtld
 title: Generate route load result adapters
-status: todo
+status: completed
 type: task
 priority: high
 tags:
@@ -9,7 +9,7 @@ tags:
     - routing
     - load-rpc
 created_at: 2026-06-05T18:00:00Z
-updated_at: 2026-06-05T18:00:00Z
+updated_at: 2026-06-05T15:34:08Z
 parent: rally-kobq
 ---
 
@@ -44,3 +44,11 @@ Rally already generates much of the load transport. This slice removes the remai
 - Rally build and focused load-rpc snapshots.
 - Scoreboard regenerate with `gleam run -m rally load-rpc`.
 - Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, websocket smoke, and browser smoke.
+
+## Summary of Changes
+
+- Added generated browser and SSR load-route selection from Proute routes and load-owning page identity, including pages that alias `Model` and `Message` to the load-owning module.
+- Generated result adapters now wrap load success/error into generated Proute page messages for browser websocket responses and SSR boot loads.
+- Removed `select_load` parameters from generated app boot/load APIs.
+- Added snapshot coverage for a home route delegating to another page and fixed local dependency paths for the renamed repo layout.
+- Validation: `gleam format`; `gleam test --target erlang` (439 passed).

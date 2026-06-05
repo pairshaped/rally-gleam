@@ -37,6 +37,8 @@ pub type LoadRpc {
     request_constructor: String,
     /// LoadResult constructor used to wrap the loaded page data.
     load_result_constructor: String,
+    /// Route modules whose page message type can receive this load result.
+    route_modules: List(String),
     args: List(LoadArg),
     save_result_type: Option(String),
   )
@@ -71,11 +73,18 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
     files
     |> list.try_map(fn(path) { source_module_from_file(src_root, path) }),
   )
-  modules
-  |> list.try_fold([], fn(loads, info) {
-    use discovered <- result.try(discover_source_module(info, modules))
-    Ok(list.append(loads, discovered))
+  use loads <- result.try(
+    modules
+    |> list.try_fold([], fn(loads, info) {
+      use discovered <- result.try(discover_source_module(info, modules))
+      Ok(list.append(loads, discovered))
+    }),
+  )
+  loads
+  |> list.map(fn(load) {
+    LoadRpc(..load, route_modules: load_route_modules(load, modules))
   })
+  |> Ok
 }
 
 pub fn generate(
@@ -619,7 +628,7 @@ import generated/rally/client_transport
 @target(javascript)
 import generated/rally/hydration
 @target(javascript)
-import generated/rally/result.{type ApiLoadError}
+import generated/rally/result.{type ApiLoadError, ApiLoadError}
 @target(javascript)
 import page_context.{type PageContext}
 @target(javascript)
@@ -632,10 +641,20 @@ import lustre/element.{type Element}
     push_contract,
   ) <> push_import(push_contract, "@target(javascript)") <> browser_app_mount_imports(
     mounts,
-  ) <> wire_imports(loads, "@target(javascript)", client_only: False) <> "
+  ) <> browser_app_page_imports(loads) <> wire_imports(
+    loads,
+    "@target(javascript)",
+    client_only: False,
+  ) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
       browser_app_mount_load_route_type(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
+      browser_app_mount_load_route_function(mount, mount_loads(loads, mount))
     }),
     "\n",
   ) <> "
@@ -731,6 +750,14 @@ fn initial_loaded_page(
     Error(Nil) -> #(page, load_client())
   }
 }
+
+@target(javascript)
+fn api_load_error(errors: List(ApiLoadError)) -> String {
+  case errors {
+    [ApiLoadError(message: message), ..] -> message
+    [] -> \"Could not load page.\"
+  }
+}
 "
 }
 
@@ -763,8 +790,7 @@ import generated/proute/" <> mount <> "/routes as " <> mount_alias(
 fn browser_app_int_import(loads: List(LoadRpc)) -> String {
   case
     list.any(loads, fn(load) {
-      load.import_on_client
-      && list.any(load.args, fn(arg) { arg.type_ref == "Int" })
+      list.any(load.args, fn(arg) { arg.type_ref == "Int" })
     })
   {
     True -> "@target(javascript)\nimport gleam/int\n"
@@ -778,6 +804,25 @@ fn browser_app_client_protocol_import(
   case push_contract {
     Some(_) -> "@target(javascript)\nimport generated/rally/client_protocol\n"
     None -> ""
+  }
+}
+
+fn browser_app_page_imports(loads: List(LoadRpc)) -> String {
+  loads
+  |> list.filter(fn(load) { load.module_path != load.wire_module })
+  |> list.map(fn(load) {
+    "@target(javascript)\nimport "
+    <> load.module_path
+    <> " as "
+    <> page_alias(load)
+  })
+  |> list.unique
+  |> string.join("\n")
+  |> fn(imports) {
+    case imports {
+      "" -> ""
+      _ -> imports <> "\n"
+    }
   }
 }
 
@@ -858,10 +903,9 @@ pub fn " <> mount <> "_load_client(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
-  select_load select_load: fn(" <> routes <> ".Route) -> " <> prefix <> "LoadRoute,
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
   let page = " <> pages <> ".load_sync(page_context, query_params, route)
-  #(page, " <> mount <> "_request_effect(route, select_load(route)))
+  #(page, " <> mount <> "_request_effect(route, " <> mount <> "_load_route(route)))
 }
 
 @target(javascript)
@@ -869,12 +913,11 @@ pub fn " <> mount <> "_initial_page(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
-  select_load select_load: fn(" <> routes <> ".Route) -> " <> prefix <> "LoadRoute,
   update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
   let page = " <> pages <> ".load_sync(page_context, query_params, route)
 
-  case select_load(route) {
+  case " <> mount <> "_load_route(route) {
     " <> prefix <> "NoLoad -> #(page, effect.none())
 " <> string.join(list.map(loads, browser_app_initial_page_case), "\n") <> "
   }
@@ -893,6 +936,173 @@ fn " <> mount <> "_request_effect(
 "
 }
 
+fn browser_app_mount_load_route_function(
+  mount: String,
+  loads: List(LoadRpc),
+) -> String {
+  let prefix = mount_type_prefix(mount)
+  let routes = mount_alias(mount, "routes")
+
+  "@target(javascript)
+pub fn " <> mount <> "_load_route(route route: " <> routes <> ".Route) -> " <> prefix <> "LoadRoute {
+  case route {
+" <> string.join(list.flat_map(loads, browser_app_load_route_cases), "\n") <> "
+    _ -> " <> prefix <> "NoLoad
+  }
+}
+"
+}
+
+fn browser_app_load_route_cases(load: LoadRpc) -> List(String) {
+  load.route_modules
+  |> list.map(fn(route_module) {
+    "    "
+    <> browser_app_route_module_pattern(route_module)
+    <> " -> "
+    <> browser_app_load_route_body(load, route_module)
+  })
+}
+
+fn browser_app_load_route_body(load: LoadRpc, route_module: String) -> String {
+  case load.import_on_client, load.args {
+    False, [] -> browser_app_load_route_constructor(load, route_module, "")
+    False, _ -> browser_app_load_route_arg_body(load, route_module)
+    True, _ -> browser_app_load_route_constructor(load, route_module, "")
+  }
+}
+
+fn browser_app_load_route_arg_body(
+  load: LoadRpc,
+  route_module: String,
+) -> String {
+  let args = browser_app_route_args(load)
+  let route_fields = list.map(args, fn(pair) { pair.0 })
+  let load_args = list.map(args, fn(pair) { pair.1 })
+
+  case browser_app_supported_route_args(load) {
+    False -> mount_type_prefix(load_mount(load)) <> "NoLoad"
+    True -> {
+      let parsers =
+        list.zip(route_fields, load_args)
+        |> list.map(fn(pair) {
+          let #(route_field, arg) = pair
+          case arg.type_ref {
+            "Int" -> Some("case int.parse(" <> route_field <> ") {
+          Ok(" <> arg.label <> ") -> ")
+            _ -> None
+          }
+        })
+        |> option.values
+      case parsers {
+        [] ->
+          browser_app_load_route_constructor(
+            load,
+            route_module,
+            load_args
+              |> list.map(fn(arg) { arg.label <> ":" })
+              |> string.join(", "),
+          )
+        _ -> {
+          let close_parens =
+            list.repeat("}", list.length(parsers))
+            |> string.join("\n")
+          let load_arg_labels =
+            load_args
+            |> list.map(fn(arg) { arg.label <> ":" })
+            |> string.join(", ")
+          let no_load = mount_type_prefix(load_mount(load)) <> "NoLoad"
+
+          string.join(parsers, "")
+          <> browser_app_load_route_constructor(
+            load,
+            route_module,
+            load_arg_labels,
+          )
+          <> "
+          Error(Nil) -> "
+          <> no_load
+          <> "
+        "
+          <> close_parens
+        }
+      }
+    }
+  }
+}
+
+fn browser_app_load_route_constructor(
+  load: LoadRpc,
+  route_module: String,
+  message_args: String,
+) -> String {
+  pascal_name(load)
+  <> "Load("
+  <> browser_app_load_route_message(load, message_args)
+  <> "to_message: fn(result) { "
+  <> browser_app_load_result_message(load, route_module)
+  <> " })"
+}
+
+fn browser_app_load_route_message(
+  load: LoadRpc,
+  message_args: String,
+) -> String {
+  case load.import_on_client {
+    True -> ""
+    False ->
+      "message: "
+      <> wire_alias(load)
+      <> "."
+      <> load.request_constructor
+      <> browser_app_constructor_args(message_args)
+      <> ", "
+  }
+}
+
+fn browser_app_constructor_args(args: String) -> String {
+  case args {
+    "" -> ""
+    _ -> "(" <> args <> ")"
+  }
+}
+
+fn browser_app_load_result_message(
+  load: LoadRpc,
+  route_module: String,
+) -> String {
+  let pages = mount_alias(load_mount(load), "pages")
+  let message = route_message_constructor(route_module)
+  let page = page_alias(load)
+  let wire = wire_alias(load)
+
+  "case result {
+      Ok(" <> wire <> "." <> load.load_result_constructor <> "(data)) ->
+        " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Ok(data)))
+      Error(errors) ->
+        " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(" <> page <> ".LoadError(message: api_load_error(errors)))))
+    }"
+}
+
+fn browser_app_route_module_pattern(route_module: String) -> String {
+  let mount = load_mount_from_module(route_module)
+  mount_alias(mount, "routes")
+  <> "."
+  <> route_constructor_for_module(route_module)
+  <> browser_app_route_module_pattern_args(route_module)
+}
+
+fn browser_app_route_module_pattern_args(route_module: String) -> String {
+  route_module
+  |> dynamic_segments_from_module
+  |> list.map(fn(segment) { segment <> ":" })
+  |> fn(args) {
+    case args {
+      [] -> ""
+      _ -> "(" <> string.join(args, ", ") <> ")"
+    }
+  }
+}
+
 fn browser_app_initial_page_case(load: LoadRpc) -> String {
   "    "
   <> pascal_name(load)
@@ -907,7 +1117,9 @@ fn browser_app_initial_page_case(load: LoadRpc) -> String {
         to_message: to_message,
         load_client: fn() { "
   <> load_mount(load)
-  <> "_request_effect(route, select_load(route)) },
+  <> "_request_effect(route, "
+  <> load_mount(load)
+  <> "_load_route(route)) },
         update_page: update_page,
       )
     }"
@@ -1418,6 +1630,12 @@ import page_context.{type PageContext}
   ) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
+      server_ssr_mount_load_route_function(mount, mount_loads(loads, mount))
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
       server_ssr_mount_handlers_type(
         mount,
         mount_loads(loads, mount),
@@ -1594,6 +1812,7 @@ fn discover_source(
               import_on_client:,
               request_constructor: variant.name,
               load_result_constructor:,
+              route_modules: [module_path],
               args:,
               save_result_type:,
             ))
@@ -1601,6 +1820,56 @@ fn discover_source(
         }
       }
     }
+  }
+}
+
+fn load_route_modules(
+  load: LoadRpc,
+  modules: List(SourceModule),
+) -> List(String) {
+  [
+    load.module_path,
+    ..modules
+    |> list.filter_map(fn(info) {
+      case source_module_aliases_load(info, load.module_path) {
+        True -> Ok(info.module_path)
+        False -> Error(Nil)
+      }
+    })
+  ]
+  |> list.unique
+}
+
+fn source_module_aliases_load(info: SourceModule, load_module: String) -> Bool {
+  info.module_path != load_module
+  && load_mount_from_module(info.module_path)
+  == load_mount_from_module(load_module)
+  && type_alias_targets_module(info, "Model", load_module)
+  && type_alias_targets_module(info, "Message", load_module)
+}
+
+fn type_alias_targets_module(
+  info: SourceModule,
+  name: String,
+  module_path: String,
+) -> Bool {
+  case
+    list.find(info.ast.type_aliases, fn(def) { def.definition.name == name })
+  {
+    Ok(def) ->
+      case
+        glance_type_resolver.type_to_field_type(
+          type_: def.definition.aliased,
+          resolver: info.resolver,
+          current_module: info.module_path,
+          policy: glance_type_resolver.PreserveUnsupported,
+        )
+      {
+        Ok(field_type.UserType(module_path: target, type_name:, args: [])) ->
+          target == module_path && type_name == name
+        _ -> False
+      }
+    Error(Nil) -> False
   }
 }
 
@@ -2907,7 +3176,11 @@ fn server_ws_module_load_patterns(load: LoadRpc) -> String {
 }
 
 fn load_mount(load: LoadRpc) -> String {
-  case string.split(load.module_path, "/") {
+  load_mount_from_module(load.module_path)
+}
+
+fn load_mount_from_module(module_path: String) -> String {
+  case string.split(module_path, "/") {
     [mount, ..] -> mount
     [] -> "app"
   }
@@ -3108,13 +3381,12 @@ pub fn " <> mount <> "_boot_page(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
-  select_load select_load: fn(" <> routes <> ".Route) -> " <> prefix <> "LoadRoute,
   handlers handlers: " <> prefix <> "LoadHandlers,
   update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, List(String)) {
   let page = " <> pages <> ".load_sync(page_context, query_params, route)
 
-  case select_load(route) {
+  case " <> mount <> "_load_route(route) {
     " <> prefix <> "NoLoad -> #(page, [])
 " <> string.join(
     list.map(loads, fn(load) { server_ssr_mount_boot_case(load, load_context:) }),
@@ -3123,6 +3395,69 @@ pub fn " <> mount <> "_boot_page(
   }
 }
 "
+}
+
+fn server_ssr_mount_load_route_function(
+  mount: String,
+  loads: List(LoadRpc),
+) -> String {
+  let prefix = mount_type_prefix(mount)
+  let routes = mount_alias(mount, "routes")
+
+  "@target(erlang)
+pub fn " <> mount <> "_load_route(route route: " <> routes <> ".Route) -> " <> prefix <> "LoadRoute {
+  case route {
+" <> string.join(list.flat_map(loads, server_ssr_load_route_cases), "\n") <> "
+    _ -> " <> prefix <> "NoLoad
+  }
+}
+"
+}
+
+fn server_ssr_load_route_cases(load: LoadRpc) -> List(String) {
+  load.route_modules
+  |> list.map(fn(route_module) {
+    "    "
+    <> server_ssr_route_module_pattern(route_module)
+    <> " -> "
+    <> pascal_name(load)
+    <> "Load(to_message: fn(result) { "
+    <> server_ssr_load_result_message(load, route_module)
+    <> " })"
+  })
+}
+
+fn server_ssr_load_result_message(
+  load: LoadRpc,
+  route_module: String,
+) -> String {
+  let pages = mount_alias(load_mount(load), "pages")
+  pages
+  <> "."
+  <> route_message_constructor(route_module)
+  <> "("
+  <> page_alias(load)
+  <> ".loaded_from_wire(result))"
+}
+
+fn server_ssr_route_module_pattern(route_module: String) -> String {
+  let mount = load_mount_from_module(route_module)
+  mount_alias(mount, "routes")
+  <> "."
+  <> route_constructor_for_module(route_module)
+  <> server_ssr_route_module_pattern_args(route_module)
+}
+
+fn server_ssr_route_module_pattern_args(route_module: String) -> String {
+  route_module
+  |> dynamic_segments_from_module
+  |> list.map(fn(segment) { segment <> ": _" })
+  |> fn(args) {
+    case args {
+      [] -> ""
+      _ -> "(" <> string.join(args, ", ") <> ")"
+    }
+  }
 }
 
 fn server_ssr_mount_boot_case(
@@ -3268,8 +3603,8 @@ fn server_ssr_route_args(load: LoadRpc) -> List(#(String, LoadArg)) {
 }
 
 fn server_ssr_dynamic_segments(load: LoadRpc) -> List(String) {
-  load
-  |> page_segments
+  load.module_path
+  |> page_segments_from_module
   |> list.map(fn(segment) {
     case string.ends_with(segment, "_") {
       True -> Some(string.drop_end(segment, 1))
@@ -3280,23 +3615,54 @@ fn server_ssr_dynamic_segments(load: LoadRpc) -> List(String) {
 }
 
 fn server_ssr_route_constructor(load: LoadRpc) -> String {
-  load
-  |> page_segments
-  |> list.map(fn(segment) {
-    segment
-    |> string.drop_end(case string.ends_with(segment, "_") {
-      True -> 1
-      False -> 0
-    })
-    |> pascal_segment
-  })
-  |> string.join("")
+  route_constructor_for_module(load.module_path)
 }
 
-fn page_segments(load: LoadRpc) -> List(String) {
-  load.module_path
+fn route_message_constructor(module_path: String) -> String {
+  route_constructor_for_module(module_path) <> "Msg"
+}
+
+fn route_constructor_for_module(module_path: String) -> String {
+  let mount = load_mount_from_module(module_path)
+  let base =
+    module_path
+    |> page_segments_from_module
+    |> list.map(pascal_path_segment)
+    |> string.join("")
+
+  case mount {
+    "public" -> base
+    _ -> mount_type_prefix(mount) <> base
+  }
+}
+
+fn dynamic_segments_from_module(module_path: String) -> List(String) {
+  module_path
+  |> page_segments_from_module
+  |> list.map(fn(segment) {
+    case segment, string.ends_with(segment, "_") {
+      "home_", _ -> None
+      "not_found_", _ -> None
+      _, True -> Some(string.drop_end(segment, 1))
+      _, False -> None
+    }
+  })
+  |> option.values
+}
+
+fn page_segments_from_module(module_path: String) -> List(String) {
+  module_path
   |> string.split("/")
   |> drop_pages_prefix
+}
+
+fn pascal_path_segment(segment: String) -> String {
+  segment
+  |> string.drop_end(case string.ends_with(segment, "_") {
+    True -> 1
+    False -> 0
+  })
+  |> pascal_segment
 }
 
 fn drop_pages_prefix(parts: List(String)) -> List(String) {

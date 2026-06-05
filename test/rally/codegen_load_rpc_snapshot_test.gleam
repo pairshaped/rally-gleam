@@ -19,6 +19,7 @@ fn public_games_load() -> LoadRpc {
     import_on_client: True,
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
+    route_modules: ["public/pages/games"],
     args: [],
     save_result_type: None,
   )
@@ -32,6 +33,7 @@ fn public_game_detail_load() -> LoadRpc {
     import_on_client: True,
     request_constructor: "PublicGameDetailLoad",
     load_result_constructor: "PublicGameDetailLoaded",
+    route_modules: ["public/pages/games/id_"],
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )
@@ -45,6 +47,7 @@ fn admin_games_load() -> LoadRpc {
     import_on_client: False,
     request_constructor: "AdminGamesLoad",
     load_result_constructor: "AdminGamesLoaded",
+    route_modules: ["admin/pages/games"],
     args: [],
     save_result_type: Some("GameUpdate"),
   )
@@ -264,6 +267,18 @@ pub fn load_rpc_discover_finds_page_local_wire_loads_test() {
   let assert Ok(Nil) = simplifile.create_directory_all(src <> "/admin/pages")
   let assert Ok(Nil) =
     simplifile.write(
+      src <> "/public/pages/home_.gleam",
+      "import public/pages/games as games_page
+
+pub type Model =
+  games_page.Model
+
+pub type Message =
+  games_page.Message
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
       src <> "/admin/pages/games.gleam",
       "pub type ServerMsg {
   AdminGamesLoad
@@ -280,6 +295,14 @@ pub type GameUpdate {
 
 pub type GameSummary {
   GameSummary(id: Int)
+}
+
+pub type Model {
+  Model
+}
+
+pub type Message {
+  Loaded
 }
 ",
     )
@@ -321,6 +344,7 @@ pub type LoadResult {
     import_on_client: True,
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
+    route_modules: ["public/pages/games", "public/pages/home_"],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -332,6 +356,7 @@ pub type LoadResult {
     import_on_client: True,
     request_constructor: "PublicGameDetailLoad",
     load_result_constructor: "PublicGameDetailLoaded",
+    route_modules: ["public/pages/games/id_"],
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
@@ -343,6 +368,7 @@ pub type LoadResult {
     import_on_client: False,
     request_constructor: "AdminGamesLoad",
     load_result_constructor: "AdminGamesLoaded",
+    route_modules: ["admin/pages/games"],
     args: [],
     save_result_type: Some("GameUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
@@ -383,6 +409,7 @@ pub type GameSummary {
     import_on_client: False,
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
+    route_modules: ["public/pages/games"],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -617,6 +644,7 @@ pub type LoadResult {
     import_on_client: True,
     request_constructor: "PublicGamesLoad",
     load_result_constructor: "PublicGamesLoaded",
+    route_modules: ["public/pages/games"],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
