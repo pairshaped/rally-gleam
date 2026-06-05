@@ -1,13 +1,13 @@
 ---
 # rally-nxlj
 title: Generate browser mount route, hydration, and frame dispatch
-status: in-progress
+status: done
 type: task
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:52Z
-updated_at: 2026-06-05T04:42:58Z
+updated_at: 2026-06-05T01:30:00Z
 parent: rally-kobq
 ---
 
@@ -56,6 +56,18 @@ Validated with:
 • Scoreboard `gleam build --target javascript`
 • Scoreboard `node test/boundary_guard_test.mjs`
 • Scoreboard `node test/ws_result_smoke.mjs`
+
+Final validation after restoring browser smoke:
+
+• Scoreboard `gleam run -m rally -- load-rpc`
+• Scoreboard `gleam build --target erlang`
+• Scoreboard `gleam build --target javascript`
+• Scoreboard `TEMP=/home/daverapin/projects/gleam/rally-scoreboard-example/tmp gleam test --target erlang`
+• Scoreboard `node test/boundary_guard_test.mjs`
+• Scoreboard `node test/ws_result_smoke.mjs`
+• Scoreboard `npm run test:browser`
+
+Acceptance status: complete. Browser app startup, hydration/load selection, route-arg extraction, navigation effect composition, and server-frame decode are generated Rally glue that consumes Proute output. Scoreboard root browser modules retain shell state, product navigation choices, and page/broadcast callbacks.
 
 Validation caveat: Rally's test runner ignored the requested module filter and ran the wider suite; unrelated dependency/tmp failures remain. Scoreboard `gleam test --target erlang` is currently blocked in this workspace by stale `/tmp/scoreboard-unified-*.db` files owned by `debian`, because `test/support/test_db.gleam` hardcodes `/tmp`.
 

@@ -1,13 +1,13 @@
 ---
 # rally-d4tc
 title: Generate SSR route and document dispatch shell
-status: in-progress
+status: done
 type: task
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:52Z
-updated_at: 2026-06-05T04:45:53Z
+updated_at: 2026-06-05T01:30:00Z
 parent: rally-kobq
 ---
 
@@ -58,3 +58,17 @@ Validated in Scoreboard with:
 • node test/ws_result_smoke.mjs
 
 Validation caveat: Scoreboard gleam test remains blocked in this workspace by stale /tmp/scoreboard-unified-*.db files owned by debian.
+
+
+
+Final validation after moving Scoreboard tests to repo-local tmp:
+
+• Scoreboard `gleam run -m rally -- load-rpc`
+• Scoreboard `gleam build --target erlang`
+• Scoreboard `gleam build --target javascript`
+• Scoreboard `TEMP=/home/daverapin/projects/gleam/rally-scoreboard-example/tmp gleam test --target erlang`
+• Scoreboard `node test/boundary_guard_test.mjs`
+• Scoreboard `node test/ws_result_smoke.mjs`
+• Scoreboard `npm run test:browser`
+
+Acceptance status: complete. `app_ssr.gleam` no longer owns broad route-constructor switches for load dispatch; generated `server_ssr` consumes Proute route/page values and performs load/hydration composition. Scoreboard supplies product callbacks for load result messages, admin authorization inputs, identity boot data, and shell rendering.
