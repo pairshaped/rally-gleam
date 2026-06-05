@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T21:19:01Z
+updated_at: 2026-06-05T21:32:45Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -60,3 +60,13 @@ Starting implementation pass: inspect ADRs and current Scoreboard auth/session r
 - Still remaining in this epic: generated auth route glue, protected SSR dispatch, boot identity extraction, websocket auth context, and app callback/config shape for user lookup and role checks.
 - Validated: Rally `gleam test` passed (453 tests; existing generator-format warnings still printed).
 - Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
+
+- Progress slice implemented: Rally runtime auth_http now exposes RequestAuth callbacks for session-backed user loading and access policy, plus authenticated_user, authorized_user, protected-route redirect, and standard sign-in/sign-out route dispatch helpers.
+- Progress slice implemented: Scoreboard app_auth_http now supplies app-owned auth callbacks and sign-in credential handling only; root server auth path dispatch, admin protected redirect, websocket admin access check, SSR boot user extraction, and document boot user extraction consume Rally auth_http helpers.
+- Guarded: Scoreboard boundary guard rejects app-local auth cookie decoding in app_auth_http and auth method/path dispatch or manual sign-in redirects in scoreboard_unified.
+- Still remaining in this epic: generated auth route glue can shrink the handwritten route closures further, and websocket auth context is still a Bool rather than generated/request-scoped identity context.
+- Validated: Rally `gleam test` passed (456 tests; existing generator-format warnings still printed).
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
+
+- Progress slice implemented: Scoreboard app_ssr now carries resolved shell identity and admin-access state on SsrApp, and app_document builds boot attrs from that result instead of resolving the request user a second time.
+- Validated after boot cleanup: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.

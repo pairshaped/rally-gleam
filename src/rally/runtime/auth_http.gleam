@@ -3,6 +3,8 @@ import gleam/bit_array
 @target(erlang)
 import gleam/bytes_tree
 @target(erlang)
+import gleam/http
+@target(erlang)
 import gleam/http/request.{type Request}
 @target(erlang)
 import gleam/http/response
@@ -10,6 +12,8 @@ import gleam/http/response
 import gleam/io
 @target(erlang)
 import gleam/list
+@target(erlang)
+import gleam/result
 @target(erlang)
 import gleam/string
 @target(erlang)
@@ -19,9 +23,42 @@ import mist.{type Connection, type ResponseData}
 @target(erlang)
 import rally/runtime/session
 
+@target(erlang)
+pub type RequestAuth(user) {
+  RequestAuth(
+    session: session.AuthSession,
+    load_user: fn(Int) -> Result(user, Nil),
+    can_access: fn(user) -> Bool,
+  )
+}
+
+@target(erlang)
+pub type StandardAuthRoutes(context) {
+  StandardAuthRoutes(
+    sign_in_post: fn(Request(Connection), context) ->
+      response.Response(ResponseData),
+    sign_out: fn(Request(Connection), context) ->
+      response.Response(ResponseData),
+  )
+}
+
 @target(javascript)
 pub fn ensure() -> Nil {
   Nil
+}
+
+@target(erlang)
+pub fn route_standard(
+  req req: Request(Connection),
+  context context: context,
+  routes routes: StandardAuthRoutes(context),
+) -> Result(response.Response(ResponseData), Nil) {
+  case req.method, req.path {
+    http.Post, "/sign_in" -> routes.sign_in_post(req, context) |> Ok
+    http.Get, "/sign_out" -> routes.sign_out(req, context) |> Ok
+    http.Post, "/sign_out" -> routes.sign_out(req, context) |> Ok
+    _, _ -> Error(Nil)
+  }
 }
 
 @target(erlang)
@@ -45,6 +82,44 @@ pub fn read_sign_in_form(
       )
       Error(invalid_sign_in_redirect(invalid_return_to))
     }
+  }
+}
+
+@target(erlang)
+pub fn authenticated_user(
+  req req: Request(body),
+  auth auth: RequestAuth(user),
+) -> Result(user, Nil) {
+  let cookies = request.get_cookies(req)
+  use cookie_value <- result.try(session.find_auth_cookie(cookies))
+  use user_id <- result.try(session.decode_user_id(
+    encoded: cookie_value,
+    session: auth.session,
+  ))
+  auth.load_user(user_id)
+}
+
+@target(erlang)
+pub fn authorized_user(
+  req req: Request(body),
+  auth auth: RequestAuth(user),
+) -> Result(user, Nil) {
+  use user <- result.try(authenticated_user(req: req, auth: auth))
+  case auth.can_access(user) {
+    True -> Ok(user)
+    False -> Error(Nil)
+  }
+}
+
+@target(erlang)
+pub fn protect(
+  req req: Request(body),
+  auth auth: RequestAuth(user),
+  render render: fn(user) -> response.Response(ResponseData),
+) -> response.Response(ResponseData) {
+  case authorized_user(req: req, auth: auth) {
+    Ok(user) -> render(user)
+    Error(Nil) -> sign_in_redirect(req.path)
   }
 }
 
