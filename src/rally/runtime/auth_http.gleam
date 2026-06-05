@@ -86,6 +86,45 @@ pub fn read_sign_in_form(
 }
 
 @target(erlang)
+/// Handle the standard email/code sign-in POST workflow.
+/// Rally owns form parsing, local return-path safety, invalid redirects, and
+/// session issuing. The app supplies credential verification and any product
+/// route narrowing for the already-local return path.
+pub fn sign_in_with_code(
+  req req: Request(Connection),
+  session session: session.AuthSession,
+  verify_code verify_code: fn(String) -> Result(Int, Nil),
+  default_return_to default_return_to: String,
+  return_to return_to: fn(String) -> String,
+  secure secure: Bool,
+) -> response.Response(ResponseData) {
+  case read_sign_in_form(req, invalid_return_to: default_return_to) {
+    Ok(pairs) -> {
+      let return_to =
+        form_value(pairs, "return_to")
+        |> safe_local_path(default: default_return_to)
+        |> return_to
+
+      case form_value(pairs, "code") {
+        Ok(code) ->
+          case verify_code(code) {
+            Ok(user_id) ->
+              issue_user_session(
+                session: session,
+                return_to: return_to,
+                user_id: user_id,
+                secure: secure,
+              )
+            Error(Nil) -> invalid_sign_in_redirect(return_to)
+          }
+        Error(Nil) -> invalid_sign_in_redirect(return_to)
+      }
+    }
+    Error(response) -> response
+  }
+}
+
+@target(erlang)
 pub fn authenticated_user(
   req req: Request(body),
   auth auth: RequestAuth(user),
