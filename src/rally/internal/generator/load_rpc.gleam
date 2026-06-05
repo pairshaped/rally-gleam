@@ -59,6 +59,10 @@ type SourceModule {
   )
 }
 
+type TargetedImportUse {
+  TargetedImportUse(module_path: String, target: String, type_name: String)
+}
+
 pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   use files <- result.try(walk_directory(path: src_root))
   use modules <- result.try(
@@ -1596,6 +1600,7 @@ fn validate_wire_boundary(
   |> list.try_fold(Nil, fn(_, type_name) {
     validate_wire_custom_type(
       custom_types: ast.custom_types,
+      imports: ast.imports,
       resolver:,
       module_path:,
       wire_module:,
@@ -1608,6 +1613,7 @@ fn validate_wire_boundary(
 
 fn validate_wire_custom_type(
   custom_types custom_types: List(glance.Definition(glance.CustomType)),
+  imports imports: List(glance.Definition(glance.Import)),
   resolver resolver: TypeResolver,
   module_path module_path: String,
   wire_module wire_module: String,
@@ -1622,6 +1628,7 @@ fn validate_wire_custom_type(
       |> list.try_fold(Nil, fn(_, variant) {
         validate_wire_variant(
           variant:,
+          imports:,
           resolver:,
           module_path:,
           wire_module:,
@@ -1635,6 +1642,7 @@ fn validate_wire_custom_type(
 
 fn validate_wire_variant(
   variant variant: glance.Variant,
+  imports imports: List(glance.Definition(glance.Import)),
   resolver resolver: TypeResolver,
   module_path module_path: String,
   wire_module wire_module: String,
@@ -1646,6 +1654,7 @@ fn validate_wire_variant(
   |> list.try_fold(Nil, fn(_, field) {
     validate_wire_variant_field(
       field:,
+      imports:,
       resolver:,
       module_path:,
       wire_module:,
@@ -1659,6 +1668,7 @@ fn validate_wire_variant(
 
 fn validate_wire_variant_field(
   field field: glance.VariantField,
+  imports imports: List(glance.Definition(glance.Import)),
   resolver resolver: TypeResolver,
   module_path module_path: String,
   wire_module wire_module: String,
@@ -1671,6 +1681,7 @@ fn validate_wire_variant_field(
     glance.LabelledVariantField(label:, item:) ->
       validate_wire_field_type(
         type_: item,
+        imports:,
         field_path: type_name <> "." <> variant_name <> "." <> label,
         resolver:,
         module_path:,
@@ -1682,6 +1693,7 @@ fn validate_wire_variant_field(
     glance.UnlabelledVariantField(item:) ->
       validate_wire_field_type(
         type_: item,
+        imports:,
         field_path: type_name <> "." <> variant_name <> ".field",
         resolver:,
         module_path:,
@@ -1695,6 +1707,7 @@ fn validate_wire_variant_field(
 
 fn validate_wire_field_type(
   type_ type_: glance.Type,
+  imports imports: List(glance.Definition(glance.Import)),
   field_path field_path: String,
   resolver resolver: TypeResolver,
   module_path module_path: String,
@@ -1703,6 +1716,14 @@ fn validate_wire_field_type(
   modules modules: List(SourceModule),
   seen seen: List(#(String, String)),
 ) -> Result(Nil, String) {
+  use _ <- result.try(validate_shared_wire_imports(
+    type_:,
+    imports:,
+    wire_module:,
+    contract_name:,
+    field_path:,
+  ))
+
   use resolved <- result.try(
     glance_type_resolver.type_to_field_type(
       type_:,
@@ -1782,6 +1803,7 @@ fn validate_referenced_wire_type(
                 variant_field_label_and_type(field)
               validate_wire_field_type(
                 type_: field_type,
+                imports: info.ast.imports,
                 field_path: reference_path
                   <> "."
                   <> variant.name
@@ -1807,6 +1829,147 @@ fn variant_field_label_and_type(
     glance.LabelledVariantField(label:, item:) -> #(label, item)
     glance.UnlabelledVariantField(item:) -> #("field", item)
   }
+}
+
+fn validate_shared_wire_imports(
+  type_ type_: glance.Type,
+  imports imports: List(glance.Definition(glance.Import)),
+  wire_module wire_module: String,
+  contract_name contract_name: String,
+  field_path field_path: String,
+) -> Result(Nil, String) {
+  case find_targeted_import_use(type_, imports) {
+    Error(Nil) -> Ok(Nil)
+    Ok(TargetedImportUse(module_path:, target:, type_name:)) ->
+      Error(
+        "Invalid wire import in "
+        <> wire_module
+        <> "."
+        <> contract_name
+        <> ": "
+        <> field_path
+        <> " references "
+        <> module_path
+        <> "."
+        <> type_name
+        <> " through @target("
+        <> target
+        <> ") import "
+        <> module_path
+        <> ". Wire contracts are shared by Erlang and JavaScript, so wire-visible types must come from shared imports.",
+      )
+  }
+}
+
+fn find_targeted_import_use(
+  type_ type_: glance.Type,
+  imports imports: List(glance.Definition(glance.Import)),
+) -> Result(TargetedImportUse, Nil) {
+  case type_ {
+    glance.NamedType(name:, module:, parameters:, ..) -> {
+      case targeted_import_for_type(name, module, imports) {
+        Ok(use_) -> Ok(use_)
+        Error(Nil) -> find_targeted_import_use_in_types(parameters, imports)
+      }
+    }
+    glance.TupleType(elements:, ..) ->
+      find_targeted_import_use_in_types(elements, imports)
+    glance.FunctionType(parameters:, return:, ..) ->
+      find_targeted_import_use_in_types(
+        list.append(parameters, [return]),
+        imports,
+      )
+    glance.VariableType(..) | glance.HoleType(..) -> Error(Nil)
+  }
+}
+
+fn find_targeted_import_use_in_types(
+  types types: List(glance.Type),
+  imports imports: List(glance.Definition(glance.Import)),
+) -> Result(TargetedImportUse, Nil) {
+  list.find_map(types, fn(type_) { find_targeted_import_use(type_, imports) })
+}
+
+fn targeted_import_for_type(
+  type_name type_name: String,
+  module_alias module_alias: Option(String),
+  imports imports: List(glance.Definition(glance.Import)),
+) -> Result(TargetedImportUse, Nil) {
+  imports
+  |> list.find_map(fn(def) {
+    use target <- result.try(target_attribute(def.attributes))
+    case targeted_import_matches_type(type_name, module_alias, def.definition) {
+      True ->
+        Ok(TargetedImportUse(
+          module_path: def.definition.module,
+          target:,
+          type_name: imported_type_name(type_name, module_alias, def.definition),
+        ))
+      False -> Error(Nil)
+    }
+  })
+}
+
+fn targeted_import_matches_type(
+  type_name type_name: String,
+  module_alias module_alias: Option(String),
+  import_ import_: glance.Import,
+) -> Bool {
+  case module_alias {
+    Some(alias) -> import_alias(import_) == alias
+    None ->
+      list.any(import_.unqualified_types, fn(unqualified) {
+        case unqualified.alias {
+          Some(alias) -> alias == type_name
+          None -> unqualified.name == type_name
+        }
+      })
+  }
+}
+
+fn imported_type_name(
+  type_name type_name: String,
+  module_alias module_alias: Option(String),
+  import_ import_: glance.Import,
+) -> String {
+  case module_alias {
+    Some(_) -> type_name
+    None ->
+      import_.unqualified_types
+      |> list.find_map(fn(unqualified) {
+        case unqualified.alias {
+          Some(alias) if alias == type_name -> Ok(unqualified.name)
+          None if unqualified.name == type_name -> Ok(unqualified.name)
+          _ -> Error(Nil)
+        }
+      })
+      |> result.unwrap(type_name)
+  }
+}
+
+fn import_alias(import_: glance.Import) -> String {
+  case import_.alias {
+    Some(glance.Named(name)) -> name
+    Some(glance.Discarded(name)) -> name
+    None ->
+      import_.module
+      |> string.split("/")
+      |> list.last
+      |> result.unwrap(import_.module)
+  }
+}
+
+fn target_attribute(attributes: List(glance.Attribute)) -> Result(String, Nil) {
+  attributes
+  |> list.find_map(fn(attribute) {
+    case attribute {
+      glance.Attribute(name: "target", arguments: [glance.Variable(name:, ..)]) ->
+        Ok(name)
+      glance.Attribute(name: "target", arguments: [glance.String(value:, ..)]) ->
+        Ok(value)
+      _ -> Error(Nil)
+    }
+  })
 }
 
 fn find_source_module(

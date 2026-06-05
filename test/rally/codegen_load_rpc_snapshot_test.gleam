@@ -438,6 +438,100 @@ pub type GameSummary {
   |> should.be_true()
 }
 
+pub fn load_rpc_discover_rejects_query_row_wire_payload_types_test() {
+  let root = "./tmp/load_rpc_boundary_query_row_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games")
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/generated/sql")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/generated/sql/games_sql.gleam",
+      "pub type Row {
+  Row(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/wire.gleam",
+      "import generated/sql/games_sql
+
+pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(row: games_sql.Row)
+}
+",
+    )
+
+  let assert Error(message) = discover(src)
+
+  message
+  |> string.contains(
+    "Invalid wire boundary in public/pages/games/wire.LoadResult",
+  )
+  |> should.be_true()
+  message
+  |> string.contains("LoadResult.PublicGamesLoaded.row")
+  |> should.be_true()
+  message
+  |> string.contains("generated/sql/games_sql.Row")
+  |> should.be_true()
+}
+
+pub fn load_rpc_discover_rejects_targeted_wire_imports_test() {
+  let root = "./tmp/load_rpc_boundary_targeted_import_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games")
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/wire")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/wire/game.gleam",
+      "pub type GameSummary {
+  GameSummary(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/wire.gleam",
+      "@target(erlang)
+import wire/game
+
+pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(game: game.GameSummary)
+}
+",
+    )
+
+  let assert Error(message) = discover(src)
+
+  message
+  |> string.contains(
+    "Invalid wire import in public/pages/games/wire.LoadResult",
+  )
+  |> should.be_true()
+  message
+  |> string.contains("LoadResult.PublicGamesLoaded.game")
+  |> should.be_true()
+  message
+  |> string.contains("wire/game.GameSummary")
+  |> should.be_true()
+  message
+  |> string.contains("@target(erlang) import wire/game")
+  |> should.be_true()
+}
+
 pub fn load_rpc_discover_allows_shared_wire_payload_types_test() {
   let root = "./tmp/load_rpc_boundary_valid_test"
   let src = root <> "/src"
