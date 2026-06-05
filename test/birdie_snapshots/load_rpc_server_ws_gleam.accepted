@@ -1,11 +1,11 @@
 ---
 version: 2.0.0
 title: load_rpc_server_ws_gleam
-file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
-test_name: load_rpc_server_ws_snapshot_test
 ---
 @target(erlang)
 import admin/pages/games as admin_games_wire
+@target(erlang)
+import broadcasts
 @target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
@@ -91,6 +91,14 @@ pub fn handle_client_frame(
           }
       }
   }
+}
+
+@target(erlang)
+pub fn push_frame(
+  module module: String,
+  message message: broadcasts.Event,
+) -> BitArray {
+  server_protocol.encode_push(module, message)
 }
 
 @target(erlang)

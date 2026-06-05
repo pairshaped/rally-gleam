@@ -868,6 +868,8 @@ fn map_save_result(
 
 pub fn server_ws(loads loads: List(LoadRpc)) -> String {
   "@target(erlang)
+import broadcasts
+@target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
 import generated/rally/server_protocol
@@ -904,6 +906,14 @@ pub fn handle_client_frame(
 ) -> Nil {
   server_protocol.ensure()
   " <> server_ws_dispatch_cases(loads) <> "
+}
+
+@target(erlang)
+pub fn push_frame(
+  module module: String,
+  message message: broadcasts.Event,
+) -> BitArray {
+  server_protocol.encode_push(module, message)
 }
 
 " <> string.join(list.map(loads, server_ws_try_request), "\n") <> "
