@@ -8,9 +8,13 @@ import gleam/http/cookie
 @target(erlang)
 import gleam/int
 @target(erlang)
+import gleam/io
+@target(erlang)
 import gleam/option.{None, Some}
 @target(erlang)
 import gleam/result
+@target(erlang)
+import rally/runtime/env
 
 @target(erlang)
 pub const auth_cookie_name = "__rally_auth"
@@ -24,6 +28,13 @@ const auth_session_version = "v1"
 @target(erlang)
 pub type AuthSession {
   AuthSession(key: BitArray)
+}
+
+@target(erlang)
+pub type AuthSessionConfigError {
+  MissingSecretKey(env_var: String)
+  InvalidSecretKeyEncoding(env_var: String)
+  InvalidSecretKeyLength(env_var: String, bytes: Int)
 }
 
 @target(erlang)
@@ -79,6 +90,44 @@ pub fn new_auth_session(key: BitArray) -> AuthSession {
 }
 
 @target(erlang)
+pub fn auth_session_from_env(
+  env_var env_var: String,
+  allow_missing_development_key allow_missing_development_key: Bool,
+) -> Result(AuthSession, AuthSessionConfigError) {
+  case env.get(env_var) {
+    Ok(encoded) -> {
+      use key <- result.try(decode_auth_session_key(encoded, env_var))
+      Ok(new_auth_session(key))
+    }
+    Error(Nil) ->
+      case allow_missing_development_key {
+        True -> {
+          io.println_error(
+            env_var
+            <> " is not set; using an in-memory development auth session key",
+          )
+          Ok(new_auth_session(crypto.strong_random_bytes(32)))
+        }
+        False -> Error(MissingSecretKey(env_var))
+      }
+  }
+}
+
+@target(erlang)
+pub fn auth_session_config_error_message(
+  error: AuthSessionConfigError,
+) -> String {
+  case error {
+    MissingSecretKey(env_var) -> env_var <> " is not set"
+    InvalidSecretKeyEncoding(env_var) -> env_var <> " must be valid base64"
+    InvalidSecretKeyLength(env_var, bytes) ->
+      env_var
+      <> " must decode to exactly 32 bytes, got "
+      <> int.to_string(bytes)
+  }
+}
+
+@target(erlang)
 pub fn find_auth_cookie(
   cookies: List(#(String, String)),
 ) -> Result(String, Nil) {
@@ -126,6 +175,21 @@ pub fn decode_user_id(
   use _ <- result.try(require_version(pairs))
   use user_id_string <- result.try(list.key_find(pairs, "user_id"))
   int.parse(user_id_string)
+}
+
+@target(erlang)
+fn decode_auth_session_key(
+  encoded: String,
+  env_var: String,
+) -> Result(BitArray, AuthSessionConfigError) {
+  case bit_array.base64_url_decode(encoded) {
+    Error(Nil) -> Error(InvalidSecretKeyEncoding(env_var))
+    Ok(key) ->
+      case bit_array.byte_size(key) {
+        32 -> Ok(key)
+        bytes -> Error(InvalidSecretKeyLength(env_var, bytes))
+      }
+  }
 }
 
 @target(erlang)

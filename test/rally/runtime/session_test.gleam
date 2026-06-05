@@ -1,3 +1,4 @@
+import envoy
 import gleam/bit_array
 import gleam/http/cookie
 import gleam/option.{None, Some}
@@ -85,6 +86,59 @@ pub fn auth_cookie_attributes_are_http_only_test() {
     http_only: True,
     same_site: Some(cookie.Lax),
   ))
+}
+
+pub fn auth_session_from_env_uses_valid_key_test() {
+  let env_var = "RALLY_TEST_AUTH_SESSION_KEY"
+  envoy.set(env_var, bit_array.base64_url_encode(test_key(), False))
+
+  let assert Ok(auth_session) =
+    session.auth_session_from_env(
+      env_var: env_var,
+      allow_missing_development_key: False,
+    )
+  let assert Ok(encoded) =
+    session.encode_user_id(user_id: 123, session: auth_session)
+
+  session.decode_user_id(encoded: encoded, session: auth_session)
+  |> should.equal(Ok(123))
+}
+
+pub fn auth_session_from_env_rejects_missing_key_without_fallback_test() {
+  session.auth_session_from_env(
+    env_var: "RALLY_TEST_AUTH_SESSION_MISSING",
+    allow_missing_development_key: False,
+  )
+  |> should.equal(
+    Error(session.MissingSecretKey("RALLY_TEST_AUTH_SESSION_MISSING")),
+  )
+}
+
+pub fn auth_session_from_env_uses_development_fallback_test() {
+  let assert Ok(auth_session) =
+    session.auth_session_from_env(
+      env_var: "RALLY_TEST_AUTH_SESSION_DEV_MISSING",
+      allow_missing_development_key: True,
+    )
+  let assert Ok(encoded) =
+    session.encode_user_id(user_id: 321, session: auth_session)
+
+  session.decode_user_id(encoded: encoded, session: auth_session)
+  |> should.equal(Ok(321))
+}
+
+pub fn auth_session_from_env_rejects_wrong_length_key_test() {
+  let env_var = "RALLY_TEST_AUTH_SESSION_SHORT"
+  envoy.set(
+    env_var,
+    bit_array.base64_url_encode(bit_array.from_string("short"), False),
+  )
+
+  session.auth_session_from_env(
+    env_var: env_var,
+    allow_missing_development_key: False,
+  )
+  |> should.equal(Error(session.InvalidSecretKeyLength(env_var, 5)))
 }
 
 fn test_key() -> BitArray {

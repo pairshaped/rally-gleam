@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T21:11:08Z
+updated_at: 2026-06-05T21:19:01Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -52,4 +52,11 @@ Starting implementation pass: inspect ADRs and current Scoreboard auth/session r
 - Style cleanup: the one-line issue_session wrapper was removed instead of preserving an unearned helper boundary. Gleam format keeps @target above function docs in the touched auth file, so that layout is formatter-owned here.
 - Still remaining in this epic: protected SSR route wiring, boot identity, websocket auth context, and generated auth route glue remain app-root owned and should move through the same Rally-owned template surface.
 - Validated: Rally `gleam test` passed (449 tests; existing generator-format warnings still printed).
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
+
+- Progress slice implemented: Rally runtime env/session now own auth-session secret lookup, .env fallback, base64 validation, 32-byte key validation, error messaging, and missing-key development fallback.
+- Progress slice implemented: Scoreboard app_config is now port-only; scoreboard_unified asks rally/runtime/session for AuthSession configuration and no longer owns secret decoding or random key generation.
+- Guarded: Scoreboard boundary guard rejects app-local auth secret parsing and session-key construction in app_config.gleam and scoreboard_unified.gleam.
+- Still remaining in this epic: generated auth route glue, protected SSR dispatch, boot identity extraction, websocket auth context, and app callback/config shape for user lookup and role checks.
+- Validated: Rally `gleam test` passed (453 tests; existing generator-format warnings still printed).
 - Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
