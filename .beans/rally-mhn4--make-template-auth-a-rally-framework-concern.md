@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T21:43:49Z
+updated_at: 2026-06-05T21:52:41Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -75,3 +75,10 @@ Starting implementation pass: inspect ADRs and current Scoreboard auth/session r
 - Guarded: Scoreboard boundary guard rejects app websocket state or init signatures that collapse admin auth back to a Bool.
 - Still remaining in this epic: generated auth route glue can shrink handwritten route closures further, and generated websocket glue can eventually carry typed auth context directly instead of asking app_ws for a Bool adapter.
 - Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
+
+
+• Progress slice implemented: Scoreboard sign-in code verification now delegates to rally/runtime/auth.verify_login_code. app_auth.gleam keeps the demo secret, admin-user lookup, and product policy, while Rally owns login-code hash parsing, normalization, HMAC, and constant-time comparison.
+• Progress slice implemented: Scoreboard demo user seeds now use Rally login-code hash format and upsert the stored hash for existing local demo databases, avoiding stale old-prefix sign-in failures after the verifier move.
+• Guarded: Scoreboard boundary guard rejects app-local login-code HMAC verification and legacy runtime-sign-in-code hash parsing in app_auth.gleam.
+• Still remaining in this epic: generated auth route glue can shrink handwritten route closures further, and generated websocket glue can eventually carry typed auth context directly instead of asking app_ws for a Bool adapter.
+• Validated: Scoreboard gleam build --target erlang, gleam build --target javascript, node test/boundary_guard_test.mjs, TEMP=./tmp gleam test --target erlang, node test/ws_result_smoke.mjs, and npm run test:browser passed. npm run test:browser initially failed at admin sign-in because the local db/scoreboard.db still had the old hash prefix; gleam run -m marmot seed applied the new upserted seed and the rerun passed.
