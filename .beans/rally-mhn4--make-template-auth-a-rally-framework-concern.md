@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T04:08:18Z
-updated_at: 2026-06-05T21:32:45Z
+updated_at: 2026-06-05T21:43:49Z
 ---
 
 Rally should grow an opinionated template-auth surface for our own apps first: emailed login codes, session cookies, protected-route redirects, boot identity, websocket auth context, and eventually Google SSO. This is not Auth0-lite. The goal is boring reusable plumbing for our personal project template, with app callbacks for product policy.
@@ -70,3 +70,8 @@ Starting implementation pass: inspect ADRs and current Scoreboard auth/session r
 
 - Progress slice implemented: Scoreboard app_ssr now carries resolved shell identity and admin-access state on SsrApp, and app_document builds boot attrs from that result instead of resolving the request user a second time.
 - Validated after boot cleanup: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
+
+- Progress slice implemented: Scoreboard websocket state now keeps the resolved admin user option instead of reducing request auth to an admin_authorized Bool at the app boundary. The generated server_ws Bool predicate remains as an adapter to the current generated contract.
+- Guarded: Scoreboard boundary guard rejects app websocket state or init signatures that collapse admin auth back to a Bool.
+- Still remaining in this epic: generated auth route glue can shrink handwritten route closures further, and generated websocket glue can eventually carry typed auth context directly instead of asking app_ws for a Bool adapter.
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `node test/boundary_guard_test.mjs`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, and `npm run test:browser` passed.
