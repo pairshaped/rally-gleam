@@ -1,13 +1,13 @@
 ---
 # rally-hmeu
 title: Generate websocket dispatch adapters from app context
-status: todo
+status: completed
 type: task
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:52Z
-updated_at: 2026-06-05T03:18:52Z
+updated_at: 2026-06-05T03:51:43Z
 parent: rally-kobq
 ---
 
@@ -34,3 +34,18 @@ Acceptance criteria:
 - App still controls authorization gates and broadcast decisions.
 - Generated websocket code composes app context with page-owned functions.
 - Clean regenerate and websocket smoke pass.
+
+
+
+Completed across the websocket cleanup slices. Rally now generates the request decode/result send ceremony, push-frame encoding, topic forwarding helpers, topic runtime, and direct public page load adapters. Scoreboard app_ws still owns connection authorization, context extraction, admin load/save gates, and after-save broadcast choice.
+
+Validation from the final slice:
+
+• Rally gleam build
+• Rally gleam test --target erlang -- --module rally/codegen_load_rpc_snapshot_test
+• Scoreboard clean regeneration after deleting src/generated/rally and src/generated/libero
+• Scoreboard gleam build --target erlang
+• Scoreboard gleam build --target javascript
+• Scoreboard gleam test --target erlang
+• Scoreboard node test/boundary_guard_test.mjs
+• Scoreboard node test/ws_result_smoke.mjs
