@@ -531,6 +531,19 @@ export function send_frame(frame) {
   return undefined;
 }
 
+export function send_topic_frame(topics) {
+  const text = \"rally:topics:\" + Array.from(topics).join(\",\");
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(text);
+    return undefined;
+  }
+
+  pending.push(text);
+  ensure_socket();
+  return undefined;
+}
+
 export function send_load_frame(requestId, frame, onResult, dispatch) {
   pendingResults.set(requestId, { onResult, dispatch });
   send_frame(frame);
@@ -561,7 +574,7 @@ function ensure_socket() {
     reconnectAttempts = 0;
     const queued = pending;
     pending = [];
-    for (const bytes of queued) socket.send(bytes);
+    for (const frame of queued) socket.send(frame);
   });
 
   socket.addEventListener(\"message\", event => {
@@ -687,6 +700,16 @@ import lustre/element.{type Element}
   ) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
+      browser_app_mount_topic_functions(
+        mount,
+        mount_loads(loads, mount),
+        push_contract:,
+      )
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    list.map(mounts, fn(mount) {
       browser_app_mount_initial_page(mount, mount_loads(loads, mount))
     }),
     "\n",
@@ -721,6 +744,11 @@ pub fn startup_effects(
       on_browser_navigation: on_browser_navigation,
     ),
   ])
+}
+
+@target(javascript)
+pub fn sync_topics(topics topics: List(String)) -> Effect(msg) {
+  client_transport.sync_topics(topics)
 }
 
 @target(javascript)
@@ -846,8 +874,11 @@ fn browser_app_page_imports(loads: List(LoadRpc)) -> String {
         navigation.message_module
       })
     })
+  let route_modules =
+    loads
+    |> list.flat_map(fn(load) { load.route_modules })
 
-  list.append(page_modules, navigation_modules)
+  list.append(page_modules, list.append(navigation_modules, route_modules))
   |> list.unique
   |> list.filter(fn(module_path) {
     !list.any(loads, fn(load) {
@@ -926,6 +957,89 @@ fn browser_app_load_message_field(load: LoadRpc) -> String {
     True -> ""
     False -> "message: " <> wire_alias(load) <> ".ServerMsg,\n    "
   }
+}
+
+fn browser_app_mount_topic_functions(
+  mount: String,
+  loads: List(LoadRpc),
+  push_contract push_contract: Option(PushContract),
+) -> String {
+  let pages = mount_alias(mount, "pages")
+  let route_modules = mount_route_modules(loads)
+
+  "@target(javascript)
+pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(String) {
+  case page {
+" <> string.join(
+    list.map(route_modules, fn(module_path) {
+      "    "
+      <> pages
+      <> "."
+      <> route_constructor_for_module(module_path)
+      <> "Page(model) ->
+      "
+      <> browser_app_source_page_alias(module_path, loads)
+      <> ".topics(model)"
+    }),
+    "\n",
+  ) <> "
+    _ -> []
+  }
+}
+" <> browser_app_mount_apply_push(mount, loads, route_modules, push_contract:)
+}
+
+fn browser_app_mount_apply_push(
+  mount: String,
+  loads: List(LoadRpc),
+  route_modules: List(String),
+  push_contract push_contract: Option(PushContract),
+) -> String {
+  let pages = mount_alias(mount, "pages")
+
+  case push_contract {
+    Some(contract) -> "
+@target(javascript)
+pub fn " <> mount <> "_apply_push(
+  page page: " <> pages <> ".Page,
+  module _module: String,
+  message message: " <> push_type_ref(contract) <> ",
+) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
+  case page {
+" <> string.join(
+        list.map(route_modules, fn(module_path) {
+          let constructor = route_constructor_for_module(module_path)
+          let page = browser_app_source_page_alias(module_path, loads)
+          "    " <> pages <> "." <> constructor <> "Page(model) -> {
+      let #(model, page_effect) = " <> page <> ".apply_push(model, message)
+      #(" <> pages <> "." <> constructor <> "Page(model), effect.map(page_effect, " <> pages <> "." <> route_message_constructor(
+            module_path,
+          ) <> "))
+    }"
+        }),
+        "\n",
+      ) <> "
+    _ -> #(page, effect.none())
+  }
+}
+"
+    None -> "
+@target(javascript)
+pub fn " <> mount <> "_apply_push(
+  page page: " <> pages <> ".Page,
+  module _module: String,
+  message _message: Nil,
+) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
+  #(page, effect.none())
+}
+"
+  }
+}
+
+fn mount_route_modules(loads: List(LoadRpc)) -> List(String) {
+  loads
+  |> list.flat_map(fn(load) { load.route_modules })
+  |> list.unique
 }
 
 fn browser_app_mount_initial_page(
@@ -1587,6 +1701,11 @@ pub fn connect(
 " <> string.join(option.values(list.map(loads, transport_send_save)), "\n") <> "
 
 @target(javascript)
+pub fn sync_topics(topics topics: List(String)) -> Effect(msg) {
+  effect.from(fn(_dispatch) { send_topic_frame(topics) })
+}
+
+@target(javascript)
 @external(javascript, \"./client_transport_ffi.mjs\", \"connect\")
 fn connect_socket(_url: String, _on_frame: fn(BitArray) -> Nil) -> Nil {
   Nil
@@ -1594,6 +1713,12 @@ fn connect_socket(_url: String, _on_frame: fn(BitArray) -> Nil) -> Nil {
 
 " <> string.join(list.map(loads, transport_external), "\n") <> "
 " <> string.join(option.values(list.map(loads, transport_save_external)), "\n") <> "
+
+@target(javascript)
+@external(javascript, \"./client_transport_ffi.mjs\", \"send_topic_frame\")
+fn send_topic_frame(_topics: List(String)) -> Nil {
+  Nil
+}
 
 @target(javascript)
 @external(javascript, \"./client_transport_ffi.mjs\", \"next_request_id\")
@@ -1680,7 +1805,11 @@ import gleam/list
 @target(erlang)
 import gleam/option.{type Option}
 @target(erlang)
+import gleam/string
+@target(erlang)
 import mist.{type WebsocketConnection}
+@target(erlang)
+import rally/runtime/topics
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> server_ws_page_imports(
     loads,
     load_context:,
@@ -1715,6 +1844,7 @@ pub fn handle_client_frame(
   server_protocol.ensure()
   " <> server_ws_dispatch_cases(loads) <> "
 }
+" <> server_ws_sync_topic_frame() <> "
 " <> server_ws_push_frame(push_contract) <> "
 
 " <> string.join(
@@ -2910,6 +3040,36 @@ pub fn push_frame(
 "
     None -> ""
   }
+}
+
+fn server_ws_sync_topic_frame() -> String {
+  "
+@target(erlang)
+pub fn sync_topic_frame(
+  current current: List(String),
+  frame frame: String,
+) -> Result(List(String), Nil) {
+  let prefix = \"rally:topics:\"
+  case string.starts_with(frame, prefix) {
+    False -> Error(Nil)
+    True -> {
+      let next =
+        frame
+        |> string.drop_start(string.length(prefix))
+        |> string.split(\",\")
+        |> list.filter(fn(topic) { topic != \"\" })
+
+      current
+      |> list.filter(fn(topic) { !list.contains(next, topic) })
+      |> list.each(topics.leave)
+      next
+      |> list.filter(fn(topic) { !list.contains(current, topic) })
+      |> list.each(topics.join)
+      Ok(next)
+    }
+  }
+}
+"
 }
 
 fn wire_alias(load: LoadRpc) -> String {

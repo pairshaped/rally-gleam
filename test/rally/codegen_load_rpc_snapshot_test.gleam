@@ -117,6 +117,9 @@ pub fn load_rpc_browser_runtime_helpers_are_app_neutral_test() {
   content_for("src/generated/rally/client_transport_ffi.mjs")
   |> string.contains("__rallySocket")
   |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("Array.from(topics).join")
+  |> should.be_true()
 
   [
     "src/generated/rally/browser_ffi.mjs",
@@ -237,6 +240,29 @@ pub fn load_rpc_result_module_defines_boundary_errors_test() {
 pub fn load_rpc_client_transport_snapshot_test() {
   content_for("src/generated/rally/client_transport.gleam")
   |> birdie.snap("load_rpc_client_transport_gleam")
+}
+
+pub fn load_rpc_generates_page_topic_transport_test() {
+  let client_transport =
+    content_for("src/generated/rally/client_transport.gleam")
+  let server_ws = content_for("src/generated/rally/server_ws.gleam")
+  let browser_app = content_for("src/generated/rally/browser_app.gleam")
+
+  client_transport
+  |> string.contains("pub fn sync_topics(")
+  |> should.be_true()
+  server_ws
+  |> string.contains("pub fn sync_topic_frame(")
+  |> should.be_true()
+  browser_app
+  |> string.contains("pub fn sync_topics(")
+  |> should.be_true()
+  browser_app
+  |> string.contains("pub fn public_page_topics(")
+  |> should.be_true()
+  browser_app
+  |> string.contains("pub fn public_apply_push(")
+  |> should.be_true()
 }
 
 pub fn load_rpc_page_server_snapshot_test() {

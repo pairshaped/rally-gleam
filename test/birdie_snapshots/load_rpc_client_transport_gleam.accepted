@@ -76,6 +76,11 @@ pub fn send_admin_games_save(
 }
 
 @target(javascript)
+pub fn sync_topics(topics topics: List(String)) -> Effect(msg) {
+  effect.from(fn(_dispatch) { send_topic_frame(topics) })
+}
+
+@target(javascript)
 @external(javascript, "./client_transport_ffi.mjs", "connect")
 fn connect_socket(_url: String, _on_frame: fn(BitArray) -> Nil) -> Nil {
   Nil
@@ -124,6 +129,12 @@ fn send_admin_games_save_frame(
   _on_result: fn(Result(save_result, List(ApiSaveError))) -> msg,
   _dispatch: fn(msg) -> Nil,
 ) -> Nil {
+  Nil
+}
+
+@target(javascript)
+@external(javascript, "./client_transport_ffi.mjs", "send_topic_frame")
+fn send_topic_frame(_topics: List(String)) -> Nil {
   Nil
 }
 
