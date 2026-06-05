@@ -5,8 +5,9 @@ import gleam/string
 import gleeunit/should
 import rally/internal/format
 import rally/internal/generator/load_rpc.{
-  type GeneratedFile, type LoadRpc, type PushContract, GeneratedFile, LoadArg,
-  LoadRpc, PushContract, discover, generate, libero_type_seeds, result_module,
+  type GeneratedFile, type LoadContext, type LoadRpc, type PushContract,
+  GeneratedFile, LoadArg, LoadContext, LoadRpc, PushContract, discover, generate,
+  libero_type_seeds, result_module,
 }
 import simplifile
 
@@ -54,8 +55,16 @@ fn push_contract() -> PushContract {
   PushContract(module_path: "broadcasts", type_name: "Event")
 }
 
+fn load_context() -> LoadContext {
+  LoadContext(module_path: "sqlight", type_name: "Connection")
+}
+
 fn generated_files() -> List(GeneratedFile) {
-  generate(loads(), push_contract: Some(push_contract()))
+  generate(
+    loads(),
+    push_contract: Some(push_contract()),
+    load_context: Some(load_context()),
+  )
 }
 
 pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
@@ -181,7 +190,8 @@ pub fn load_rpc_derives_libero_type_seeds_test() {
 }
 
 pub fn load_rpc_can_generate_without_push_contract_test() {
-  let files = generate(loads(), push_contract: None)
+  let files =
+    generate(loads(), push_contract: None, load_context: Some(load_context()))
   let client =
     content_for_files(files, "src/generated/rally/client_protocol.gleam")
   let server =

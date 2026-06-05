@@ -44,6 +44,10 @@ pub type PushContract {
   PushContract(module_path: String, type_name: String)
 }
 
+pub type LoadContext {
+  LoadContext(module_path: String, type_name: String)
+}
+
 pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
   use files <- result.try(walk_directory(path: src_root))
   files
@@ -56,6 +60,7 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
 pub fn generate(
   loads loads: List(LoadRpc),
   push_contract push_contract: Option(PushContract),
+  load_context load_context: Option(LoadContext),
 ) -> List(GeneratedFile) {
   [
     GeneratedFile(
@@ -77,7 +82,7 @@ pub fn generate(
     GeneratedFile("src/generated/rally/server.gleam", page_server(loads:)),
     GeneratedFile(
       "src/generated/rally/server_ws.gleam",
-      server_ws(loads:, push_contract:),
+      server_ws(loads:, push_contract:, load_context:),
     ),
     GeneratedFile("src/generated/rally/server_ssr.gleam", server_ssr(loads:)),
     GeneratedFile("src/generated/rally/hydration.gleam", hydration(loads:)),
@@ -862,6 +867,7 @@ fn map_save_result(
 pub fn server_ws(
   loads loads: List(LoadRpc),
   push_contract push_contract: Option(PushContract),
+  load_context load_context: Option(LoadContext),
 ) -> String {
   "@target(erlang)
 import generated/rally/result as transport_result
@@ -874,6 +880,8 @@ import gleam/option.{type Option}
 @target(erlang)
 import mist.{type WebsocketConnection}
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
+" <> server_ws_page_imports(loads, load_context:) <> "
+" <> load_context_import(load_context, "@target(erlang)") <> "
 " <> push_import(push_contract, "@target(erlang)") <> "
 @target(erlang)
 pub type LoadError {
@@ -886,9 +894,9 @@ pub type SaveError {
 }
 
 @target(erlang)
-pub type Handlers(state) {
+pub type " <> server_ws_handlers_type_definition(loads) <> " {
   Handlers(
-" <> server_ws_handler_fields(loads) <> "
+" <> server_ws_handler_fields(loads, load_context:) <> "
   )
 }
 
@@ -897,19 +905,40 @@ pub fn handle_client_frame(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: Handlers(state),
+  handlers handlers: " <> server_ws_handlers_type(loads) <> ",
 ) -> Nil {
   server_protocol.ensure()
   " <> server_ws_dispatch_cases(loads) <> "
 }
 " <> server_ws_push_frame(push_contract) <> "
 
-" <> string.join(list.map(loads, server_ws_try_request), "\n") <> "
-" <> string.join(list.map(loads, server_ws_send_load_result), "\n") <> "
 " <> string.join(
-    option.values(list.map(loads, server_ws_send_save_result)),
+    list.map(loads, fn(load) { server_ws_try_request(load, loads) }),
     "\n",
   ) <> "
+" <> string.join(
+    list.map(loads, fn(load) {
+      server_ws_send_load_result(load, loads, load_context:)
+    }),
+    "\n",
+  ) <> "
+" <> string.join(
+    option.values(
+      list.map(loads, fn(load) { server_ws_send_save_result(load, loads) }),
+    ),
+    "\n",
+  ) <> "
+
+@target(erlang)
+fn map_page_load_result(
+  result: Result(a, List(String)),
+) -> Result(a, List(LoadError)) {
+  case result {
+    Ok(value) -> Ok(value)
+    Error(errors) ->
+      Error(list.map(errors, fn(message) { LoadError(message:) }))
+  }
+}
 
 @target(erlang)
 fn map_load_result(
@@ -1196,6 +1225,63 @@ fn wire_imports(
   }
 }
 
+fn server_ws_page_imports(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  loads
+  |> list.filter(fn(load) { server_ws_direct_load(load, load_context:) })
+  |> list.map(fn(load) {
+    "@target(erlang)\nimport " <> load.module_path <> " as " <> page_alias(load)
+  })
+  |> list.unique
+  |> string.join("\n")
+  |> fn(imports) {
+    case imports {
+      "" -> ""
+      _ -> imports <> "\n"
+    }
+  }
+}
+
+fn server_ws_direct_load(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  load.import_on_client && option.is_some(load_context)
+}
+
+fn server_ws_has_direct_loads(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  list.any(loads, fn(load) { server_ws_direct_load(load, load_context:) })
+}
+
+fn server_ws_handlers_type_definition(_loads: List(LoadRpc)) -> String {
+  "Handlers(state)"
+}
+
+fn server_ws_handlers_type(_loads: List(LoadRpc)) -> String {
+  "Handlers(state)"
+}
+
+fn load_context_import(
+  load_context: Option(LoadContext),
+  target: String,
+) -> String {
+  case load_context {
+    Some(LoadContext(module_path:, type_name: _)) ->
+      target <> "\nimport " <> module_path <> " as load_context\n"
+    None -> ""
+  }
+}
+
+fn load_context_type_ref(load_context: LoadContext) -> String {
+  let LoadContext(module_path: _, type_name:) = load_context
+  "load_context." <> type_name
+}
+
 fn push_import(push_contract: Option(PushContract), target: String) -> String {
   case push_contract {
     Some(PushContract(module_path:, type_name: _)) ->
@@ -1294,6 +1380,10 @@ pub fn push_frame(
 
 fn wire_alias(load: LoadRpc) -> String {
   load.name <> "_wire"
+}
+
+fn page_alias(load: LoadRpc) -> String {
+  load.name <> "_page"
 }
 
 fn pascal_name(load: LoadRpc) -> String {
@@ -1603,12 +1693,27 @@ pub fn save_" <> load.name <> "(
   }
 }
 
-fn server_ws_handler_fields(loads: List(LoadRpc)) -> String {
-  let load_fields = list.map(loads, server_ws_load_handler_field)
+fn server_ws_handler_fields(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  let load_context_fields = case
+    server_ws_has_direct_loads(loads, load_context:),
+    load_context
+  {
+    True, Some(context) -> [
+      "    load_context: fn(state) -> " <> load_context_type_ref(context) <> ",",
+    ]
+    _, _ -> []
+  }
+  let load_fields =
+    loads
+    |> list.filter(fn(load) { !server_ws_direct_load(load, load_context:) })
+    |> list.map(server_ws_load_handler_field)
   let save_fields =
     option.values(list.map(loads, server_ws_save_handler_fields))
 
-  list.append(load_fields, save_fields)
+  list.append(load_context_fields, list.append(load_fields, save_fields))
   |> string.join("\n")
 }
 
@@ -1667,13 +1772,13 @@ fn server_ws_dispatch_case(load: LoadRpc, rest: List(LoadRpc)) -> String {
   }"
 }
 
-fn server_ws_try_request(load: LoadRpc) -> String {
+fn server_ws_try_request(load: LoadRpc, loads: List(LoadRpc)) -> String {
   "@target(erlang)
 fn try_" <> load.name <> "_request(
   state state: state,
   conn conn: WebsocketConnection,
   data data: BitArray,
-  handlers handlers: Handlers(state),
+  handlers handlers: " <> server_ws_handlers_type(loads) <> ",
 ) -> Result(Nil, Nil) {
   case server_protocol.decode_" <> load.name <> "_request(data) {
     Ok(server_protocol." <> pascal_name(load) <> "ClientRequest(
@@ -1720,16 +1825,22 @@ fn server_ws_try_save_case(load: LoadRpc) -> String {
   }
 }
 
-fn server_ws_send_load_result(load: LoadRpc) -> String {
+fn server_ws_send_load_result(
+  load: LoadRpc,
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
   "@target(erlang)
 fn send_" <> load.name <> "_load_result(
   state state: state,
   conn conn: WebsocketConnection,
   request_id request_id: Int,
-  handlers handlers: Handlers(state)" <> server_ws_arg_params(load.args) <> ",
+  handlers handlers: " <> server_ws_handlers_type(loads) <> server_ws_arg_params(
+    load.args,
+  ) <> ",
 ) -> Nil {
   let result =
-    handlers." <> load.name <> "_load(" <> server_ws_handler_args_call(load) <> ")
+    " <> server_ws_load_result_call(load, load_context:) <> "
     |> map_load_result
 
   let _sent =
@@ -1742,10 +1853,39 @@ fn send_" <> load.name <> "_load_result(
     )
   Nil
 }
-"
+  "
 }
 
-fn server_ws_send_save_result(load: LoadRpc) -> Option(String) {
+fn server_ws_load_result_call(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case server_ws_direct_load(load, load_context:) {
+    True ->
+      page_alias(load)
+      <> ".load_wire(handlers.load_context(state)"
+      <> server_ws_page_load_args(load.args)
+      <> ")\n    |> map_page_load_result"
+    False ->
+      "handlers."
+      <> load.name
+      <> "_load("
+      <> server_ws_handler_args_call(load)
+      <> ")"
+  }
+}
+
+fn server_ws_page_load_args(args: List(LoadArg)) -> String {
+  case call_args(args) {
+    "" -> ""
+    args -> ", " <> args
+  }
+}
+
+fn server_ws_send_save_result(
+  load: LoadRpc,
+  loads: List(LoadRpc),
+) -> Option(String) {
   case load.save_result_type {
     None -> None
     Some(_) -> Some("@target(erlang)
@@ -1754,7 +1894,7 @@ fn send_" <> load.name <> "_save_result(
   conn conn: WebsocketConnection,
   request_id request_id: Int,
   message message: " <> wire_alias(load) <> ".ServerMsg,
-  handlers handlers: Handlers(state),
+  handlers handlers: " <> server_ws_handlers_type(loads) <> ",
 ) -> Nil {
   let result = handlers." <> load.name <> "_save(state, message)
 

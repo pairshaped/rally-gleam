@@ -279,6 +279,7 @@ fn run(args: List(String)) -> Result(String, RallyError) {
 fn run_load_rpc() -> Result(String, RallyError) {
   use toml_map <- result.try(read_project_toml())
   use push_contract <- result.try(load_rpc_push_contract_from_toml(toml_map))
+  use load_context <- result.try(load_rpc_load_context_from_toml(toml_map))
   use loads <- result.try(
     load_rpc.discover("src")
     |> result.map_error(fn(msg) {
@@ -292,7 +293,10 @@ fn run_load_rpc() -> Result(String, RallyError) {
     dependency_packages: dependency_names_from_toml(toml_map),
   ))
   let files =
-    list.append(load_rpc.generate(loads:, push_contract:), libero_files)
+    list.append(
+      load_rpc.generate(loads:, push_contract:, load_context:),
+      libero_files,
+    )
   use Nil <- result.try(
     write_load_rpc_files(files)
     |> result.map_error(fn(msg) { RallyError("write error: " <> msg) }),
@@ -421,6 +425,45 @@ fn load_rpc_push_contract_from_toml(
     Error(err) ->
       Error(RallyError(
         "Invalid [tools.rally.load_rpc.push]: " <> tom_get_error_to_string(err),
+      ))
+  }
+}
+
+fn load_rpc_load_context_from_toml(
+  toml_map: dict.Dict(String, tom.Toml),
+) -> Result(option.Option(load_rpc.LoadContext), RallyError) {
+  case tom.get_table(toml_map, ["tools", "rally", "load_rpc", "context"]) {
+    Ok(context_config) -> {
+      use module_path <- result.try(
+        tom.get_string(context_config, ["module"])
+        |> result.map_error(fn(err) {
+          RallyError(
+            "Invalid [tools.rally.load_rpc.context] module: "
+            <> tom_get_error_to_string(err),
+          )
+        }),
+      )
+      use type_name <- result.try(
+        tom.get_string(context_config, ["type"])
+        |> result.map_error(fn(err) {
+          RallyError(
+            "Invalid [tools.rally.load_rpc.context] type: "
+            <> tom_get_error_to_string(err),
+          )
+        }),
+      )
+      Ok(
+        option.Some(load_rpc.LoadContext(
+          module_path: module_path,
+          type_name: type_name,
+        )),
+      )
+    }
+    Error(tom.NotFound(_)) -> Ok(option.None)
+    Error(err) ->
+      Error(RallyError(
+        "Invalid [tools.rally.load_rpc.context]: "
+        <> tom_get_error_to_string(err),
       ))
   }
 }
