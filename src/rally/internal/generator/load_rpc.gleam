@@ -3736,9 +3736,7 @@ fn server_ssr_direct_load(
   load: LoadRpc,
   load_context load_context: Option(LoadContext),
 ) -> Bool {
-  load_mount(load) == "public"
-  && option.is_some(load_context)
-  && server_ssr_supported_route_args(load)
+  option.is_some(load_context) && server_ssr_supported_route_args(load)
 }
 
 fn server_ssr_supported_route_args(load: LoadRpc) -> Bool {

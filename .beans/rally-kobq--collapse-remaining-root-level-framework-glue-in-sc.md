@@ -7,7 +7,7 @@ priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:18:22Z
-updated_at: 2026-06-05T12:40:00Z
+updated_at: 2026-06-05T19:02:20Z
 ---
 
 Scoreboard's root `src` directory still contains too much Rally/Proute framework glue for the size of the app. The authored application should mostly express pages, domain/session behavior, authorization policy, shell/style, and product decisions. Route and page shape should come from Proute output. Rally should consume that output with Libero-backed protocol glue and app-provided callbacks.
@@ -46,3 +46,17 @@ Progress:
 Still blocked:
 
 - Template auth remains in `rally-mhn4` and needs a product/framework decision before implementation.
+
+## Notes
+
+Fixing a remaining root callback leak: generated SSR admin load handlers still ask app root code for `admin_games_load`, even though generated Rally glue already owns route-to-load dispatch and can call page-owned `load_wire` from a configured load context.
+
+## Follow-up Fix
+
+Removed the remaining generated SSR admin load callback leak. Rally SSR now treats admin page loads like public page loads when a load context is configured and route args are supported: generated `server_ssr` calls the page-owned `load` function and the app root only passes `load_context`.
+
+Validation:
+
+- `gleam test`
+
+Remaining work is still template auth in `rally-mhn4`.

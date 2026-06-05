@@ -116,10 +116,7 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
 
 @target(erlang)
 pub type AdminLoadHandlers {
-  AdminLoadHandlers(
-    admin_games_load: fn(admin_routes.Route) ->
-      Result(admin_games_wire.LoadResult, List(String)),
-  )
+  AdminLoadHandlers(load_context: fn() -> load_context.Connection)
 }
 
 @target(erlang)
@@ -191,7 +188,10 @@ pub fn admin_boot_page(
   case admin_load_route(route) {
     AdminNoLoad -> #(page, [])
     AdminGamesLoad(to_message:) -> {
-      let result = handlers.admin_games_load(route)
+      let result = case admin_games_wire.load(handlers.load_context()) {
+        Ok(data) -> Ok(admin_games_wire.AdminGamesLoaded(data))
+        Error(admin_games_wire.LoadError(message: message)) -> Error([message])
+      }
       boot_loaded_page(
         page: page,
         result: result,
