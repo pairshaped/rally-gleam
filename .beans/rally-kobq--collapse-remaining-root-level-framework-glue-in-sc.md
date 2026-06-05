@@ -36,3 +36,14 @@ Acceptance criteria:
 - Root `src` loses the framework-only modules or reduces them to small app-owned callback/config modules.
 - Clean regeneration from empty `src/generated` still works.
 - Scoreboard builds, tests, SSR snapshots, boundary guard, and websocket smoke pass.
+
+Progress:
+
+- Child beans for browser boot, SSR composition, websocket dispatch, topic plumbing, push-frame encoding, static assets, and the HTTP server shell are complete.
+- Scoreboard now keeps database/session setup, auth policy, shell rendering, page behavior, and broadcast meaning app-owned while Rally owns the repeated transport and framework shell glue.
+
+Still blocked:
+
+- Clean regeneration from empty `src/generated` failed on 2026-06-05 before Rally ran. `gleam run -m proute` treats page-local `wire.gleam` files under `src/public/pages/**` as page modules and reports missing `Model`, `Message`, `init`, `update`, and `view`.
+- Proute currently has no documented ignore or exclude config for nested non-page modules. Moving Scoreboard's page-local wire modules would break the current Rally convention that `public/pages/foo/wire.gleam` belongs to `public/pages/foo.gleam`.
+- Template auth remains in `rally-mhn4` and needs a product/framework decision before implementation.
