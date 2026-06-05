@@ -1,14 +1,14 @@
 ---
 # rally-5lku
 title: Remove remaining generated handler and page stub adapters
-status: todo
+status: completed
 type: task
 priority: normal
 tags:
     - boundary-cleanup
     - conventions
 created_at: 2026-06-05T22:57:32Z
-updated_at: 2026-06-05T22:57:32Z
+updated_at: 2026-06-05T23:36:34Z
 parent: rally-zmpm
 ---
 
@@ -18,12 +18,24 @@ Remove the thin root adapters that exist only because generated Proute/Rally API
 
 ## Acceptance criteria
 
-[ ] Generated server_ssr accepts load_context directly or otherwise removes the need for one-field app SSR handler wrappers.
-[ ] Scoreboard app_ssr no longer defines public_load_handlers/admin_load_handlers just to wrap DB load context.
-[ ] Proute/Rally no longer requires app-owned page_stub.gleam for standard pages, or the remaining need is documented as an explicit generator limitation.
-[ ] Clean regeneration from empty src/generated still works.
-[ ] Scoreboard builds and SSR tests pass.
+[x] Generated server_ssr accepts load_context directly or otherwise removes the need for one-field app SSR handler wrappers.
+[x] Scoreboard app_ssr no longer defines public_load_handlers/admin_load_handlers just to wrap DB load context.
+[x] Proute/Rally no longer requires app-owned page_stub.gleam for standard pages, or the remaining need is documented as an explicit generator limitation.
+[x] Clean regeneration from empty src/generated still works.
+[x] Scoreboard builds and SSR tests pass.
 
 ## Blocked by
 
 None - can start immediately.
+
+
+## Validation
+
+- rally-gleam: `gleam test`
+- rally-scoreboard-example: clean regeneration from empty `src/generated` with `gleam run -m marmot`, `gleam run -m proute`, and `gleam run -m rally load-rpc`
+- rally-scoreboard-example: `gleam build --target erlang`
+- rally-scoreboard-example: `gleam build --target javascript`
+- rally-scoreboard-example: `node test/boundary_guard_test.mjs`
+- rally-scoreboard-example: `TEMP=./tmp gleam test --target erlang`
+- rally-scoreboard-example: `node test/ws_result_smoke.mjs`
+- rally-scoreboard-example: `npm run test:browser`

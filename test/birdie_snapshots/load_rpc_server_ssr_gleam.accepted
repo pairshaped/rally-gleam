@@ -115,21 +115,11 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
 }
 
 @target(erlang)
-pub type AdminLoadHandlers {
-  AdminLoadHandlers(load_context: fn() -> load_context.Connection)
-}
-
-@target(erlang)
-pub type PublicLoadHandlers {
-  PublicLoadHandlers(load_context: fn() -> load_context.Connection)
-}
-
-@target(erlang)
 pub fn admin_render_path(
   page_context page_context: PageContext,
   query_params query_params: admin_page_input.QueryParams,
   path path: String,
-  handlers handlers: AdminLoadHandlers,
+  load_context load_context: load_context.Connection,
 ) -> AdminSsrOutput {
   let route = admin_routes.parse_path(path)
   let #(page, hydration) =
@@ -137,7 +127,7 @@ pub fn admin_render_path(
       page_context:,
       query_params:,
       route:,
-      handlers:,
+      load_context:,
       update_page: fn(page, message) {
         admin_pages.update(page_context, page, message)
       },
@@ -155,7 +145,7 @@ pub fn public_render_path(
   page_context page_context: PageContext,
   query_params query_params: public_page_input.QueryParams,
   path path: String,
-  handlers handlers: PublicLoadHandlers,
+  load_context load_context: load_context.Connection,
 ) -> PublicSsrOutput {
   let route = public_routes.parse_path(path)
   let #(page, hydration) =
@@ -163,7 +153,7 @@ pub fn public_render_path(
       page_context:,
       query_params:,
       route:,
-      handlers:,
+      load_context:,
       update_page: fn(page, message) { public_pages.update(page, message) },
     )
 
@@ -179,7 +169,7 @@ pub fn admin_boot_page(
   page_context page_context: PageContext,
   query_params query_params: admin_page_input.QueryParams,
   route route: admin_routes.Route,
-  handlers handlers: AdminLoadHandlers,
+  load_context load_context: load_context.Connection,
   update_page update_page: fn(admin_pages.Page, admin_pages.Message) ->
     #(admin_pages.Page, Effect(admin_pages.Message)),
 ) -> #(admin_pages.Page, List(String)) {
@@ -188,7 +178,7 @@ pub fn admin_boot_page(
   case admin_load_route(route) {
     AdminNoLoad -> #(page, [])
     AdminGamesLoad(to_message:) -> {
-      let result = case admin_games_wire.load(handlers.load_context()) {
+      let result = case admin_games_wire.load(load_context) {
         Ok(data) -> Ok(admin_games_wire.AdminGamesLoaded(data))
         Error(admin_games_wire.LoadError(message: message)) -> Error([message])
       }
@@ -208,7 +198,7 @@ pub fn public_boot_page(
   page_context page_context: PageContext,
   query_params query_params: public_page_input.QueryParams,
   route route: public_routes.Route,
-  handlers handlers: PublicLoadHandlers,
+  load_context load_context: load_context.Connection,
   update_page update_page: fn(public_pages.Page, public_pages.Message) ->
     #(public_pages.Page, Effect(public_pages.Message)),
 ) -> #(public_pages.Page, List(String)) {
@@ -217,7 +207,7 @@ pub fn public_boot_page(
   case public_load_route(route) {
     PublicNoLoad -> #(page, [])
     PublicGamesLoad(to_message:) -> {
-      let result = case public_games_page.load(handlers.load_context()) {
+      let result = case public_games_page.load(load_context) {
         Ok(data) -> Ok(public_games_wire.PublicGamesLoaded(data))
         Error(public_games_page.LoadError(message: message)) -> Error([message])
       }
@@ -234,9 +224,7 @@ pub fn public_boot_page(
         public_routes.GamesId(id:) ->
           case int.parse(id) {
             Ok(game_id) ->
-              case
-                public_game_detail_page.load(handlers.load_context(), game_id)
-              {
+              case public_game_detail_page.load(load_context, game_id) {
                 Ok(data) ->
                   Ok(public_game_detail_wire.PublicGameDetailLoaded(data))
                 Error(public_game_detail_page.LoadError(message: message)) ->

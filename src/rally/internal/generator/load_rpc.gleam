@@ -2228,7 +2228,11 @@ import page_context.{type PageContext}
   ) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
-      server_ssr_mount_render_path(mount, mount_loads(loads, mount))
+      server_ssr_mount_render_path(
+        mount,
+        mount_loads(loads, mount),
+        load_context:,
+      )
     }),
     "\n",
   ) <> "
@@ -4254,6 +4258,21 @@ fn server_ssr_has_direct_loads(
   list.any(loads, fn(load) { server_ssr_direct_load(load, load_context:) })
 }
 
+fn server_ssr_has_indirect_loads(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  list.any(loads, fn(load) { !server_ssr_direct_load(load, load_context:) })
+}
+
+fn server_ssr_mount_uses_direct_context(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> Bool {
+  server_ssr_has_direct_loads(loads, load_context:)
+  && !server_ssr_has_indirect_loads(loads, load_context:)
+}
+
 fn server_ssr_load_context_import(
   direct_loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
@@ -4326,38 +4345,47 @@ fn server_ssr_mount_handlers_type(
 ) -> String {
   let prefix = mount_type_prefix(mount)
   let routes = mount_alias(mount, "routes")
-  let load_context_fields = case
-    server_ssr_has_direct_loads(loads, load_context:),
-    load_context
-  {
-    True, Some(context) -> [
-      "    load_context: fn() -> " <> load_context_type_ref(context) <> ",",
-    ]
-    _, _ -> []
-  }
-  let load_fields =
-    loads
-    |> list.filter(fn(load) { !server_ssr_direct_load(load, load_context:) })
-    |> list.map(fn(load) {
-      "    "
-      <> load.name
-      <> "_load: fn("
-      <> routes
-      <> ".Route) -> Result("
-      <> wire_alias(load)
-      <> ".LoadResult, List(String)),"
-    })
+  case server_ssr_mount_uses_direct_context(loads, load_context:) {
+    True -> ""
+    False -> {
+      let load_context_fields = case
+        server_ssr_has_direct_loads(loads, load_context:),
+        load_context
+      {
+        True, Some(context) -> [
+          "    load_context: fn() -> " <> load_context_type_ref(context) <> ",",
+        ]
+        _, _ -> []
+      }
+      let load_fields =
+        loads
+        |> list.filter(fn(load) { !server_ssr_direct_load(load, load_context:) })
+        |> list.map(fn(load) {
+          "    "
+          <> load.name
+          <> "_load: fn("
+          <> routes
+          <> ".Route) -> Result("
+          <> wire_alias(load)
+          <> ".LoadResult, List(String)),"
+        })
 
-  "@target(erlang)
+      "@target(erlang)
 pub type " <> prefix <> "LoadHandlers {
   " <> prefix <> "LoadHandlers(
 " <> string.join(list.append(load_context_fields, load_fields), "\n") <> "
   )
 }
 "
+    }
+  }
 }
 
-fn server_ssr_mount_render_path(mount: String, loads: List(LoadRpc)) -> String {
+fn server_ssr_mount_render_path(
+  mount: String,
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
   let prefix = mount_type_prefix(mount)
   let page_input = mount_alias(mount, "page_input")
   let routes = mount_alias(mount, "routes")
@@ -4368,7 +4396,7 @@ pub fn " <> mount <> "_render_path(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   path path: String,
-  handlers handlers: " <> prefix <> "LoadHandlers,
+  " <> server_ssr_mount_context_param(mount, loads, load_context:) <> "
 ) -> " <> prefix <> "SsrOutput {
   let route = " <> routes <> ".parse_path(path)
   let #(page, hydration) =
@@ -4376,7 +4404,7 @@ pub fn " <> mount <> "_render_path(
       page_context:,
       query_params:,
       route:,
-      handlers:,
+      " <> server_ssr_mount_context_arg(loads, load_context:) <> "
       update_page: fn(page, message) {
         " <> server_ssr_mount_update_call(pages, loads) <> "
       },
@@ -4389,6 +4417,31 @@ pub fn " <> mount <> "_render_path(
   )
 }
 "
+}
+
+fn server_ssr_mount_context_param(
+  mount: String,
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case
+    server_ssr_mount_uses_direct_context(loads, load_context:),
+    load_context
+  {
+    True, Some(context) ->
+      "load_context load_context: " <> load_context_type_ref(context) <> ","
+    _, _ -> "handlers handlers: " <> mount_type_prefix(mount) <> "LoadHandlers,"
+  }
+}
+
+fn server_ssr_mount_context_arg(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  case server_ssr_mount_uses_direct_context(loads, load_context:) {
+    True -> "load_context:,"
+    False -> "handlers:,"
+  }
 }
 
 fn server_ssr_mount_update_call(pages: String, loads: List(LoadRpc)) -> String {
@@ -4417,7 +4470,7 @@ pub fn " <> mount <> "_boot_page(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
-  handlers handlers: " <> prefix <> "LoadHandlers,
+  " <> server_ssr_mount_context_param(mount, loads, load_context:) <> "
   update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, List(String)) {
   let page = " <> pages <> ".load_sync(page_context, query_params, route)
@@ -4425,7 +4478,9 @@ pub fn " <> mount <> "_boot_page(
   case " <> mount <> "_load_route(route) {
     " <> prefix <> "NoLoad -> #(page, [])
 " <> string.join(
-    list.map(loads, fn(load) { server_ssr_mount_boot_case(load, load_context:) }),
+    list.map(loads, fn(load) {
+      server_ssr_mount_boot_case(load, loads, load_context:)
+    }),
     "\n",
   ) <> "
   }
@@ -4498,10 +4553,18 @@ fn server_ssr_route_module_pattern_args(route_module: String) -> String {
 
 fn server_ssr_mount_boot_case(
   load: LoadRpc,
+  mount_loads mount_loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
 ) -> String {
   "    " <> pascal_name(load) <> "Load(to_message:) -> {
-      let result = " <> server_ssr_load_result_call(load, load_context:) <> "
+      let result = " <> server_ssr_load_result_call(
+    load,
+    direct_context: server_ssr_mount_uses_direct_context(
+      mount_loads,
+      load_context:,
+    ),
+    load_context:,
+  ) <> "
       boot_loaded_page(
         page: page,
         result: result,
@@ -4514,32 +4577,40 @@ fn server_ssr_mount_boot_case(
 
 fn server_ssr_load_result_call(
   load: LoadRpc,
+  direct_context direct_context: Bool,
   load_context load_context: Option(LoadContext),
 ) -> String {
   case server_ssr_direct_load(load, load_context:) {
-    True -> server_ssr_page_load_call(load)
+    True -> server_ssr_page_load_call(load, direct_context:)
     False -> "handlers." <> load.name <> "_load(route)"
   }
 }
 
-fn server_ssr_page_load_call(load: LoadRpc) -> String {
+fn server_ssr_page_load_call(
+  load: LoadRpc,
+  direct_context direct_context: Bool,
+) -> String {
+  let context = case direct_context {
+    True -> "load_context"
+    False -> "handlers.load_context()"
+  }
+
   case load.args {
-    [] ->
-      generated_direct_load_call(
-        load:,
-        load_context: "handlers.load_context()",
-        args: "",
-      )
+    [] -> generated_direct_load_call(load:, load_context: context, args: "")
     _ -> "case route {
         " <> server_ssr_route_pattern(load) <> " -> " <> server_ssr_page_load_arg_body(
         load,
+        load_context: context,
       ) <> "
         _ -> Error([\"Unexpected route.\"])
       }"
   }
 }
 
-fn server_ssr_page_load_arg_body(load: LoadRpc) -> String {
+fn server_ssr_page_load_arg_body(
+  load: LoadRpc,
+  load_context load_context: String,
+) -> String {
   let args = server_ssr_route_args(load)
   let route_fields = list.map(args, fn(pair) { pair.0 })
   let load_args = list.map(args, fn(pair) { pair.1 })
@@ -4548,10 +4619,11 @@ fn server_ssr_page_load_arg_body(load: LoadRpc) -> String {
     False ->
       generated_direct_load_call(
         load:,
-        load_context: "handlers.load_context()",
+        load_context:,
         args: call_args(load.args),
       )
-    True -> server_ssr_int_load_arg_body(load, route_fields, load_args)
+    True ->
+      server_ssr_int_load_arg_body(load, route_fields, load_args, load_context:)
   }
 }
 
@@ -4559,6 +4631,7 @@ fn server_ssr_int_load_arg_body(
   load: LoadRpc,
   route_fields: List(String),
   load_args: List(LoadArg),
+  load_context load_context: String,
 ) -> String {
   let parsers =
     list.zip(route_fields, load_args)
@@ -4579,7 +4652,7 @@ fn server_ssr_int_load_arg_body(
   string.join(parsers, "")
   <> generated_direct_load_call(
     load:,
-    load_context: "handlers.load_context()",
+    load_context:,
     args: call_args(load.args),
   )
   <> "
