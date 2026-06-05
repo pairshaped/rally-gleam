@@ -62,7 +62,7 @@ pub fn broadcast_to_page(msg: a) -> Effect(b) {
   deferred(fn() {
     let page = effect_state.get_ws_page()
     let frame = encode_push_frame(page, msg)
-    topics.broadcast("page:" <> page, frame)
+    let _ = topics.broadcast("page:" <> page, frame)
     effect_state.push_outgoing_frame(frame)
   })
 }
@@ -72,7 +72,7 @@ pub fn broadcast_to_app(msg: a) -> Effect(b) {
   deferred(fn() {
     let page = effect_state.get_ws_page()
     let frame = encode_push_frame(page, msg)
-    topics.broadcast("app", frame)
+    let _ = topics.broadcast("app", frame)
     effect_state.push_outgoing_frame(frame)
   })
 }
@@ -133,7 +133,7 @@ pub fn broadcast_to_session(msg: a) -> Effect(b) {
     let page = effect_state.get_ws_page()
     let session = get_ws_session()
     let frame = encode_push_frame(page, msg)
-    topics.broadcast("session:" <> session, frame)
+    let _ = topics.broadcast("session:" <> session, frame)
     effect_state.push_outgoing_frame(frame)
   })
 }

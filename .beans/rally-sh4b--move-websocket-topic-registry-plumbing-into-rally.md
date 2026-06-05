@@ -1,13 +1,13 @@
 ---
 # rally-sh4b
 title: Move websocket topic registry plumbing into Rally
-status: todo
+status: completed
 type: task
 priority: high
 tags:
     - boundary-cleanup
 created_at: 2026-06-05T03:17:33Z
-updated_at: 2026-06-05T03:19:20Z
+updated_at: 2026-06-05T05:02:00Z
 parent: rally-kobq
 ---
 
@@ -35,3 +35,20 @@ Acceptance criteria:
 - The origin connection is still excluded from broadcasts, while other connections on the same page/topic still receive the event.
 - App-owned broadcast event mapping and timing remain in app code.
 - Scoreboard websocket smoke tests pass.
+
+Completion notes:
+
+- Rally runtime topics now expose `broadcast_except_self` and `frame_selector`.
+- Scoreboard removed `app_topics.gleam` and `app_topics_ffi.erl`.
+- `app_ws.gleam` now uses `rally/runtime/topics` for topic startup, join, selector, and self-excluded broadcast.
+- Scoreboard still owns the `"app"` topic choice, broadcast timing, and event construction.
+
+Validation:
+
+- Rally: `gleam build`
+- Rally: `gleam test --target erlang -- --module rally/runtime/topics_test`
+- Scoreboard: `gleam build --target erlang`
+- Scoreboard: `gleam build --target javascript`
+- Scoreboard: `gleam test --target erlang`
+- Scoreboard: `node test/boundary_guard_test.mjs`
+- Scoreboard: `node test/ws_result_smoke.mjs`

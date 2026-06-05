@@ -1,5 +1,5 @@
 -module(rally_runtime_topics_ffi).
--export([start/0, join/1, leave/1, members/1, broadcast/2, receive_frame/1]).
+-export([start/0, join/1, leave/1, members/1, broadcast/2, broadcast_except_self/2, receive_frame/1]).
 
 start() ->
     case pg:start_link(rally_topics) of
@@ -19,6 +19,9 @@ members(Topic) ->
     pg:get_members(rally_topics, Topic).
 
 broadcast(Topic, Frame) ->
+    broadcast_except_self(Topic, Frame).
+
+broadcast_except_self(Topic, Frame) ->
     Members = pg:get_members(rally_topics, Topic),
     Self = self(),
     lists:foreach(fun(Pid) ->
