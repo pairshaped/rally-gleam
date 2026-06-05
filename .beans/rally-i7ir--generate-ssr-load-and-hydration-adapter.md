@@ -1,18 +1,18 @@
 ---
 # rally-i7ir
-title: Generate SSR load and hydration adapter
-status: in-progress
+title: Generate SSR hydration adapter
+status: completed
 type: task
 priority: high
 tags:
     - codegen
     - ssr
 created_at: 2026-06-04T23:18:18Z
-updated_at: 2026-06-04T23:48:08Z
+updated_at: 2026-06-05T01:15:56Z
 parent: rally-oymv
 ---
 
-Scoreboard still hand-authors server-side Rally hydration/load plumbing. Generate the SSR adapter that connects routed pages, page load results, generated hydration payloads, and shell rendering inputs.
+Scoreboard hand-authored server-side Rally hydration payload plumbing. Generate the SSR adapter that wraps page load wire results, Rally transport errors, generated protocol result envelopes, and base64 hydration payloads.
 
 Problem:
 - The app manually chooses route-specific boot load calls.
