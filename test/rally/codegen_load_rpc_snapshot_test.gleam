@@ -74,6 +74,7 @@ pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
     "src/generated/rally/server_ws.gleam",
     "src/generated/rally/server_ssr.gleam",
     "src/generated/rally/hydration.gleam",
+    "src/generated/rally/browser_app.gleam",
     "src/generated/rally/result.gleam",
   ])
   paths
@@ -189,6 +190,11 @@ pub fn load_rpc_server_ssr_snapshot_test() {
 pub fn load_rpc_hydration_snapshot_test() {
   content_for("src/generated/rally/hydration.gleam")
   |> birdie.snap("load_rpc_hydration_gleam")
+}
+
+pub fn load_rpc_browser_app_snapshot_test() {
+  content_for("src/generated/rally/browser_app.gleam")
+  |> birdie.snap("load_rpc_browser_app_gleam")
 }
 
 pub fn load_rpc_discover_finds_page_local_wire_loads_test() {

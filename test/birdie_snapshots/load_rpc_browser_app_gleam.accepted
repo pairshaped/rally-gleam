@@ -1,0 +1,61 @@
+---
+version: 2.0.0
+title: load_rpc_browser_app_gleam
+file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
+test_name: load_rpc_browser_app_snapshot_test
+---
+@target(javascript)
+import generated/rally/browser_mount
+@target(javascript)
+import lustre
+@target(javascript)
+import lustre/effect.{type Effect}
+@target(javascript)
+import lustre/element.{type Element}
+
+@target(javascript)
+pub fn start(
+  init init: fn(Nil) -> #(model, Effect(msg)),
+  update update: fn(model, msg) -> #(model, Effect(msg)),
+  view view: fn(model) -> Element(msg),
+) -> Nil {
+  let app = lustre.application(init, update, view)
+  let _started = lustre.start(app, "#app", Nil)
+  Nil
+}
+
+@target(javascript)
+pub fn startup_effects(
+  page_effect page_effect: Effect(page_msg),
+  dark_mode dark_mode: Bool,
+  on_page on_page: fn(page_msg) -> msg,
+  on_frame on_frame: fn(BitArray) -> msg,
+  on_shell_navigation on_shell_navigation: fn(String) -> msg,
+  on_browser_navigation on_browser_navigation: fn(String) -> msg,
+) -> Effect(msg) {
+  effect.batch([
+    effect.map(page_effect, on_page),
+    browser_mount.startup_effects(
+      dark_mode: dark_mode,
+      on_frame: on_frame,
+      on_shell_navigation: on_shell_navigation,
+      on_browser_navigation: on_browser_navigation,
+    ),
+  ])
+}
+
+@target(javascript)
+pub fn navigation_effects(
+  path path: String,
+  push_history push_history: Bool,
+  page_effect page_effect: Effect(page_msg),
+  on_page on_page: fn(page_msg) -> msg,
+) -> Effect(msg) {
+  let history_effect = case push_history {
+    True -> browser_mount.push_path(path)
+    False -> effect.none()
+  }
+
+  effect.batch([history_effect, effect.map(page_effect, on_page)])
+}
+

@@ -1,14 +1,14 @@
 ---
 # rally-df3o
 title: Generate browser app boot wrapper
-status: todo
+status: in-progress
 type: task
 priority: normal
 tags:
     - codegen
     - browser
 created_at: 2026-06-04T23:18:39Z
-updated_at: 2026-06-04T23:18:39Z
+updated_at: 2026-06-05T01:19:42Z
 parent: rally-oymv
 ---
 
@@ -36,3 +36,10 @@ Acceptance:
 - Generated code remains under `src/generated/rally/**`.
 - Existing public/admin browser behavior still works after regeneration.
 - Tests or snapshots cover the generated browser boot shape.
+
+
+
+Progress notes:
+- Added generated `src/generated/rally/browser_app.gleam` for Lustre startup, common browser startup effects, and navigation effect batching.
+- Scoreboard public/admin browser modules now call `browser_app.start`, `browser_app.startup_effects`, and `browser_app.navigation_effects` instead of hand-authoring those mechanics.
+- Hydration fallback routing and server-frame application are still in authored public/admin modules, using generated `hydration`, `public_boot`/`admin_boot`, and `to_client_application` helpers. Those need another slice or an explicit route-load declaration boundary before more generation.
