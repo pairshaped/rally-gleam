@@ -138,6 +138,7 @@ pub fn generate(
       server_ssr(loads:, load_context:),
     ),
     GeneratedFile("src/generated/rally/hydration.gleam", hydration(loads:)),
+    GeneratedFile("src/generated/rally/theme.gleam", theme_module()),
     GeneratedFile("src/generated/rally/browser.gleam", browser_module()),
     GeneratedFile("src/generated/rally/browser_ffi.mjs", browser_ffi()),
     GeneratedFile("src/generated/rally/browser_mount.gleam", browser_mount()),
@@ -190,8 +191,56 @@ pub type ApiSaveError {
 "
 }
 
+pub fn theme_module() -> String {
+  "@target(erlang)
+import gleam/http/request.{type Request}
+@target(erlang)
+import gleam/list
+@target(erlang)
+import gleam/result
+
+pub const dark_mode_cookie = \"__rally_dark_mode\"
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(erlang)
+pub fn document_attribute(req: Request(body)) -> String {
+  \"data-theme=\\\"\" <> document_theme(req) <> \"\\\"\"
+}
+
+@target(erlang)
+pub fn document_theme(req: Request(body)) -> String {
+  case request_dark_mode(req) {
+    True -> \"dark\"
+    False -> \"light\"
+  }
+}
+
+@target(erlang)
+pub fn request_dark_mode(req: Request(body)) -> Bool {
+  request.get_cookies(req)
+  |> list.find_map(fn(cookie) {
+    case cookie.0, cookie.1 {
+      name, \"1\" if name == dark_mode_cookie -> Ok(True)
+      name, \"0\" if name == dark_mode_cookie -> Ok(False)
+      _, _ -> Error(Nil)
+    }
+  })
+  |> result.unwrap(False)
+}
+"
+}
+
 pub fn browser_module() -> String {
-  "@target(javascript)
+  "@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
 @external(javascript, \"./browser_ffi.mjs\", \"path\")
 pub fn path() -> String {
   \"/\"
@@ -253,7 +302,7 @@ pub fn listen_spa_navigation(_dispatch: fn(String) -> Nil) -> Nil {
 
 @target(javascript)
 @external(javascript, \"./browser_ffi.mjs\", \"device_dark_mode\")
-pub fn device_dark_mode(_cookie_name: String) -> Bool {
+pub fn device_dark_mode() -> Bool {
   False
 }
 
@@ -265,7 +314,7 @@ pub fn apply_dark_mode(_dark_mode: Bool) -> Nil {
 
 @target(javascript)
 @external(javascript, \"./browser_ffi.mjs\", \"persist_dark_mode\")
-pub fn persist_dark_mode(_cookie_name: String, _dark_mode: Bool) -> Nil {
+pub fn persist_dark_mode(_dark_mode: Bool) -> Nil {
   Nil
 }
 "
@@ -353,12 +402,12 @@ export function listen_spa_navigation(dispatch) {
   });
 }
 
-export function device_dark_mode(cookieName) {
-  const raw = getCookie(cookieName);
-  if (raw) {
-    const params = new URLSearchParams(raw);
-    return params.get(\"dark_mode\") === \"1\";
-  }
+const darkModeCookie = \"__rally_dark_mode\";
+
+export function device_dark_mode() {
+  const raw = getCookie(darkModeCookie);
+  if (raw === \"1\") return true;
+  if (raw === \"0\") return false;
 
   return typeof globalThis.matchMedia === \"function\"
     ? globalThis.matchMedia(\"(prefers-color-scheme: dark)\").matches
@@ -371,9 +420,8 @@ export function apply_dark_mode(darkMode) {
   document.documentElement.dataset.theme = darkMode ? \"dark\" : \"light\";
 }
 
-export function persist_dark_mode(cookieName, darkMode) {
-  const value = \"v=1&dark_mode=\" + (darkMode ? \"1\" : \"0\");
-  setCookie(cookieName, value, 365);
+export function persist_dark_mode(darkMode) {
+  setCookie(darkModeCookie, darkMode ? \"1\" : \"0\", 365);
 }
 
 function getCookie(name) {
@@ -400,7 +448,12 @@ function setCookie(name, value, days) {
 }
 
 pub fn browser_mount() -> String {
-  "@target(javascript)
+  "@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
 import generated/rally/browser
 @target(javascript)
 import generated/rally/client_transport
@@ -412,8 +465,8 @@ import gleam/string
 import lustre/effect.{type Effect}
 
 @target(javascript)
-pub fn device_dark_mode(cookie_name: String) -> Bool {
-  browser.device_dark_mode(cookie_name)
+pub fn device_dark_mode() -> Bool {
+  browser.device_dark_mode()
 }
 
 @target(javascript)
@@ -422,19 +475,14 @@ fn apply_dark_mode(dark_mode: Bool) -> Effect(msg) {
 }
 
 @target(javascript)
-fn persist_dark_mode(cookie_name: String, dark_mode: Bool) -> Effect(msg) {
-  effect.from(fn(_dispatch) {
-    browser.persist_dark_mode(cookie_name, dark_mode)
-  })
+fn persist_dark_mode(dark_mode: Bool) -> Effect(msg) {
+  effect.from(fn(_dispatch) { browser.persist_dark_mode(dark_mode) })
 }
 
 @target(javascript)
-pub fn dark_mode_changed_effects(
-  cookie_name cookie_name: String,
-  dark_mode dark_mode: Bool,
-) -> Effect(msg) {
+pub fn dark_mode_changed_effects(dark_mode dark_mode: Bool) -> Effect(msg) {
   effect.batch([
-    persist_dark_mode(cookie_name, dark_mode),
+    persist_dark_mode(dark_mode),
     apply_dark_mode(dark_mode),
   ])
 }

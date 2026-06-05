@@ -1,14 +1,14 @@
 ---
 # rally-gvkf
 title: Move dark mode browser persistence into Rally
-status: todo
+status: completed
 type: task
 priority: normal
 tags:
     - boundary-cleanup
     - browser
 created_at: 2026-06-05T19:20:33Z
-updated_at: 2026-06-05T19:21:15Z
+updated_at: 2026-06-05T19:45:00Z
 parent: rally-kobq
 ---
 
@@ -43,3 +43,13 @@ The app should own:
 This is only about abstracting how dark mode is turned on/off and stored. It is not a theme framework.
 
 Rally should provide the storage/application mechanics. The application still decides what the UI control looks like and what dark mode means in its CSS.
+
+Starting implementation pass: move dark-mode cookie parsing, persistence, initial browser detection, and document theme resolution into generated Rally helpers while keeping Scoreboard shell toggle UI app-owned.
+
+- Implemented: generated Rally now emits `generated/rally/theme.gleam` for dark-mode cookie lookup, request dark-mode state, and SSR document theme attribute generation.
+- Implemented: generated browser helpers now own the fixed `__rally_dark_mode` cookie, system preference fallback, document `data-theme` application, and persistence.
+- Implemented: Scoreboard deleted `src/device_preferences.gleam`; `app_document.gleam` delegates SSR theme state/attribute generation to `generated/rally/theme`; `admin_app.gleam` and `public_app.gleam` call generated Rally dark-mode helpers directly while keeping the app-owned toggle UI and shared-state Bool.
+- Guarded: boundary guard now rejects the old app device-preference module, app-level dark-mode storage wrappers, app document cookie parsing, and generated browser helpers that require app-supplied cookie names.
+- Validated: Rally `gleam test` passed (440 tests; existing generator-format warnings still printed).
+- Validated: Scoreboard `gleam build --target erlang`, `gleam build --target javascript`, `TEMP=./tmp gleam test --target erlang`, `node test/ws_result_smoke.mjs`, `node test/boundary_guard_test.mjs`, and `npm run test:browser` passed.
+- Validated: browser smoke now toggles dark mode, checks `data-theme`, verifies the `__rally_dark_mode` cookie, and confirms the SSR/browser state survives reload.

@@ -96,6 +96,7 @@ pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
     "src/generated/rally/server_ws.gleam",
     "src/generated/rally/server_ssr.gleam",
     "src/generated/rally/hydration.gleam",
+    "src/generated/rally/theme.gleam",
     "src/generated/rally/browser.gleam",
     "src/generated/rally/browser_ffi.mjs",
     "src/generated/rally/browser_mount.gleam",
@@ -120,6 +121,9 @@ pub fn load_rpc_browser_runtime_helpers_are_app_neutral_test() {
   content_for("src/generated/rally/client_transport_ffi.mjs")
   |> string.contains("Array.from(topics).join")
   |> should.be_true()
+  content_for("src/generated/rally/browser_mount.gleam")
+  |> string.contains("cookie_name")
+  |> should.be_false()
 
   [
     "src/generated/rally/browser_ffi.mjs",
