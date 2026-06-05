@@ -626,11 +626,11 @@ import lustre
 import lustre/effect.{type Effect}
 @target(javascript)
 import lustre/element.{type Element}
-" <> browser_app_int_import(loads) <> "
-" <> browser_app_client_protocol_import(push_contract) <> "
-" <> push_import(push_contract, "@target(javascript)") <> "
-" <> browser_app_mount_imports(mounts) <> "
-" <> wire_imports(loads, "@target(javascript)", client_only: False) <> "
+" <> browser_app_int_import(loads) <> browser_app_client_protocol_import(
+    push_contract,
+  ) <> push_import(push_contract, "@target(javascript)") <> browser_app_mount_imports(
+    mounts,
+  ) <> wire_imports(loads, "@target(javascript)", client_only: False) <> "
 " <> string.join(
     list.map(mounts, fn(mount) {
       browser_app_mount_load_route_type(mount, mount_loads(loads, mount))
@@ -765,7 +765,7 @@ fn browser_app_int_import(loads: List(LoadRpc)) -> String {
       && list.any(load.args, fn(arg) { arg.type_ref == "Int" })
     })
   {
-    True -> "\n@target(javascript)\nimport gleam/int"
+    True -> "@target(javascript)\nimport gleam/int\n"
     False -> ""
   }
 }
@@ -1066,12 +1066,19 @@ pub fn client_protocol(
   loads loads: List(LoadRpc),
   push_contract push_contract: Option(PushContract),
 ) -> String {
-  "@target(javascript)
+  "@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
 import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
 import generated/libero/etf as libero_etf
-" <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
-" <> push_import(push_contract, "@target(javascript)") <> "
+" <> wire_imports(loads, "@target(javascript)", client_only: True) <> push_import(
+    push_contract,
+    "@target(javascript)",
+  ) <> "
 " <> client_server_frame_type(push_contract) <> "
 
 " <> string.join(list.map(loads, client_encode_request), "\n") <> "
@@ -1110,12 +1117,19 @@ pub fn server_protocol(
   loads loads: List(LoadRpc),
   push_contract push_contract: Option(PushContract),
 ) -> String {
-  "@target(erlang)
+  "@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(erlang)
 import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(erlang)
 import generated/libero/etf as libero_etf
-" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
-" <> push_import(push_contract, "@target(erlang)") <> "
+" <> wire_imports(loads, "@target(erlang)", client_only: False) <> push_import(
+    push_contract,
+    "@target(erlang)",
+  ) <> "
 
 @target(erlang)
 pub fn ensure() -> Nil {
@@ -1282,10 +1296,13 @@ import gleam/list
 import gleam/option.{type Option}
 @target(erlang)
 import mist.{type WebsocketConnection}
-" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
-" <> server_ws_page_imports(loads, load_context:) <> "
-" <> server_ws_load_context_import(loads, load_context:) <> "
-" <> push_import(push_contract, "@target(erlang)") <> "
+" <> wire_imports(loads, "@target(erlang)", client_only: False) <> server_ws_page_imports(
+    loads,
+    load_context:,
+  ) <> server_ws_load_context_import(loads, load_context:) <> push_import(
+    push_contract,
+    "@target(erlang)",
+  ) <> "
 @target(erlang)
 pub type LoadError {
   LoadError(message: String)
@@ -1378,18 +1395,20 @@ import generated/rally/result as transport_result
 import generated/rally/server_protocol
 @target(erlang)
 import gleam/bit_array
-" <> server_ssr_int_import(direct_loads) <> "
-@target(erlang)
+" <> server_ssr_int_import(direct_loads) <> "@target(erlang)
 import gleam/list
 @target(erlang)
 import lustre/effect.{type Effect}
 @target(erlang)
 import page_context.{type PageContext}
-" <> server_ssr_mount_imports(mounts) <> "
-" <> wire_imports(loads, "@target(erlang)", client_only: False) <> "
-" <> server_ssr_page_imports(direct_loads) <> "
-" <> server_ssr_load_context_import(direct_loads, load_context:) <> "
-" <> string.join(
+" <> server_ssr_mount_imports(mounts) <> wire_imports(
+    loads,
+    "@target(erlang)",
+    client_only: False,
+  ) <> server_ssr_page_imports(direct_loads) <> server_ssr_load_context_import(
+    direct_loads,
+    load_context:,
+  ) <> "\n" <> string.join(
     list.map(mounts, fn(mount) {
       server_ssr_mount_route_type(mount, mount_loads(loads, mount))
     }),
@@ -2978,7 +2997,7 @@ fn server_ssr_int_import(loads: List(LoadRpc)) -> String {
       list.any(load.args, fn(arg) { arg.type_ref == "Int" })
     })
   {
-    True -> "\n@target(erlang)\nimport gleam/int"
+    True -> "@target(erlang)\nimport gleam/int\n"
     False -> ""
   }
 }

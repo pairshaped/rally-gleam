@@ -2,6 +2,13 @@
 version: 2.0.0
 title: load_rpc_client_protocol_gleam
 ---
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+import broadcasts as push_payload
 @target(javascript)
 import generated/libero/etf as libero_etf
 @target(javascript)
@@ -10,9 +17,6 @@ import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(javascript)
 import public/pages/games/wire as public_games_wire
-
-@target(javascript)
-import broadcasts as push_payload
 
 @target(javascript)
 pub type ServerFrame {

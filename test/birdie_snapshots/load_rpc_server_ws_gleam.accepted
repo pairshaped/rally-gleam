@@ -1,11 +1,16 @@
 ---
 version: 2.0.0
 title: load_rpc_server_ws_gleam
-file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
-test_name: load_rpc_server_ws_snapshot_test
 ---
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
 @target(erlang)
 import admin/pages/games as admin_games_wire
+@target(erlang)
+import broadcasts as push_payload
 @target(erlang)
 import generated/rally/result as transport_result
 @target(erlang)
@@ -17,20 +22,15 @@ import gleam/option.{type Option}
 @target(erlang)
 import mist.{type WebsocketConnection}
 @target(erlang)
-import public/pages/games/id_/wire as public_game_detail_wire
-@target(erlang)
-import public/pages/games/wire as public_games_wire
-
-@target(erlang)
 import public/pages/games as public_games_page
 @target(erlang)
 import public/pages/games/id_ as public_game_detail_page
-
+@target(erlang)
+import public/pages/games/id_/wire as public_game_detail_wire
+@target(erlang)
+import public/pages/games/wire as public_games_wire
 @target(erlang)
 import sqlight as load_context
-
-@target(erlang)
-import broadcasts as push_payload
 
 @target(erlang)
 pub type LoadError {
