@@ -373,7 +373,7 @@ pub type Message {
   Loaded
 }
 
-pub fn handle(message: ServerMsg) -> Result(GameUpdate, SaveError) {
+pub fn handle_save(message: ServerMsg) -> Result(GameUpdate, SaveError) {
   todo
 }
 
@@ -552,7 +552,7 @@ pub type LoadResult {
   |> should.be_true()
 }
 
-pub fn load_rpc_discover_infers_save_result_type_from_handle_test() {
+pub fn load_rpc_discover_infers_save_result_type_from_handle_save_test() {
   let root = "./tmp/load_rpc_save_type_from_handle_test"
   let src = root <> "/src"
   let _ = simplifile.delete(file_or_dir_at: root)
@@ -577,7 +577,7 @@ pub type SaveError {
   SaveError(message: String)
 }
 
-pub fn handle(message: ServerMsg) -> Result(CounterUpdate, SaveError) {
+pub fn handle_save(message: ServerMsg) -> Result(CounterUpdate, SaveError) {
   todo
 }
 ",
@@ -624,7 +624,7 @@ pub type LoadResult {
   let assert Error(message) = discover(src)
 
   message
-  |> string.contains("Missing handle function in public/pages/counter")
+  |> string.contains("Missing handle_save function in public/pages/counter")
   |> should.be_true()
   message
   |> string.contains("ServerMsg has save constructors")

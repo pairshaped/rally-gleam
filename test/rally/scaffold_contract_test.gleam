@@ -47,7 +47,7 @@ pub fn scaffold_uses_rally_bootstrap_and_page_contract_test() {
   |> should.equal(True)
 
   script
-  |> string.contains("pub fn handle(")
+  |> string.contains("pub fn handle_save(")
   |> should.equal(True)
 
   script

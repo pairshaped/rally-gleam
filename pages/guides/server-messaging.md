@@ -1,6 +1,6 @@
 # Server Messaging
 
-Rally pages talk to the server through page-local load/save contracts. The Rally Scoreboard example is the reference: the authored page owns `ServerMsg`, `LoadResult`, `load`, optional `handle`, typed topics, and `apply_broadcast` when the page needs live updates.
+Rally pages talk to the server through page-local load/save contracts. The Rally Scoreboard example is the reference: the authored page owns `ServerMsg`, `LoadResult`, `load`, optional `handle_save`, typed topics, and `apply_broadcast` when the page needs live updates.
 
 ## Load
 
@@ -21,7 +21,7 @@ Rally calls `load` during SSR, encodes the result through Libero, embeds hydrati
 
 ## Save
 
-Use a page-local `ServerMsg` and `handle` for server work triggered by browser updates.
+Use a page-local `ServerMsg` and `handle_save` for server work triggered by browser updates.
 
 ```gleam
 pub type ServerMsg {
@@ -37,7 +37,7 @@ pub type SaveError {
 }
 
 @target(erlang)
-pub fn handle(
+pub fn handle_save(
   db: sqlight.Connection,
   message: ServerMsg,
 ) -> Result(CounterUpdate, SaveError) {
@@ -63,7 +63,7 @@ Rally derives the wire contract from page-local handlers and passes the
 reachable Gleam types to Libero as codec seeds. You do not write a separate API
 schema, route, or serializer.
 
-Rally discovers the save result payload from the `Ok` type in `handle`'s return
+Rally discovers the save result payload from the `Ok` type in `handle_save`'s return
 annotation. The payload name is application-owned; it does not need to follow a
 framework-specific naming pattern.
 

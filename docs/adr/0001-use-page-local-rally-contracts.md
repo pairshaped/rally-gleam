@@ -29,8 +29,8 @@ enums, or decide page load dispatch from routes.
 | `ServerMsg` | Required for pages that load or save through Rally | Rally and Libero use it as the page-local server request payload |
 | `LoadResult` | Required for pages that load through Rally | Rally and Libero use it as the page-local load result payload |
 | `load` | Required for pages that use standard Rally page data loading | `generated/rally/server_ssr` and `generated/rally/server_ws` call it and wrap the result |
-| `handle` | Required for pages that send page-local server commands | `generated/rally/server_ws` calls it after decoding a save command |
-| `SaveError` | Required when `handle` exists | Rally maps it to generated save transport errors |
+| `handle_save` | Required for pages that send page-local server commands | `generated/rally/server_ws` calls it after decoding a save command |
+| `SaveError` | Required when `handle_save` exists | Rally maps it to generated save transport errors |
 | `after_save` | Optional | `generated/rally/server_ws` calls it after a successful save when broadcasts are configured |
 | `broadcast_subscriptions` | Required for broadcast-aware pages | `generated/rally/browser_app` syncs active broadcast topics |
 | `apply_broadcast` | Required for broadcast-aware pages | `generated/rally/browser_app` applies decoded broadcast events |
@@ -68,9 +68,9 @@ transport code, and typed result decoding.
 ## Save Contract
 
 A page has a save contract when its `ServerMsg` includes at least one
-constructor whose name does not end in `Load` and the page exports `handle`.
+constructor whose name does not end in `Load` and the page exports `handle_save`.
 
-Rally discovers the save payload from the annotated return type of `handle`.
+Rally discovers the save payload from the annotated return type of `handle_save`.
 The `Ok` type must be a non-generic custom type defined in the page's wire
 module.
 
@@ -89,7 +89,7 @@ pub type SaveError {
 }
 
 @target(erlang)
-pub fn handle(
+pub fn handle_save(
   db: sqlight.Connection,
   message: ServerMsg,
 ) -> Result(CounterUpdate, SaveError)

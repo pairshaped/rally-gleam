@@ -5,21 +5,21 @@
 [![Package Version](https://img.shields.io/hexpm/v/rally)](https://hex.pm/packages/rally)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://rally.hexdocs.pm/)
 
-Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules with page-local models, messages, load handlers, save handlers, views, and broadcast hooks. Rally generates routing composition, server-side rendering, WebSocket transport, request/result protocol code, hydration, browser lifecycle, and typed client-server messaging.
+Rally is an opinionated, convention-focused Gleam package for building Lustre apps that server-render the initial HTML, hydrate in the browser, and continue as client-side Lustre apps. You write page modules with page-local models, messages, load handlers, save handlers, views, and broadcast hooks. Rally generates routing composition, server-side rendering, WebSocket transport, request/result protocol code, hydration, browser lifecycle, and typed client-server messaging.
 
 The page file is the contract. Client state, server calls, and the message types that cross the wire all live together until you choose to extract shared code.
 
-Rally is opinionated. It chooses conventions so application code can stay small, generated code can stay predictable, and the framework can test the common path hard. A Rally app uses SQLite, Marmot, Proute, and Libero as part of that path. If an app needs a different foundation, fork Rally and submit a tested PR instead of growing local framework glue.
+Rally chooses conventions so application code can stay small, generated code can stay predictable, and the framework can test the common path hard. A Rally app uses SQLite, Marmot, Proute, and Libero as part of that path. If an app needs a different foundation, fork Rally and submit a tested PR instead of growing local framework glue.
 
 ## Convention Stack
 
 | Library | What Rally uses it for |
 |---|---|
-| SQLite | Embedded application database |
-| Marmot | SQL migrations and type-safe query generation from `.sql` files |
-| Proute | File-based routes, route params, query params, page enums, and page dispatch |
-| Libero | Typed wire codecs for page-local load/save contracts and broadcasts |
-| Lustre | Browser-side TEA views, updates, and effects |
+| [SQLite](https://www.sqlite.org/) | Embedded application database |
+| [Marmot](https://marmot.hexdocs.pm/) | SQL migrations and type-safe query generation from `.sql` files |
+| [Proute](https://proute.hexdocs.pm/) | File-based routes, route params, query params, page enums, and page dispatch |
+| [Libero](https://libero.hexdocs.pm/) | Typed wire codecs for page-local load/save contracts and broadcasts |
+| [Lustre](https://hexdocs.pm/lustre/) | TEA views, updates, and effects |
 
 ## What Rally Generates
 
@@ -140,10 +140,12 @@ pub fn load(
 }
 ```
 
-`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA, with page shared state passed into page lifecycle functions for app-wide browser state. `ServerMsg`, `LoadResult`, and `load` define the load boundary. Pages that save data add `handle`, a page-local save error type, and generated browser save calls. Pages that receive live updates add `broadcast_subscriptions` and `apply_broadcast` in a `// BROADCAST` section.
+`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA, with page shared state passed into page lifecycle functions for app-wide browser state. `ServerMsg`, `LoadResult`, and `load` define the load boundary. The page does not call `load` directly: generated Rally browser code sends `PublicGamesLoad` over the WebSocket, generated server code calls `load(db)`, and the browser dispatches `Loaded(...)` back into `update`.
+
+Pages that save data add save constructors to `ServerMsg`, define a page-local save error type, and export an Erlang `handle_save` function. Browser updates call the generated `generated/rally/server.save_*` effect to send those save messages. Pages that receive live updates add `broadcast_subscriptions` and `apply_broadcast` in a `// BROADCAST` section.
 
 There is no separate API schema. Rally discovers page-local `ServerMsg`,
-`LoadResult`, `load`, `handle`, and broadcast contracts, then passes those
+`LoadResult`, `load`, `handle_save`, and broadcast contracts, then passes those
 page-owned wire types to [Libero](https://libero.hexdocs.pm/) as codec seeds.
 Libero generates typed codec artifacts. Rally generates the browser and server
 glue that calls those codecs.

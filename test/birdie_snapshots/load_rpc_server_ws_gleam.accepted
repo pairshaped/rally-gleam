@@ -398,7 +398,7 @@ fn send_admin_games_save_result(
   let result = case handlers.admin_auth(state) {
     None -> Error([SaveError(field: None, message: "Unauthorized.")])
     Some(_) ->
-      case admin_games_wire.handle(handlers.load_context(state), message) {
+      case admin_games_wire.handle_save(handlers.load_context(state), message) {
         Ok(value) -> Ok(value)
         Error(admin_games_wire.SaveError(message: message)) ->
           Error([SaveError(field: None, message:)])

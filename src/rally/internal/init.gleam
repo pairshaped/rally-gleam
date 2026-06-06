@@ -747,7 +747,7 @@ pub fn load(db: sqlight.Connection) -> Result(Int, runtime_load.LoadError) {
 }
 
 @target(erlang)
-pub fn handle(
+pub fn handle_save(
   db: sqlight.Connection,
   message: ServerMsg,
 ) -> Result(CounterUpdate, SaveError) {

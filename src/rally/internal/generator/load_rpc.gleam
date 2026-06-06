@@ -2624,7 +2624,7 @@ fn discover_source(
           use save_result_type <- result.try(
             case import_on_client, has_save_message {
               False, True ->
-                save_result_type_from_handle(
+                save_result_type_from_handle_save(
                   ast:,
                   resolver:,
                   module_path:,
@@ -2838,28 +2838,36 @@ fn source_update_uses_page_shared_state(source: SourceModule) -> Bool {
   }
 }
 
-fn save_result_type_from_handle(
+fn save_result_type_from_handle_save(
   ast ast: glance.Module,
   resolver resolver: TypeResolver,
   module_path module_path: String,
   wire_module wire_module: String,
 ) -> Result(Option(String), String) {
-  case list.find(ast.functions, fn(def) { def.definition.name == "handle" }) {
+  case
+    list.find(ast.functions, fn(def) { def.definition.name == "handle_save" })
+  {
     Ok(def) -> {
       use return_type <- result.try(case def.definition.return {
         Some(type_) -> Ok(type_)
         None ->
-          Error("Missing handle return type in " <> module_path <> ".handle.")
+          Error(
+            "Missing handle_save return type in "
+            <> module_path
+            <> ".handle_save.",
+          )
       })
       use resolved <- result.try(
         glance_type_resolver.type_to_field_type(
           type_: return_type,
           resolver:,
           current_module: module_path,
-          policy: RejectUnsupported(module_path <> ".handle"),
+          policy: RejectUnsupported(module_path <> ".handle_save"),
         )
         |> result.map_error(fn(_) {
-          "Unsupported handle return type in " <> module_path <> ".handle."
+          "Unsupported handle_save return type in "
+          <> module_path
+          <> ".handle_save."
         }),
       )
 
@@ -2876,22 +2884,22 @@ fn save_result_type_from_handle(
               Error(
                 "Rally save handlers must return Result(<page save payload>, SaveError) in "
                 <> module_path
-                <> ".handle.",
+                <> ".handle_save.",
               )
           }
         _ ->
           Error(
             "Rally save handlers must return Result(<page save payload>, SaveError) in "
             <> module_path
-            <> ".handle.",
+            <> ".handle_save.",
           )
       }
     }
     Error(Nil) ->
       Error(
-        "Missing handle function in "
+        "Missing handle_save function in "
         <> module_path
-        <> ". ServerMsg has save constructors, so Rally requires handle.",
+        <> ". ServerMsg has save constructors, so Rally requires handle_save.",
       )
   }
 }
@@ -4457,7 +4465,7 @@ fn server_ws_save_result_call(
         error: "Error([SaveError(field: None, message: \"Unauthorized.\")])",
         body: "case "
           <> page_alias(load)
-          <> ".handle(handlers.load_context(state), message) {
+          <> ".handle_save(handlers.load_context(state), message) {
       Ok(value) -> Ok(value)
       Error("
           <> page_alias(load)

@@ -4,7 +4,7 @@ Rally uses normal project config plus Proute config. The Rally Scoreboard exampl
 
 ## gleam.toml
 
-Use `[tools.rally.context]` to name the server-side value Rally passes to page `load` and `handle` functions. The starter app uses `sqlight.Connection`.
+Use `[tools.rally.context]` to name the server-side value Rally passes to page `load` and `handle_save` functions. The starter app uses `sqlight.Connection`.
 
 ```toml
 [tools.rally.context]

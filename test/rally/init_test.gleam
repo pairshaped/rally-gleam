@@ -72,7 +72,7 @@ pub fn init_project_writes_hex_scaffold_test() {
   home |> string.contains("counter_sql") |> should.be_true()
   home |> string.contains("pub type ServerMsg") |> should.be_true()
   home |> string.contains("PublicHomeIncrement") |> should.be_true()
-  home |> string.contains("pub fn handle(") |> should.be_true()
+  home |> string.contains("pub fn handle_save(") |> should.be_true()
   home |> string.contains("CounterUpdate") |> should.be_true()
   home |> string.contains("GameUpdate") |> should.be_false()
 

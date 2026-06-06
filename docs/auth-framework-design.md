@@ -191,10 +191,10 @@ HTTP save request → extract session_id from cookie → parse page message
       → derive_state(load_context, session_id, hostname, identity) → #(_, enriched_sc)
       → if authorize exists on owning page:
         → authorize(enriched_sc, identity): False → 403
-      → dispatch to page handle with enriched_sc and identity
+      → dispatch to page handle_save with enriched_sc and identity
 ```
 
-Each save request is stateless: resolve and derive_state run on every request. The owning page module is known at codegen time because each `handle` belongs to exactly one page module.
+Each save request is stateless: resolve and derive_state run on every request. The owning page module is known at codegen time because each `handle_save` belongs to exactly one page module.
 
 ### Generated WS Handler Behavior
 
@@ -247,10 +247,10 @@ on_message:
   → if authorize exists on owning page:
     → authorize(enriched_sc, identity)
     → False: send auth-failure frame
-  → dispatch to page handle with enriched_sc and identity
+  → dispatch to page handle_save with enriched_sc and identity
 ```
 
-**Why owning page, not current page:** rally knows at codegen time which page module defines each `handle`. The message type maps to exactly one page. Using the current page from connection state would be unsafe: a malicious client could navigate to an Optional page, then send frames targeting handlers on Required pages. By checking the owning page, the auth policy of the handler's actual page always applies.
+**Why owning page, not current page:** rally knows at codegen time which page module defines each `handle_save`. The message type maps to exactly one page. Using the current page from connection state would be unsafe: a malicious client could navigate to an Optional page, then send frames targeting handlers on Required pages. By checking the owning page, the auth policy of the handler's actual page always applies.
 
 **Why verify current page matches:** in rally's model, saves are contextual to the current page. A client should not send page messages for a page they're not on. Mismatches indicate a bug or a malicious client and are rejected.
 
@@ -263,7 +263,7 @@ on_message:
 When auth.gleam exists, page handler signatures gain `identity`:
 
 ```gleam
-pub fn handle(
+pub fn handle_save(
   load_context: LoadContext,
   message: ServerMsg,
   identity: Identity,
@@ -324,7 +324,7 @@ pub fn load(load_context: LoadContext, id: Int, identity: Identity) -> LoadResul
 2. Codegen: detect auth.gleam per mount, parse exports (Identity, resolve, is_authenticated, redirect_url)
 3. Codegen: detect `pub const page_auth` and optional `pub fn authorize` on page modules
 4. SSR handler codegen: resolve → is_authenticated check → derive_state(identity) → authorize(enriched_sc) → load ordering
-5. SSR handler codegen: handle LoadResult (Page vs Redirect, apply cookies)
+5. SSR handler codegen: process LoadResult (Page vs Redirect, apply cookies)
 6. HTTP save handler codegen: resolve → is_authenticated → derive_state → authorize → dispatch with identity
 7. WS on-upgrade: resolve + derive_state, store identity + enriched_sc + page_shared_state + hostname + auth_timestamp on connection state (reject on resolve Error only)
 8. WS handler codegen: enforce page-level auth on page-init frames (Required + is_authenticated, then authorize)

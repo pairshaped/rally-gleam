@@ -108,7 +108,7 @@ into the model.
 
 ## Saving Data
 
-Use a page-local `ServerMsg` and `handle` for server work triggered by browser
+Use a page-local `ServerMsg` and `handle_save` for server work triggered by browser
 events.
 
 ```gleam
@@ -121,7 +121,7 @@ pub type SaveError {
 }
 
 @target(erlang)
-pub fn handle(
+pub fn handle_save(
   db: sqlight.Connection,
   message: ServerMsg,
 ) -> Result(GameUpdate, SaveError) {
