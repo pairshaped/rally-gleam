@@ -16,7 +16,10 @@ gleam.toml config
   -> file output
 ```
 
-Rally reads page contracts from authored page modules, Proute owns route params and page dispatch, Libero walks reachable handler types, and Rally generators produce Gleam/Erlang/JS source strings for SSR, hydration, browser boot, WebSocket transport, topics, and load/save dispatch.
+Rally reads page contracts from authored page modules, Proute owns route params
+and page dispatch, Libero walks reachable wire type seeds, and Rally generators
+produce Gleam/Erlang/JS source strings for SSR, hydration, browser boot,
+WebSocket transport, topics, and load/save dispatch.
 
 ## Reading order
 
@@ -35,9 +38,16 @@ Rally and Libero split responsibility along a clear line:
 
 **Rally owns:** pages, routing composition, SSR, WebSocket integration, browser lifecycle, hydration, topics, and runtime glue.
 
-**Libero owns:** handler discovery, type walking, wire identity, protocol encoding, response decoding, and request/result dispatch code.
+**Libero owns:** seed-driven type walking, wire identity, ETF and JSON typed
+codecs, decoder registration, atom registration, wire modules, and contract
+metadata.
 
-Rally calls into Libero after it has extracted the page load/save contracts. From that point, Libero owns everything related to wire protocol and typed request/result encoding. If you are working on how messages get encoded or decoded, you are working in Libero's domain.
+Rally calls into Libero after it has extracted the page load/save/broadcast
+contracts. Rally owns request ids, result envelopes, WebSocket transport,
+server dispatch, hydration, SSR, and browser lifecycle glue. If you are working
+on how a typed payload becomes ETF or JSON data, you are working in Libero's
+domain. If you are working on when a page sends, receives, routes, or handles
+that payload, you are working in Rally's domain.
 
 ## Project layout
 

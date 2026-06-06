@@ -119,7 +119,6 @@ fn generate_rally_libero_files(
   package package: String,
   dependency_packages dependency_packages: List(String),
 ) -> Result(List(load_rpc.GeneratedFile), RallyError) {
-  let endpoints = []
   let seeds = load_rpc.libero_type_seeds(loads:, push_contract:)
   use discovered <- result.try(
     libero.walk(seeds)
@@ -133,20 +132,12 @@ fn generate_rally_libero_files(
   let decoders_module = "generated/libero/decoders"
   let atoms_erl =
     libero.generate_atoms(
-      endpoints:,
       discovered:,
       atoms_module:,
       wire_module: option.Some(wire_module),
     )
   use wire_erl <- result.try(
-    case
-      libero.generate_wire_erl(
-        discovered:,
-        wire_module:,
-        endpoints:,
-        push_dispatches: [],
-      )
-    {
+    case libero.generate_wire_erl(discovered:, wire_module:) {
       Ok(source) -> Ok(source)
       Error(err) -> {
         gen_error.print_error(err)
@@ -155,22 +146,12 @@ fn generate_rally_libero_files(
     },
   )
   let decoders_js =
-    libero.generate_decoders_ffi(
-      discovered:,
-      endpoints:,
-      package:,
-      dependency_packages:,
-    )
+    libero.generate_decoders_ffi(discovered:, package:, dependency_packages:)
   let decoders_gleam = libero.generate_decoders_gleam()
   let etf_gleam =
     libero.generate_etf_codec_module(atoms_module:, decoders_module:)
   let contract =
-    libero.generate_json_contract(
-      endpoints:,
-      discovered:,
-      push_types: [],
-      ssr_models: [],
-    )
+    libero.generate_json_contract(discovered:, push_types: [], ssr_models: [])
 
   Ok([
     load_rpc.GeneratedFile("src/generated/libero/decoders_ffi.mjs", decoders_js),

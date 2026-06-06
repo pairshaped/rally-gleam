@@ -53,3 +53,10 @@ behavior in Libero.
 
 Applications list the libraries required by generated code instead of hiding
 runtime dependency edges inside copied generated source.
+
+Cold test runs that execute Marmot may compile the `esqlite` NIF through
+`sqlight`. A test command can keep its temporary Birdie and build artifacts in a
+repo-local directory, for example `TEMP=$PWD/tmp/birdie gleam test --target
+erlang`, so repeated runs can reuse already compiled dependencies. This is a
+developer test speedup. It does not change which runtime dependencies generated
+Rally or Libero code imports.

@@ -52,10 +52,6 @@ pub fn tag_push(module module: String, msg msg: a) -> BitArray {
   encode_push(module:, value: msg)
 }
 
-pub fn variant_tag(value: Dynamic) -> Result(String, Nil) {
-  libero_wire.variant_tag(value)
-}
-
 pub fn coerce(value: a) -> b {
   do_coerce(value)
 }

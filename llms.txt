@@ -77,7 +77,7 @@ pub fn load(db: sqlight.Connection) -> Result(Int, load.LoadError)
 pub fn handle(db: sqlight.Connection, message: ServerMsg) -> Result(Update, SaveError)
 ```
 
-Generated browser modules expose page-specific save functions such as `generated/rally/server.save_public_home`. Generated SSR and browser lifecycle glue call `load` through the same typed wire contract. Libero treats the page handler signatures and reachable payload types as the source of truth for encoding.
+Generated browser modules expose page-specific save functions such as `generated/rally/server.save_public_home`. Generated SSR and browser lifecycle glue call `load` through the same typed wire contract. Rally treats page handler signatures as the source of truth, turns their wire-visible types into Libero seeds, and uses the generated Libero codecs from Rally-owned protocol glue.
 
 ### Broadcast
 
@@ -164,7 +164,7 @@ gleam.toml + proute.toml -> Marmot -> Proute -> Rally load/save discovery -> Lib
 | `internal/generator/load_rpc.gleam` | Rally Scoreboard Example load/save, SSR, browser, hydration, WebSocket, topic, and protocol generation |
 | `internal/format.gleam` | Runs `gleam format` on generated code |
 
-Libero provides handler discovery, BFS type graph walking, codegen_decoders, field_type, glance_type_resolver (shared Glance type resolution), wire_identity (canonical type hashing), wire/protocol helpers, and trace (panic catching). Rally feeds page-local load/save contracts into Libero.
+Libero provides seed-driven type graph walking, codegen_decoders, field_type, glance_type_resolver (shared Glance type resolution), wire_identity (canonical type hashing), ETF codec generation, JSON codec generation, decoder registration, atom registration, wire modules, and contract metadata. Rally discovers page-local load/save/broadcast contracts first, feeds the reachable wire types into Libero, then generates Rally-owned request/result, transport, dispatch, hydration, SSR, and browser lifecycle glue around those codecs.
 
 ### Auth framework
 

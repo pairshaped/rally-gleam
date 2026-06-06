@@ -18,10 +18,10 @@ Marmot owns migrations and SQL code generation. Rally commands that touch
 migrations delegate to Marmot. Rally does not contain a migration runner.
 Marmot-generated files live under `src/generated/sql/**`.
 
-Libero owns wire codec generation. It walks Rally's page-local load/save and
-broadcast type seeds, writes ETF codec modules, decoder registration, atom and
-wire modules, and contract metadata. Libero-generated files live under
-`src/generated/libero/**`.
+Libero owns wire codec generation. Rally passes page-local load/save and
+broadcast type seeds to Libero. Libero walks the reachable type graph, writes
+ETF codec modules, decoder registration, atom and wire modules, and contract
+metadata. Libero-generated files live under `src/generated/libero/**`.
 
 Rally owns the framework glue that composes those outputs: app-facing transport
 helpers, request/result correlation, hydration, SSR composition, browser boot,

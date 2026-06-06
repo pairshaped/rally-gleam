@@ -4,7 +4,11 @@ Rally makes a specific set of architectural choices. This page explains those ch
 
 ## Single Source
 
-You write one Gleam project. Proute reads route files and produces route params, query params, page enums, and dispatch. Rally reads page contracts and produces browser boot, SSR, hydration, transport, topic sync, and load/save glue. Libero reads the same page-local server contracts and produces codecs and wire helpers.
+You write one Gleam project. Proute reads route files and produces route params,
+query params, page enums, and dispatch. Rally reads page contracts and produces
+browser boot, SSR, hydration, transport, topic sync, and load/save glue. Rally
+passes page-local wire type seeds to Libero, which produces codecs and wire
+helpers.
 
 The tradeoff: page modules carry more responsibility. Each authored page owns its client model, messages, load/save contract, and broadcast hooks until you extract shared code. The generated output is plain Gleam, so it is readable, but it is still code you did not write.
 
@@ -26,7 +30,11 @@ The joke version is: zero tradeoffs, you do not need anything more than `sqlite3
 
 Lamdera's architecture is the starting point: explicit server handler types as the client-server contract, server-side state per connection, TEA on both sides. If you've used Lamdera, the shape of a Rally app will feel familiar.
 
-Where they diverge: Gleam on the BEAM gives you OTP processes, `pg` groups, and native concurrency that Elm cannot access. Where the BEAM offers a better primitive, Rally uses it. Broadcast uses `pg` groups instead of custom fanout logic. Page-local save messages encode with native ETF instead of JSON. Libero handles typed request/result encoding instead of routing everything through a single update function.
+Where they diverge: Gleam on the BEAM gives you OTP processes, `pg` groups, and
+native concurrency that Elm cannot access. Where the BEAM offers a better
+primitive, Rally uses it. Broadcast uses `pg` groups instead of custom fanout
+logic. Page-local save messages encode with native ETF instead of JSON. Libero
+handles typed payload encoding while Rally owns request/result routing.
 
 ## Rally vs Lustre server components
 

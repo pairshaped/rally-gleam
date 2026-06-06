@@ -59,7 +59,9 @@ fn save_effect(msg: ServerMsg) -> Effect(Message) {
 }
 ```
 
-Libero derives the wire contract from reachable Gleam types. You do not write a separate API schema, route, or serializer.
+Rally derives the wire contract from page-local handlers and passes the
+reachable Gleam types to Libero as codec seeds. You do not write a separate API
+schema, route, or serializer.
 
 Rally discovers the save result payload from the `Ok` type in `handle`'s return
 annotation. The payload name is application-owned; it does not need to follow a

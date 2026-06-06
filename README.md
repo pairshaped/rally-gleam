@@ -142,7 +142,11 @@ pub fn load(
 
 `Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA, with page shared state passed into page lifecycle functions for app-wide browser state. `ServerMsg`, `LoadResult`, and `load` define the load boundary. Pages that save data add `handle`, a page-local save error type, and generated browser save calls. Pages that receive live updates add `broadcast_subscriptions` and `apply_broadcast` in a `// BROADCAST` section.
 
-There is no separate API schema. Rally scans page-local handler signatures and wires them into generated browser and server code. Rally uses [Libero](https://hexdocs.pm/libero/) as its lower-level wire codec library, the same way Marmot-generated SQL access code uses SQLite underneath.
+There is no separate API schema. Rally discovers page-local `ServerMsg`,
+`LoadResult`, `load`, `handle`, and broadcast contracts, then passes those
+page-owned wire types to [Libero](https://hexdocs.pm/libero/) as codec seeds.
+Libero generates typed codec artifacts. Rally generates the browser and server
+glue that calls those codecs.
 
 ## File-based routing
 

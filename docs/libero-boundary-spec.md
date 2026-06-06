@@ -1,35 +1,32 @@
 # Libero Boundary Spec
 
-Status: intended boundary
-Date: 2026-05-09
-Last checked: 2026-05-13
+Status: current boundary
+Date: 2026-06-06
 
 ## Summary
 
-Rally should be a protocol-oblivious consumer of Libero. Rally decides what
-messages exist and when to send them. Libero decides how those typed messages
-become protocol data and back.
+Rally is the framework consumer of Libero. Rally decides what messages exist,
+when they are sent, how request ids are assigned, how responses are routed, and
+which page receives a decoded payload. Libero decides how Rally's wire-visible
+Gleam types become typed codec artifacts.
 
-This boundary is represented by generated `protocol_wire` facades. Rally
-backs onto Libero for scanning, dispatch generation, wire transforms, protocol
-facades, and typed decoders.
+The boundary is seed-driven. Rally discovers page-local load, save, and
+broadcast contracts from authored page modules. It passes the reachable
+wire-visible types to Libero as seeds. Libero walks those types and generates
+the codec files under `src/generated/libero/**`. Rally generates the framework
+files under `src/generated/rally/**` that call those codecs.
 
-The test is simple: Libero should be able to add JSON as a configured protocol
-and Rally should not care which protocol is selected. ETF remains valuable and
-should continue to be supported. Rally may need regenerated Libero-owned
-modules or updated facade imports. It should not need to rewrite WebSocket
-transport logic, response handling, push handling, page init, SSR hydration, or
-the message inspector because the configured protocol changed.
-
-Rally's generated browser lifecycle glue defaults to ETF. JSON is useful for
-non-Gleam tools that call the same handler contract. Rally should benefit from
-Libero's protocol choice without owning the choice.
+ETF is Rally's default transport payload format. JSON codec generation remains
+Libero-owned for consumers that need JSON artifacts, but Rally's supported app
+path uses the generated ETF codec facade today.
 
 ## Ownership
 
 Rally owns:
 
 - Page and route semantics.
+- Page contract discovery.
+- Request ids and pending callback maps.
 - WebSocket lifecycle.
 - HTTP routes.
 - Reconnect behavior.
@@ -37,115 +34,85 @@ Rally owns:
 - Session and topic membership.
 - Push delivery policy.
 - Message logging and inspector display.
-- When page init, request, and push messages are sent.
+- Result envelopes, frame tags, and page dispatch.
+- SSR composition, hydration application, and browser boot.
+- When page load, save, and broadcast messages are sent.
 
-Libero should own:
+Libero owns:
 
-- Request envelope shape.
-- Response frame shape.
-- Push frame shape.
-- Typed encode/decode.
-- SSR flag encode/decode for Libero-discovered contract values.
-- Protocol validation and protocol errors.
-- Security limits at the protocol boundary.
+- Seed-driven type graph walking.
+- Wire identity and hash validation.
+- ETF typed payload encoding and decoding.
+- JSON typed payload encoding and decoding.
+- Browser typed decoder registration.
+- BEAM atom registration.
+- Generated wire transformer modules.
+- Contract metadata for the seeded type graph.
+- Codec boundary validation and codec errors.
 
-Rally code should not care whether Libero uses ETF, JSON, hashes, field-name
-objects, positional arrays, or any future protocol shape.
+## Current Shape
 
-## Current State
+`rally.gleam` uses Libero's public Rally-facing API:
 
-Current protocol boundary:
+- `libero.walk(seeds)`
+- `libero.generate_atoms`
+- `libero.generate_wire_erl`
+- `libero.generate_decoders_ffi`
+- `libero.generate_decoders_gleam`
+- `libero.generate_etf_codec_module`
+- `libero.generate_json_contract`
 
-- `rally.gleam` uses Libero type walking, atom generation, wire module
-  generation, typed decoder generation, ETF facade generation, and contract
-  generation.
-- Generated `protocol_wire.gleam` and `protocol_wire.mjs` choose ETF or JSON.
-- `transport_ffi.mjs` imports `encode_request` and `decode_server_frame` from
-  `./protocol_wire.mjs`.
-- Generated `transport.gleam` exposes framework send, register, and read
-  helpers instead of raw frame parsing.
-- Generated app code uses generated codec and hydration helpers.
-- `rally/runtime/wire.gleam` remains as a small ETF wrapper for direct runtime
-  helpers.
+The seed list comes from `load_rpc.libero_type_seeds`. Rally includes page
+`ServerMsg`, `LoadResult`, save result payloads, save error payloads, broadcast
+events, and other reachable wire-visible types. Libero does not discover Rally
+handlers on its own.
 
-## Boundary Shape
-
-Rally's transport should look like this conceptually:
-
-```text
-send request:
-  frame = generated_libero.encode_request("libero", request_id, msg)
-  websocket.send(frame)
-
-on websocket message:
-  event = generated_libero.decode_server_frame(bytes)
-  case event:
-    response -> settle callback
-    push -> route to push handler
-```
-
-Rally may still keep request callback maps, timeout timers, reconnect state, and
-debug logging. It should not know how a response frame is represented.
-
-Page init should follow the same rule:
-
-```text
-frame = generated_libero.encode_request(page, 0, params)
-```
-
-SSR hydration should use generated Libero helpers rather than raw
-`decode_safe_raw` plus `apply_typed_decoder` calls in Rally-generated app code.
+Generated Rally protocol modules call `generated/libero/etf.encode`,
+`generated/libero/etf.decode`, and `generated/libero/etf.ensure`. Rally's
+generated protocol modules still own request/result frame tags and page-specific
+decode wrappers.
 
 ## Generated Browser Surface
 
-Generated Rally browser code should expose framework operations:
+Generated app-facing browser code exposes Rally operations:
 
-- `send_request(msg, callback)`
-- `send_page_init(page, params)`
-- `register_push_handler(page, handler)`
-- `read_flags()`
-- `read_client_context()`
+- Page-specific save functions such as `generated/rally/server.save_public_home`.
+- Browser mount and navigation lifecycle.
+- Hydration readers and appliers.
+- Topic sync and broadcast application.
 
-It should not expose raw protocol helpers such as:
+Generated app code should not expose raw Libero decoder plumbing such as:
 
 - `decode_safe_raw`
 - `apply_typed_decoder`
 - raw `decode_value`
 - raw `encode_value`
-- byte-frame parsing helpers
 
-If an advanced consumer needs raw Libero codec functions, it can import Libero
-directly. Rally's generated surface should guide normal app code toward the
-typed contract.
+Rally-generated protocol code may call Libero codec entrypoints internally. App
+code should normally use Rally's generated page-specific functions.
 
 ## Test Plan
 
-- Existing `gleam test` in Rally.
-- JS transport tests for response callbacks and framework error routing.
+- Rally `gleam test` on the Erlang target.
 - Snapshot tests for generated Rally, Libero, and browser app code.
-- Scoreboard smoke test for SSR, hydration, browser navigation, and save.
-- A guard test that generated Rally browser code does not contain
-  `decode_safe_raw`, `apply_typed_decoder`, `0x00`, or `0x01`.
-- Libero tests for the new frame facade.
+- Scoreboard reset, regen, build, and tests.
+- Libero tests that exercise the seed-driven API Rally calls.
+- Libero ETF and JSON codec exhaustive tests on JavaScript and Erlang.
 
 ## Acceptance Criteria
 
-- Rally WebSocket code never reads protocol tag bytes.
-- Rally WebSocket code never slices request IDs out of raw response frames.
-- Rally generated browser code does not expose raw decode helpers.
-- Rally app generation does not manually apply typed decoders for flags.
-- Rally push handling receives decoded protocol events from Libero.
-- The Rally Scoreboard smoke path does not match response bytes by hand.
-- Adding JSON as a configured Libero protocol would leave Rally's transport
-  lifecycle, response handling, push handling, page init, and hydration logic
-  unchanged except for regenerated Libero-owned modules.
+- Rally does not depend on Libero handler scanning.
+- Rally does not depend on Libero dispatch generation.
+- Rally passes explicit wire type seeds to Libero.
+- Libero-generated artifacts under `src/generated/libero/**` remain generated by
+  Libero APIs.
+- Rally-generated artifacts under `src/generated/rally/**` own transport,
+  dispatch, hydration, SSR, browser lifecycle, and result envelopes.
+- The Rally Scoreboard Example regenerates and tests against this path.
 
 ## Non-Goals
 
 - Move WebSocket lifecycle into Libero.
 - Move Rally topics, sessions, or page routing into Libero.
-- Remove Rally's message inspector.
-- Remove Libero's low-level codec functions from Libero itself.
-
-The goal is not to make Rally smaller at all costs. The goal is to make Rally's
-remaining code about Rally.
+- Preserve legacy Libero APIs that no Rally app uses.
+- Make Rally generated code import Libero internals directly.
