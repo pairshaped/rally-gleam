@@ -54,6 +54,7 @@ pub fn start_google_sign_in_redirects_to_google_and_sets_state_cookie_test() {
     |> auth_http.start_google_sign_in(
       credentials: auth_http.GoogleCredentials(
         client_id: "google-client",
+        client_secret: "google-secret",
         redirect_uri: "https://app.test/sign_in/google/callback",
       ),
       default_return_to: "/games",
@@ -97,7 +98,7 @@ pub fn route_google_auth_returns_503_when_google_is_not_configured_test() {
       routes: auth_http.GoogleAuthRoutes(
         session: fn(_context) { session.new_auth_session(test_key()) },
         credentials: fn(_context) { Error(Nil) },
-        sign_in: fn(_code, _context) { Error(Nil) },
+        sign_in: fn(_callback, _context) { Error(Nil) },
         sign_in_default_return_to: "/games",
         sign_in_return_to: fn(path) { path },
         secure: False,
@@ -119,10 +120,17 @@ pub fn finish_google_sign_in_issues_session_when_state_matches_test() {
     )
     |> auth_http.finish_google_sign_in(
       session: session.new_auth_session(test_key()),
-      sign_in: fn(code) {
-        case code {
-          "provider-code" -> Ok(7)
-          _ -> Error(Nil)
+      credentials: auth_http.GoogleCredentials(
+        client_id: "google-client",
+        client_secret: "google-secret",
+        redirect_uri: "https://app.test/sign_in/google/callback",
+      ),
+      sign_in: fn(callback) {
+        let auth_http.GoogleCallback(code:, credentials:) = callback
+        let auth_http.GoogleCredentials(client_secret:, ..) = credentials
+        case code, client_secret {
+          "provider-code", "google-secret" -> Ok(7)
+          _, _ -> Error(Nil)
         }
       },
       default_return_to: "/games",
@@ -156,7 +164,12 @@ pub fn finish_google_sign_in_rejects_state_mismatch_test() {
     )
     |> auth_http.finish_google_sign_in(
       session: session.new_auth_session(test_key()),
-      sign_in: fn(_code) { Ok(7) },
+      credentials: auth_http.GoogleCredentials(
+        client_id: "google-client",
+        client_secret: "google-secret",
+        redirect_uri: "https://app.test/sign_in/google/callback",
+      ),
+      sign_in: fn(_callback) { Ok(7) },
       default_return_to: "/games",
       return_to: fn(path) { path },
       secure: False,

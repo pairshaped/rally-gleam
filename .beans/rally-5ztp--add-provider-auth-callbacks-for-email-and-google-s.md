@@ -1,14 +1,14 @@
 ---
 # rally-5ztp
 title: Add provider auth callbacks for email and Google SSO
-status: in-progress
+status: completed
 type: feature
 priority: deferred
 tags:
     - auth
     - template
 created_at: 2026-06-05T22:34:09Z
-updated_at: 2026-06-06T03:29:51Z
+updated_at: 2026-06-06T03:32:43Z
 ---
 
 Rally now has the shared session/user context pipeline for the template apps. The next provider slice should build on that pipeline instead of changing the core model.
@@ -59,3 +59,8 @@ Remaining: wire the Google route surface through Scoreboard/template bootstrap a
 Validation: Rally gleam format && gleam test passes with 471 tests. Scoreboard gleam format, TEMP=./tmp gleam test --target erlang, gleam test --target javascript, and node test/boundary_guard_test.mjs pass.
 
 Remaining: implement the app-owned Google code exchange, identity verification, and user lookup/upsert callback for a real deployment path before exposing a Google button in the demo UI.
+
+- Final provider callback shape added: GoogleCredentials carries client_id, client_secret, and redirect_uri; GoogleCallback carries the provider code plus credentials into the app-owned sign-in callback.
+- Follow-up created as rally-v91h for real Google token exchange, identity verification, user lookup/upsert, tests, and exposing the UI only when configured.
+
+Completed scope: Rally-owned provider route mechanics and session issuing for email-code and Google callback flows, with explicit app-owned callbacks for delivery, credentials, user lookup/upsert policy, provider verification, and return-path narrowing.

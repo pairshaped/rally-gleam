@@ -47,7 +47,16 @@ pub type CodeAuthRoutes(context) {
 
 @target(erlang)
 pub type GoogleCredentials {
-  GoogleCredentials(client_id: String, redirect_uri: String)
+  GoogleCredentials(
+    client_id: String,
+    client_secret: String,
+    redirect_uri: String,
+  )
+}
+
+@target(erlang)
+pub type GoogleCallback {
+  GoogleCallback(code: String, credentials: GoogleCredentials)
 }
 
 @target(erlang)
@@ -55,7 +64,7 @@ pub type GoogleAuthRoutes(context) {
   GoogleAuthRoutes(
     session: fn(context) -> session.AuthSession,
     credentials: fn(context) -> Result(GoogleCredentials, Nil),
-    sign_in: fn(String, context) -> Result(Int, Nil),
+    sign_in: fn(GoogleCallback, context) -> Result(Int, Nil),
     sign_in_default_return_to: String,
     sign_in_return_to: fn(String) -> String,
     secure: Bool,
@@ -137,15 +146,21 @@ pub fn route_google_auth(
       }
 
     http.Get, "/sign_in/google/callback" ->
-      finish_google_sign_in(
-        req: req,
-        session: routes.session(context),
-        sign_in: fn(code) { routes.sign_in(code, context) },
-        default_return_to: routes.sign_in_default_return_to,
-        return_to: routes.sign_in_return_to,
-        secure: routes.secure,
-      )
-      |> Ok
+      case routes.credentials(context) {
+        Ok(credentials) ->
+          finish_google_sign_in(
+            req: req,
+            session: routes.session(context),
+            credentials: credentials,
+            sign_in: fn(callback) { routes.sign_in(callback, context) },
+            default_return_to: routes.sign_in_default_return_to,
+            return_to: routes.sign_in_return_to,
+            secure: routes.secure,
+          )
+          |> Ok
+
+        Error(Nil) -> google_not_configured_response() |> Ok
+      }
 
     _, _ -> Error(Nil)
   }
@@ -186,7 +201,7 @@ pub fn start_google_sign_in(
   return_to return_to: fn(String) -> String,
   secure secure: Bool,
 ) -> response.Response(ResponseData) {
-  let GoogleCredentials(client_id:, redirect_uri:) = credentials
+  let GoogleCredentials(client_id:, redirect_uri:, ..) = credentials
   let state = session.generate_id()
   let return_to = request_return_to(req, default_return_to, return_to)
 
@@ -210,7 +225,8 @@ pub fn start_google_sign_in(
 pub fn finish_google_sign_in(
   req req: Request(body),
   session session: session.AuthSession,
-  sign_in sign_in: fn(String) -> Result(Int, Nil),
+  credentials credentials: GoogleCredentials,
+  sign_in sign_in: fn(GoogleCallback) -> Result(Int, Nil),
   default_return_to default_return_to: String,
   return_to return_to: fn(String) -> String,
   secure secure: Bool,
@@ -234,7 +250,7 @@ pub fn finish_google_sign_in(
         cookie_value(cookies, google_state_cookie_name)
       {
         Ok(code), Ok(state), Ok(expected_state) if state == expected_state ->
-          case sign_in(code) {
+          case sign_in(GoogleCallback(code:, credentials:)) {
             Ok(user_id) ->
               issue_user_session(
                 session: session,
