@@ -585,7 +585,7 @@ gleam_http = \">= 4.0.0 and < 5.0.0\"
 gleam_stdlib = \">= 0.60.0 and < 2.0.0\"
 rally = \">= 1.0.0 and < 2.0.0\"
 libero = \">= 6.0.0 and < 7.0.0\"
-lustre = \">= 5.7.0 and < 6.0.0\"
+lustre = \">= 5.7.0 and < 7.0.0\"
 mist = \">= 6.0.0 and < 7.0.0\"
 sqlight = \">= 1.0.0 and < 2.0.0\"
 simplifile = \">= 2.0.0 and < 3.0.0\"
@@ -644,8 +644,8 @@ pub type LoadResult {
   PublicHomeLoaded(count: Int)
 }
 
-pub type GameUpdate {
-  GameUpdate(count: Int)
+pub type CounterUpdate {
+  CounterUpdate(count: Int)
 }
 
 pub type SaveError {
@@ -660,7 +660,7 @@ pub type Message {
   Increment
   Decrement
   Loaded(Result(Int, runtime_load.LoadError))
-  Saved(Result(GameUpdate, SaveError))
+  Saved(Result(CounterUpdate, SaveError))
 }
 
 pub fn initial_model(
@@ -678,7 +678,7 @@ pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message)) {
       Model(..model, error: error.message),
       effect.none(),
     )
-    Saved(Ok(GameUpdate(count:))) -> #(
+    Saved(Ok(CounterUpdate(count:))) -> #(
       Model(count:, error: \"\"),
       effect.none(),
     )
@@ -728,8 +728,8 @@ fn save_effect(_msg: Message) -> Effect(Message) {
 
 @target(javascript)
 fn map_save_result(
-  result: Result(GameUpdate, List(server.SaveError)),
-) -> Result(GameUpdate, SaveError) {
+  result: Result(CounterUpdate, List(server.SaveError)),
+) -> Result(CounterUpdate, SaveError) {
   case result {
     Ok(update) -> Ok(update)
     Error([server.SaveError(message: message, ..), ..]) ->
@@ -750,7 +750,7 @@ pub fn load(db: sqlight.Connection) -> Result(Int, runtime_load.LoadError) {
 pub fn handle(
   db: sqlight.Connection,
   message: ServerMsg,
-) -> Result(GameUpdate, SaveError) {
+) -> Result(CounterUpdate, SaveError) {
   case message {
     PublicHomeLoad ->
       Error(SaveError(message: \"Load is not a save action.\"))
@@ -762,9 +762,9 @@ pub fn handle(
 @target(erlang)
 fn save_increment(
   result: Result(List(counter_sql.IncrementRow), sqlight.Error),
-) -> Result(GameUpdate, SaveError) {
+) -> Result(CounterUpdate, SaveError) {
   case result {
-    Ok([row]) -> Ok(GameUpdate(count: row.value))
+    Ok([row]) -> Ok(CounterUpdate(count: row.value))
     _ -> Error(SaveError(message: \"Could not save counter.\"))
   }
 }
@@ -772,9 +772,9 @@ fn save_increment(
 @target(erlang)
 fn save_decrement(
   result: Result(List(counter_sql.DecrementRow), sqlight.Error),
-) -> Result(GameUpdate, SaveError) {
+) -> Result(CounterUpdate, SaveError) {
   case result {
-    Ok([row]) -> Ok(GameUpdate(count: row.value))
+    Ok([row]) -> Ok(CounterUpdate(count: row.value))
     _ -> Error(SaveError(message: \"Could not save counter.\"))
   }
 }

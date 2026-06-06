@@ -31,6 +31,9 @@ pub fn init_project_writes_hex_scaffold_test() {
   toml
   |> string.contains("libero = \">= 6.0.0 and < 7.0.0\"")
   |> should.be_true()
+  toml
+  |> string.contains("lustre = \">= 5.7.0 and < 7.0.0\"")
+  |> should.be_true()
 
   let assert Ok(env) = simplifile.read(dir <> "/.env")
   let assert Ok(env_example) = simplifile.read(dir <> "/.env.example")
@@ -70,6 +73,8 @@ pub fn init_project_writes_hex_scaffold_test() {
   home |> string.contains("pub type ServerMsg") |> should.be_true()
   home |> string.contains("PublicHomeIncrement") |> should.be_true()
   home |> string.contains("pub fn handle(") |> should.be_true()
+  home |> string.contains("CounterUpdate") |> should.be_true()
+  home |> string.contains("GameUpdate") |> should.be_false()
 
   simplifile.read(dir <> "/bin/dev")
   |> should.be_error()

@@ -351,6 +351,14 @@ pub type Model {
 pub type Message {
   Loaded
 }
+
+pub fn handle(message: ServerMsg) -> Result(GameUpdate, SaveError) {
+  todo
+}
+
+pub type SaveError {
+  SaveError(message: String)
+}
 ",
     )
   let assert Ok(Nil) =
@@ -513,6 +521,54 @@ pub type LoadResult {
   message
   |> string.contains("public/helpers/display.GameRow")
   |> should.be_true()
+}
+
+pub fn load_rpc_discover_infers_save_result_type_from_handle_test() {
+  let root = "./tmp/load_rpc_save_type_from_handle_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/public/pages")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/counter.gleam",
+      "pub type ServerMsg {
+  PublicCounterLoad
+  PublicCounterIncrement
+}
+
+pub type LoadResult {
+  PublicCounterLoaded(count: Int)
+}
+
+pub type CounterUpdate {
+  CounterUpdate(count: Int)
+}
+
+pub type SaveError {
+  SaveError(message: String)
+}
+
+pub fn handle(message: ServerMsg) -> Result(CounterUpdate, SaveError) {
+  todo
+}
+",
+    )
+
+  let assert Ok(discovered) = discover(src)
+
+  let assert Ok(LoadRpc(
+    name: "public_counter",
+    module_path: "public/pages/counter",
+    wire_module: "public/pages/counter",
+    import_on_client: False,
+    request_constructor: "PublicCounterLoad",
+    load_result_constructor: "PublicCounterLoaded",
+    route_modules: ["public/pages/counter"],
+    navigation_sources: [],
+    update_uses_page_shared_state: False,
+    args: [],
+    save_result_type: Some("CounterUpdate"),
+  )) = list.find(discovered, fn(load) { load.name == "public_counter" })
 }
 
 pub fn load_rpc_discover_rejects_transitive_wire_payload_leaks_test() {

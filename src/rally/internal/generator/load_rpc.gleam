@@ -2486,14 +2486,18 @@ fn discover_source(
             list.any(def.definition.variants, fn(variant) {
               !string.ends_with(variant.name, "Load")
             })
-          let save_result_type = case
-            import_on_client,
-            has_custom_type(ast.custom_types, "GameUpdate"),
-            has_save_message
-          {
-            False, True, True -> Some("GameUpdate")
-            _, _, _ -> None
-          }
+          use save_result_type <- result.try(
+            case import_on_client, has_save_message {
+              False, True ->
+                save_result_type_from_handle(
+                  ast:,
+                  resolver:,
+                  module_path:,
+                  wire_module:,
+                )
+              _, _ -> Ok(None)
+            },
+          )
           use _ <- result.try(validate_wire_boundary(
             ast:,
             resolver:,
@@ -2694,6 +2698,59 @@ fn source_update_uses_page_shared_state(source: SourceModule) -> Bool {
         [] -> False
       }
     Error(Nil) -> False
+  }
+}
+
+fn save_result_type_from_handle(
+  ast ast: glance.Module,
+  resolver resolver: TypeResolver,
+  module_path module_path: String,
+  wire_module wire_module: String,
+) -> Result(Option(String), String) {
+  case list.find(ast.functions, fn(def) { def.definition.name == "handle" }) {
+    Ok(def) -> {
+      use return_type <- result.try(case def.definition.return {
+        Some(type_) -> Ok(type_)
+        None ->
+          Error("Missing handle return type in " <> module_path <> ".handle.")
+      })
+      use resolved <- result.try(
+        glance_type_resolver.type_to_field_type(
+          type_: return_type,
+          resolver:,
+          current_module: module_path,
+          policy: RejectUnsupported(module_path <> ".handle"),
+        )
+        |> result.map_error(fn(_) {
+          "Unsupported handle return type in " <> module_path <> ".handle."
+        }),
+      )
+
+      case resolved {
+        field_type.ResultOf(
+          ok: field_type.UserType(module_path: ok_module, type_name:, args: []),
+          ..,
+        )
+          if ok_module == wire_module
+        ->
+          case has_custom_type(ast.custom_types, type_name) {
+            True -> Ok(Some(type_name))
+            False ->
+              Error(
+                "Rally save handlers must return Result(PageSaveType, SaveError) in "
+                <> module_path
+                <> ".handle.",
+              )
+          }
+        _ ->
+          Error(
+            "Rally save handlers must return Result(PageSaveType, SaveError) in "
+            <> module_path
+            <> ".handle.",
+          )
+      }
+    }
+    Error(Nil) -> Ok(None)
   }
 }
 
