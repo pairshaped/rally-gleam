@@ -864,14 +864,15 @@ pub fn navigation_effects(
 @target(javascript)
 fn initial_loaded_page(
   page page: page,
+  page_context page_context: context,
   hydration hydration: Result(result, Nil),
   to_message to_message: fn(result) -> message,
   load_client load_client: fn() -> Effect(message),
-  update_page update_page: fn(page, message) -> #(page, Effect(message)),
+  update_page update_page: fn(context, page, message) -> #(page, Effect(message)),
 ) -> #(page, Effect(message)) {
   case hydration {
     Ok(result) -> {
-      let #(page, _) = update_page(page, to_message(result))
+      let #(page, _) = update_page(page_context, page, to_message(result))
       #(page, effect.none())
     }
     Error(Nil) -> #(page, load_client())
@@ -918,6 +919,7 @@ fn browser_app_mount_lifecycle(mount: String) -> String {
   let prefix = mount_type_prefix(mount)
   let page_input = mount_alias(mount, "page_input")
   let pages = mount_alias(mount, "pages")
+  let routes = mount_alias(mount, "routes")
   let model = prefix <> "MountModel"
   let msg = prefix <> "MountMsg"
   let config = prefix <> "MountConfig"
@@ -944,11 +946,11 @@ pub type " <> msg <> " {
 @target(javascript)
 pub type " <> config <> "(shared_state) {
   " <> config <> "(
-    page_context: PageContext,
+    page_context: fn(shared_state) -> PageContext,
     shared_state: fn(String, Bool) -> shared_state,
     set_active_path: fn(shared_state, String) -> shared_state,
     set_dark_mode: fn(shared_state, Bool) -> shared_state,
-    update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) ->
+    update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) ->
       #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
     view: fn(
       " <> model <> "(shared_state),
@@ -974,17 +976,19 @@ pub fn start_" <> mount <> "_mount(config config: " <> config <> "(shared_state)
 fn " <> mount <> "_mount_init(
   config config: " <> config <> "(shared_state),
 ) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
-  let current_path = browser.path()
+  let route = " <> routes <> ".parse_path(browser.path())
+  let current_path = " <> routes <> ".route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
   let query_params = " <> page_input <> ".QueryParams(values: browser_mount.query_pairs())
+  let shared_state = config.shared_state(current_path, dark_mode)
+  let page_context = config.page_context(shared_state)
   let #(page, page_effect) =
-    " <> mount <> "_initial_page_from_path(
-      page_context: config.page_context,
+    " <> mount <> "_initial_page(
+      page_context:,
       query_params: query_params,
-      path: current_path,
+      route:,
       update_page: config.update_page,
     )
-  let shared_state = config.shared_state(current_path, dark_mode)
 
   #(
     " <> model <> "(page: page, shared_state:),
@@ -1018,8 +1022,12 @@ fn " <> mount <> "_mount_update(
           push_history: True,
         )
         None -> {
+          let page_context = config.page_context(model.shared_state)
           let #(page, page_effect) =
-            map_page_effect(config.update_page(model.page, inner), " <> page_msg <> ")
+            map_page_effect(
+              config.update_page(page_context, model.page, inner),
+              " <> page_msg <> ",
+            )
           #(
             " <> model <> "(..model, page: page),
             effect.batch([
@@ -1079,13 +1087,16 @@ fn " <> mount <> "_mount_navigate(
   path path: String,
   push_history push_history: Bool,
 ) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
-  let #(canonical_path, page, page_effect) =
-    " <> mount <> "_load_path(
-      page_context: config.page_context,
-      query_params: " <> page_input <> ".empty_query_params(),
-      path:,
-    )
+  let route = " <> routes <> ".parse_path(path)
+  let canonical_path = " <> routes <> ".route_to_path(route)
   let shared_state = config.set_active_path(model.shared_state, canonical_path)
+  let page_context = config.page_context(shared_state)
+  let #(page, page_effect) =
+    " <> mount <> "_load_client(
+      page_context:,
+      query_params: " <> page_input <> ".empty_query_params(),
+      route:,
+    )
 
   #(
     " <> model <> "(page: page, shared_state:),
@@ -1406,7 +1417,7 @@ pub fn " <> mount <> "_initial_page(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
-  update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+  update_page update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
   let page = " <> pages <> ".load_sync(page_context, query_params, route)
 
@@ -1421,7 +1432,7 @@ pub fn " <> mount <> "_initial_page_from_path(
   page_context page_context: PageContext,
   query_params query_params: " <> page_input <> ".QueryParams,
   path path: String,
-  update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+  update_page update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
   " <> mount <> "_initial_page(
     page_context:,
@@ -1719,6 +1730,7 @@ fn browser_app_initial_page_case(load: LoadRpc) -> String {
   <> "to_message:) -> {
       initial_loaded_page(
         page: page,
+        page_context: page_context,
         hydration: hydration."
   <> load.name
   <> "_load_result(),
