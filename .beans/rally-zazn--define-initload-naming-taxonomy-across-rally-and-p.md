@@ -1,11 +1,11 @@
 ---
 # rally-zazn
 title: Reduce init/load lifecycle surface across Rally and Proute
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2026-06-06T02:40:29Z
-updated_at: 2026-06-06T03:11:20Z
+updated_at: 2026-06-06T03:12:27Z
 ---
 
 ## Problem
@@ -28,13 +28,13 @@ Questions to answer:
 
 ## Acceptance Criteria
 
-- [ ] Audit Rally, Proute, and Scoreboard for public/generated functions and modules involved in init, initial model creation, load, load sync, SSR boot, hydration, websocket page init, and load RPC.
-- [ ] Classify each function as app-authored product behavior, generated Proute page construction, generated Rally runtime plumbing, or removable/mergeable duplication.
-- [ ] Propose a smaller page lifecycle contract, including which page functions are required, optional, or generated.
-- [ ] Update ADR/docs with the reduced lifecycle model and terminology.
-- [ ] Implement the first safe reduction in authored page functions or generated wiring.
-- [ ] Update Scoreboard to prove the reduced contract is nicer in real app code.
-- [ ] Update snapshots/tests/examples after any lifecycle contract change.
+- [x] Audit Rally, Proute, and Scoreboard for public/generated functions and modules involved in init, initial model creation, load, load sync, SSR boot, hydration, websocket page init, and load RPC.
+- [x] Classify each function as app-authored product behavior, generated Proute page construction, generated Rally runtime plumbing, or removable/mergeable duplication.
+- [x] Propose a smaller page lifecycle contract, including which page functions are required, optional, or generated.
+- [x] Update ADR/docs with the reduced lifecycle model and terminology.
+- [x] Implement the first safe reduction in authored page functions or generated wiring.
+- [x] Update Scoreboard to prove the reduced contract is nicer in real app code.
+- [x] Update snapshots/tests/examples after any lifecycle contract change.
 
 ## Non-goals
 
@@ -71,9 +71,10 @@ Likely first reduction:
 - Update Rally SSR generation to build loaded messages directly instead of calling page `loaded_from_wire`.
 - Delete dead `*_loaded`, `loaded_from_wire`, `map_load_result`, `init_effect`, and most page `init` functions from Scoreboard where generated Rally load RPC owns the request effect.
 
-Open design question:
+Resolved design question:
 
 - Pages without load RPC but with real browser-only startup effects still need an authored `init`. That argues for optional `init`, not removing `init` from the Proute contract entirely.
+- Authored `initial_model` should remain required for now. Proute cannot safely synthesize arbitrary page model constructors, and SSR needs a pure model path that never runs optional browser startup effects from `init`.
 
 
 
@@ -103,3 +104,12 @@ Do not keep `loaded_from_wire` as an escape hatch. It is transport-shaped and SS
 - Regenerated Scoreboard Proute and Rally generated files; the old `load_sync` name is gone across Proute, Rally, and Scoreboard.
 
 Decision: keep authored `initial_model` required for now. Proute cannot safely synthesize arbitrary page model constructors, and SSR needs a pure model path that does not run optional browser startup effects from `init`.
+
+
+## Final Lifecycle Classification
+
+- App-authored product behavior: `initial_model`, optional `init`, `update`, `view`, server `load`, server mutation handlers, page topics, and page broadcast application.
+- Generated Proute page construction: page union, page message union, route-to-page `load(...)` for effect-capable browser startup, pure `initial_page(...)` for SSR and fallback construction, update forwarding, and view forwarding.
+- Generated Rally runtime plumbing: browser mount startup, navigation effects, hydration decode/application, load RPC request effects, websocket load dispatch, SSR boot, hydration payload generation, load-result mapping into page `Loaded` messages, and topic sync.
+- Removed authored duplication: JS/Erlang `init_effect`, page-authored load-result mapping, `loaded_from_wire`, and one-line loaded helpers.
+- Renamed generated duplication: `load_sync(...)` became `initial_page(...)` because it constructs a pure page and does not load data.
