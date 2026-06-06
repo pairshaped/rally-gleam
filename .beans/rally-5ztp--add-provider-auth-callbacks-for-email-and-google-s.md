@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T22:34:09Z
-updated_at: 2026-06-06T03:25:07Z
+updated_at: 2026-06-06T03:29:51Z
 ---
 
 Rally now has the shared session/user context pipeline for the template apps. The next provider slice should build on that pipeline instead of changing the core model.
@@ -50,3 +50,12 @@ Remaining: Google SSO callback flow and full provider callback shape for OAuth c
 - Documented rally/runtime/auth_http as the shared provider route surface for email-code and Google.
 
 Remaining: wire the Google route surface through Scoreboard/template bootstrap and settle the full provider callback shape for app credentials/user upsert.
+
+- Tightened Google route configuration to use an explicit GoogleCredentials callback and return 503 when the app has not configured Google.
+- Wired Scoreboard to the shared Google route surface: the root auth handler delegates to Rally for Google route mechanics, app_auth_http owns credential lookup, and app_auth owns the provider callback boundary.
+- Kept the Scoreboard UI email-code-only until a real Google code exchange and identity verification implementation exists; no fake Google sign-in path was added.
+- Updated Scoreboard ADR 0012 and .env.example for provider credential ownership and the Rally-owned standard auth route mechanics.
+
+Validation: Rally gleam format && gleam test passes with 471 tests. Scoreboard gleam format, TEMP=./tmp gleam test --target erlang, gleam test --target javascript, and node test/boundary_guard_test.mjs pass.
+
+Remaining: implement the app-owned Google code exchange, identity verification, and user lookup/upsert callback for a real deployment path before exposing a Google button in the demo UI.

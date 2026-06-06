@@ -46,11 +46,15 @@ pub type CodeAuthRoutes(context) {
 }
 
 @target(erlang)
+pub type GoogleCredentials {
+  GoogleCredentials(client_id: String, redirect_uri: String)
+}
+
+@target(erlang)
 pub type GoogleAuthRoutes(context) {
   GoogleAuthRoutes(
     session: fn(context) -> session.AuthSession,
-    client_id: fn(context) -> String,
-    redirect_uri: fn(context) -> String,
+    credentials: fn(context) -> Result(GoogleCredentials, Nil),
     sign_in: fn(String, context) -> Result(Int, Nil),
     sign_in_default_return_to: String,
     sign_in_return_to: fn(String) -> String,
@@ -112,21 +116,25 @@ pub fn route_code_auth(
 
 @target(erlang)
 pub fn route_google_auth(
-  req req: Request(Connection),
+  req req: Request(body),
   context context: context,
   routes routes: GoogleAuthRoutes(context),
 ) -> Result(response.Response(ResponseData), Nil) {
   case req.method, req.path {
     http.Get, "/sign_in/google" ->
-      start_google_sign_in(
-        req: req,
-        client_id: routes.client_id(context),
-        redirect_uri: routes.redirect_uri(context),
-        default_return_to: routes.sign_in_default_return_to,
-        return_to: routes.sign_in_return_to,
-        secure: routes.secure,
-      )
-      |> Ok
+      case routes.credentials(context) {
+        Ok(credentials) ->
+          start_google_sign_in(
+            req: req,
+            credentials: credentials,
+            default_return_to: routes.sign_in_default_return_to,
+            return_to: routes.sign_in_return_to,
+            secure: routes.secure,
+          )
+          |> Ok
+
+        Error(Nil) -> google_not_configured_response() |> Ok
+      }
 
     http.Get, "/sign_in/google/callback" ->
       finish_google_sign_in(
@@ -173,12 +181,12 @@ pub fn read_sign_in_form(
 /// redirect. The app owns OAuth credentials.
 pub fn start_google_sign_in(
   req req: Request(body),
-  client_id client_id: String,
-  redirect_uri redirect_uri: String,
+  credentials credentials: GoogleCredentials,
   default_return_to default_return_to: String,
   return_to return_to: fn(String) -> String,
   secure secure: Bool,
 ) -> response.Response(ResponseData) {
+  let GoogleCredentials(client_id:, redirect_uri:) = credentials
   let state = session.generate_id()
   let return_to = request_return_to(req, default_return_to, return_to)
 
@@ -414,6 +422,14 @@ pub fn issue_user_session(
         mist.Bytes(bytes_tree.from_string("Cannot issue session")),
       )
   }
+}
+
+@target(erlang)
+pub fn google_not_configured_response() -> response.Response(ResponseData) {
+  response.new(503)
+  |> response.set_body(
+    mist.Bytes(bytes_tree.from_string("Google sign-in is not configured")),
+  )
 }
 
 @target(erlang)

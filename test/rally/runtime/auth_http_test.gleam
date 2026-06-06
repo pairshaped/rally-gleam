@@ -1,5 +1,6 @@
 import gleam/bit_array
 import gleam/bytes_tree
+import gleam/http
 import gleam/http/request
 import gleam/http/response.{Response}
 import gleam/int
@@ -51,8 +52,10 @@ pub fn start_google_sign_in_redirects_to_google_and_sets_state_cookie_test() {
     request.new()
     |> request.set_query([#("return_to", "/admin/games")])
     |> auth_http.start_google_sign_in(
-      client_id: "google-client",
-      redirect_uri: "https://app.test/sign_in/google/callback",
+      credentials: auth_http.GoogleCredentials(
+        client_id: "google-client",
+        redirect_uri: "https://app.test/sign_in/google/callback",
+      ),
       default_return_to: "/games",
       return_to: fn(path) { path },
       secure: False,
@@ -82,6 +85,28 @@ pub fn start_google_sign_in_redirects_to_google_and_sets_state_cookie_test() {
   headers
   |> string.contains("__rally_google_return_to")
   |> should.be_true()
+}
+
+pub fn route_google_auth_returns_503_when_google_is_not_configured_test() {
+  let resp =
+    request.new()
+    |> request.set_method(http.Get)
+    |> request.set_path("/sign_in/google")
+    |> auth_http.route_google_auth(
+      context: Nil,
+      routes: auth_http.GoogleAuthRoutes(
+        session: fn(_context) { session.new_auth_session(test_key()) },
+        credentials: fn(_context) { Error(Nil) },
+        sign_in: fn(_code, _context) { Error(Nil) },
+        sign_in_default_return_to: "/games",
+        sign_in_return_to: fn(path) { path },
+        secure: False,
+      ),
+    )
+
+  let assert Ok(resp) = resp
+  resp
+  |> should.equal(auth_http.google_not_configured_response())
 }
 
 pub fn finish_google_sign_in_issues_session_when_state_matches_test() {
