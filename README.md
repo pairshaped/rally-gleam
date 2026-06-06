@@ -205,6 +205,7 @@ For broadcast-aware pages in the Rally Scoreboard Example surface, app code owns
 - [Configuration](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/configuration.md): `gleam.toml`, generated paths, and protocols
 - [Comparisons](https://github.com/pairshaped/rally-gleam/blob/master/pages/reference/comparisons.md): Rally, Lustre server components, and Lamdera-style apps
 - [Internals](https://github.com/pairshaped/rally-gleam/blob/master/pages/reference/internals.md): codegen pipeline and contributor reading order
+- [ADRs](https://github.com/pairshaped/rally-gleam/blob/master/docs/adr/README.md): framework architecture decisions
 - [llms.txt](https://raw.githubusercontent.com/pairshaped/rally-gleam/refs/heads/master/llms.txt): raw context for language models
 
 ## Contributing

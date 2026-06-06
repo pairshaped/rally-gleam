@@ -197,6 +197,7 @@ gleam run
 
 ## Links
 
+- [Rally ADRs](https://github.com/pairshaped/rally-gleam/blob/master/docs/adr/README.md)
 - [Rally Scoreboard example](https://github.com/pairshaped/rally-scoreboard-example): definitive Rally Scoreboard Example app with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
 - [Rally on GitHub](https://github.com/pairshaped/rally-gleam)
 - [Gleam](https://gleam.run)

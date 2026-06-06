@@ -28,8 +28,8 @@ pub type ServerMsg {
   PublicHomeIncrement
 }
 
-pub type GameUpdate {
-  GameUpdate(count: Int)
+pub type CounterUpdate {
+  CounterUpdate(count: Int)
 }
 
 pub type SaveError {
@@ -40,7 +40,7 @@ pub type SaveError {
 pub fn handle(
   db: sqlight.Connection,
   message: ServerMsg,
-) -> Result(GameUpdate, SaveError) {
+) -> Result(CounterUpdate, SaveError) {
   case message {
     PublicHomeIncrement -> counter_sql.increment(db)
   }
@@ -60,6 +60,10 @@ fn save_effect(msg: ServerMsg) -> Effect(Message) {
 ```
 
 Libero derives the wire contract from reachable Gleam types. You do not write a separate API schema, route, or serializer.
+
+Rally discovers the save result payload from the `Ok` type in `handle`'s return
+annotation. The payload name is application-owned; it does not need to follow a
+framework-specific naming pattern.
 
 ## Broadcast
 

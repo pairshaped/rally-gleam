@@ -2737,14 +2737,14 @@ fn save_result_type_from_handle(
             True -> Ok(Some(type_name))
             False ->
               Error(
-                "Rally save handlers must return Result(PageSaveType, SaveError) in "
+                "Rally save handlers must return Result(<page save payload>, SaveError) in "
                 <> module_path
                 <> ".handle.",
               )
           }
         _ ->
           Error(
-            "Rally save handlers must return Result(PageSaveType, SaveError) in "
+            "Rally save handlers must return Result(<page save payload>, SaveError) in "
             <> module_path
             <> ".handle.",
           )
