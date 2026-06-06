@@ -1,6 +1,8 @@
 ---
 version: 2.0.0
 title: load_rpc_browser_app_gleam
+file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
+test_name: load_rpc_browser_app_snapshot_test
 ---
 @target(erlang)
 pub fn ensure() -> Nil {
@@ -195,8 +197,7 @@ pub fn public_page_broadcast_subscriptions(
   page page: public_pages.Page,
 ) -> List(push_payload.Topic) {
   case page {
-    public_pages.GamesPage(model) ->
-      public_games_page.broadcast_subscriptions(model)
+    public_pages.GamesPage(model) -> []
     public_pages.GamesIdPage(route_params:, model:) ->
       public_game_detail_page.broadcast_subscriptions(route_params, model)
     _ -> []
@@ -211,12 +212,7 @@ pub fn public_apply_broadcast(
 ) -> #(public_pages.Page, Effect(public_pages.Message)) {
   case page {
     public_pages.GamesPage(model) -> {
-      let #(model, page_effect) =
-        public_games_page.apply_broadcast(model, message)
-      #(
-        public_pages.GamesPage(model),
-        effect.map(page_effect, public_pages.GamesMsg),
-      )
+      #(page, effect.none())
     }
     public_pages.GamesIdPage(route_params:, model:) -> {
       let #(model, page_effect) =
@@ -614,7 +610,9 @@ fn admin_mount_navigate(
   let #(page, page_effect) =
     admin_load_client(
       page_shared_state: model.page_shared_state,
-      query_params: admin_page_input.empty_query_params(),
+      query_params: admin_page_input.QueryParams(
+        values: browser_mount.query_pairs_for_path(path),
+      ),
       route:,
     )
 
@@ -626,7 +624,7 @@ fn admin_mount_navigate(
     ),
     effect.batch([
       navigation_effects(
-        path: canonical_path,
+        path: path,
         push_history: push_history,
         page_effect: page_effect,
         on_page: AdminPageMsg,
@@ -815,7 +813,9 @@ fn public_mount_navigate(
   let #(page, page_effect) =
     public_load_client(
       page_shared_state: model.page_shared_state,
-      query_params: public_page_input.empty_query_params(),
+      query_params: public_page_input.QueryParams(
+        values: browser_mount.query_pairs_for_path(path),
+      ),
       route:,
     )
 
@@ -827,7 +827,7 @@ fn public_mount_navigate(
     ),
     effect.batch([
       navigation_effects(
-        path: canonical_path,
+        path: path,
         push_history: push_history,
         page_effect: page_effect,
         on_page: PublicPageMsg,
@@ -937,8 +937,9 @@ fn initial_loaded_page(
 ) -> #(page, Effect(message)) {
   case hydration {
     Ok(result) -> {
-      let #(page, _) = update_page(page_shared_state, page, to_message(result))
-      #(page, page_effect)
+      let #(page, loaded_effect) =
+        update_page(page_shared_state, page, to_message(result))
+      #(page, effect.batch([page_effect, loaded_effect]))
     }
     Error(Nil) -> #(page, effect.batch([page_effect, load_client()]))
   }

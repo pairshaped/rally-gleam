@@ -52,6 +52,10 @@ pub type LoadRpc {
     navigation_sources: List(PageNavigation),
     /// Whether this load's Proute mount update dispatcher needs page shared state.
     update_uses_page_shared_state: Bool,
+    /// Route modules that define a page-local broadcast_subscriptions hook.
+    broadcast_subscription_modules: List(String),
+    /// Route modules that define a page-local apply_broadcast hook.
+    apply_broadcast_modules: List(String),
     args: List(LoadArg),
     save_result_type: Option(String),
   )
@@ -103,6 +107,16 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
       update_uses_page_shared_state: mount_update_uses_page_shared_state(
         load,
         modules,
+      ),
+      broadcast_subscription_modules: route_modules_with_function(
+        route_modules,
+        modules,
+        "broadcast_subscriptions",
+      ),
+      apply_broadcast_modules: route_modules_with_function(
+        route_modules,
+        modules,
+        "apply_broadcast",
       ),
     )
   })
@@ -286,6 +300,12 @@ pub fn query_string() -> String {
 }
 
 @target(javascript)
+@external(javascript, \"./browser_ffi.mjs\", \"query_string_for_path\")
+pub fn query_string_for_path(_path: String) -> String {
+  \"\"
+}
+
+@target(javascript)
 @external(javascript, \"./browser_ffi.mjs\", \"push_path\")
 pub fn push_path(_path: String) -> Nil {
   Nil
@@ -325,7 +345,9 @@ pub fn persist_dark_mode(_dark_mode: Bool) -> Nil {
 
 pub fn browser_ffi() -> String {
   "export function path() {
-  return globalThis.location?.pathname || \"/\";
+  const location = globalThis.location;
+  if (!location) return \"/\";
+  return location.pathname + location.search;
 }
 
 export function websocket_url() {
@@ -361,16 +383,20 @@ export function take_boot_string(name) {
 
 export function query_string() {
   const search = globalThis.location?.search ?? \"\";
-  const params = new URLSearchParams(search);
-  return Array.from(params.entries())
-    .map(([key, value]) => `${key}=${value}`)
-    .join(\"&\");
+  return new URLSearchParams(search).toString();
+}
+
+export function query_string_for_path(path) {
+  const base = globalThis.location?.href ?? \"http://localhost/\";
+  return new URL(path, base).searchParams.toString();
 }
 
 export function push_path(path) {
   const history = globalThis.history;
   const location = globalThis.location;
-  if (!history || !location || location.pathname === path) return;
+  if (!history || !location) return;
+  const current = location.pathname + location.search;
+  if (current === path) return;
   history.pushState(null, \"\", path);
 }
 
@@ -461,9 +487,9 @@ import generated/rally/browser
 @target(javascript)
 import generated/rally/client_transport
 @target(javascript)
-import gleam/list
+import gleam/result
 @target(javascript)
-import gleam/string
+import gleam/uri
 @target(javascript)
 import lustre/effect.{type Effect}
 
@@ -527,13 +553,19 @@ fn listen_for_shell_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
 @target(javascript)
 pub fn query_pairs() -> List(#(String, String)) {
   browser.query_string()
-  |> string.split(\"&\")
-  |> list.filter_map(fn(pair) {
-    case string.split(pair, \"=\") {
-      [key, value] -> Ok(#(key, value))
-      _ -> Error(Nil)
-    }
-  })
+  |> parse_query_pairs
+}
+
+@target(javascript)
+pub fn query_pairs_for_path(path path: String) -> List(#(String, String)) {
+  browser.query_string_for_path(path)
+  |> parse_query_pairs
+}
+
+@target(javascript)
+fn parse_query_pairs(query query: String) -> List(#(String, String)) {
+  uri.parse_query(query)
+  |> result.unwrap([])
 }
 "
 }
@@ -549,9 +581,12 @@ let reconnectAttempts = 0;
 let requestId = 0;
 let currentTopicFrame = null;
 let sentTopicFrame = null;
+const REQUEST_TIMEOUT_MS = 30_000;
 
-import { BitArray, Ok } from \"../../gleam.mjs\";
+import { BitArray, Error as ResultError, List, Ok } from \"../../gleam.mjs\";
+import { None } from \"../../../gleam_stdlib/gleam/option.mjs\";
 import { decode_result_envelope } from \"./client_protocol.mjs\";
+import { ApiLoadError, ApiSaveError } from \"./result.mjs\";
 
 export function next_request_id() {
   requestId += 1;
@@ -584,6 +619,25 @@ export function send_frame(frame) {
   return undefined;
 }
 
+function send_request_frame(requestId, frame) {
+  const bytes = bytes_from_bit_array(frame);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(bytes);
+    return undefined;
+  }
+
+  pending.push({ kind: \"request\", requestId, bytes });
+  ensure_socket();
+
+  globalThis.dispatchEvent(
+    new CustomEvent(\"rally:to-server\", {
+      detail: { bytes, frame },
+    }),
+  );
+  return undefined;
+}
+
 export function send_topic_frame(topics) {
   const names = Array.from(topics);
   const text = names.length === 0 ? \"unsub\" : \"sub:\" + names.join(\",\");
@@ -603,15 +657,35 @@ export function send_topic_frame(topics) {
 }
 
 export function send_load_frame(requestId, frame, onResult, dispatch) {
-  pendingResults.set(requestId, { onResult, dispatch });
-  send_frame(frame);
+  pendingResults.set(requestId, pending_result(\"load\", requestId, onResult, dispatch));
+  send_request_frame(requestId, frame);
   return undefined;
 }
 
 export function send_save_frame(requestId, frame, onResult, dispatch) {
-  pendingResults.set(requestId, { onResult, dispatch });
-  send_frame(frame);
+  pendingResults.set(requestId, pending_result(\"save\", requestId, onResult, dispatch));
+  send_request_frame(requestId, frame);
   return undefined;
+}
+
+function pending_result(kind, requestId, onResult, dispatch) {
+  const timer = setTimeout(() => {
+    pendingResults.delete(requestId);
+    pending = pending.filter(frame =>
+      !(frame && frame.kind === \"request\" && frame.requestId === requestId)
+    );
+    dispatch(onResult(timeout_result(kind)));
+  }, REQUEST_TIMEOUT_MS);
+
+  return { kind, onResult, dispatch, timer };
+}
+
+function timeout_result(kind) {
+  const message = \"Rally request timed out after 30 seconds.\";
+  if (kind === \"save\") {
+    return new ResultError(List.fromArray([new ApiSaveError(new None(), message)]));
+  }
+  return new ResultError(List.fromArray([new ApiLoadError(message)]));
 }
 
 function ensure_socket() {
@@ -634,8 +708,14 @@ function ensure_socket() {
     const queued = pending;
     pending = [];
     for (const frame of queued) {
-      socket.send(frame);
-      if (is_topic_frame(frame)) sentTopicFrame = frame;
+      if (is_topic_frame(frame)) {
+        socket.send(frame);
+        sentTopicFrame = frame;
+      } else if (frame && frame.kind === \"request\") {
+        if (pendingResults.has(frame.requestId)) socket.send(frame.bytes);
+      } else {
+        socket.send(frame);
+      }
     }
     if (currentTopicFrame && currentTopicFrame !== sentTopicFrame) {
       socket.send(currentTopicFrame);
@@ -689,6 +769,7 @@ function dispatch_result_frame(frame) {
   if (!pending) return true;
 
   pendingResults.delete(requestId);
+  clearTimeout(pending.timer);
   pending.dispatch(pending.onResult(result));
   return true;
 }
@@ -876,8 +957,9 @@ fn initial_loaded_page(
 ) -> #(page, Effect(message)) {
   case hydration {
     Ok(result) -> {
-      let #(page, _) = update_page(page_shared_state, page, to_message(result))
-      #(page, page_effect)
+      let #(page, loaded_effect) =
+        update_page(page_shared_state, page, to_message(result))
+      #(page, effect.batch([page_effect, loaded_effect]))
     }
     Error(Nil) -> #(page, effect.batch([page_effect, load_client()]))
   }
@@ -1107,7 +1189,9 @@ fn " <> mount <> "_mount_navigate(
   let #(page, page_effect) =
     " <> mount <> "_load_client(
       page_shared_state: model.page_shared_state,
-      query_params: " <> page_input <> ".empty_query_params(),
+      query_params: " <> page_input <> ".QueryParams(
+        values: browser_mount.query_pairs_for_path(path),
+      ),
       route:,
     )
 
@@ -1115,7 +1199,7 @@ fn " <> mount <> "_mount_navigate(
     " <> model <> "(page: page, shell_state:, page_shared_state: model.page_shared_state),
     effect.batch([
       navigation_effects(
-        path: canonical_path,
+        path: path,
         push_history: push_history,
         page_effect: page_effect,
         on_page: " <> page_msg <> ",
@@ -1276,9 +1360,7 @@ pub fn " <> mount <> "_page_broadcast_subscriptions(page page: " <> pages <> ".P
 " <> string.join(
         list.map(route_modules, fn(module_path) {
           "    " <> browser_app_page_pattern(pages, module_path) <> " ->
-      " <> browser_app_source_page_alias(module_path, loads) <> browser_app_broadcast_subscriptions_call(
-            module_path,
-          )
+      " <> browser_app_broadcast_subscriptions_branch(module_path, loads)
         }),
         "\n",
       ) <> "
@@ -1333,15 +1415,13 @@ pub fn " <> mount <> "_apply_broadcast(
           let constructor = route_constructor_for_module(module_path)
           let page = browser_app_source_page_alias(module_path, loads)
           "    " <> browser_app_page_pattern(pages, module_path) <> " -> {
-      let #(model, page_effect) = " <> page <> ".apply_broadcast(model, message)
-      #(" <> browser_app_page_constructor(
+      " <> browser_app_apply_broadcast_branch(
+            module_path,
+            loads,
             pages,
             constructor,
-            module_path,
-            "model",
-          ) <> ", effect.map(page_effect, " <> pages <> "." <> route_message_constructor(
-            module_path,
-          ) <> "))
+            page,
+          ) <> "
     }"
         }),
         "\n",
@@ -1394,6 +1474,61 @@ fn browser_app_broadcast_subscriptions_call(module_path: String) -> String {
     [] -> ".broadcast_subscriptions(model)"
     _ -> ".broadcast_subscriptions(route_params, model)"
   }
+}
+
+fn browser_app_broadcast_subscriptions_branch(
+  module_path: String,
+  loads: List(LoadRpc),
+) -> String {
+  case route_module_has_broadcast_subscriptions(module_path, loads) {
+    True ->
+      browser_app_source_page_alias(module_path, loads)
+      <> browser_app_broadcast_subscriptions_call(module_path)
+    False -> "[]"
+  }
+}
+
+fn browser_app_apply_broadcast_branch(
+  module_path: String,
+  loads: List(LoadRpc),
+  pages: String,
+  constructor: String,
+  page_alias: String,
+) -> String {
+  case route_module_has_apply_broadcast(module_path, loads) {
+    True ->
+      "let #(model, page_effect) = "
+      <> page_alias
+      <> ".apply_broadcast(model, message)
+      #("
+      <> browser_app_page_constructor(pages, constructor, module_path, "model")
+      <> ", effect.map(page_effect, "
+      <> pages
+      <> "."
+      <> route_message_constructor(module_path)
+      <> "))"
+    False -> "#(page, effect.none())"
+  }
+}
+
+fn route_module_has_broadcast_subscriptions(
+  module_path: String,
+  loads: List(LoadRpc),
+) -> Bool {
+  loads
+  |> list.any(fn(load) {
+    list.contains(load.broadcast_subscription_modules, module_path)
+  })
+}
+
+fn route_module_has_apply_broadcast(
+  module_path: String,
+  loads: List(LoadRpc),
+) -> Bool {
+  loads
+  |> list.any(fn(load) {
+    list.contains(load.apply_broadcast_modules, module_path)
+  })
 }
 
 fn mount_route_modules(loads: List(LoadRpc)) -> List(String) {
@@ -2537,6 +2672,8 @@ fn discover_source(
               route_modules: [module_path],
               navigation_sources: [],
               update_uses_page_shared_state: False,
+              broadcast_subscription_modules: [],
+              apply_broadcast_modules: [],
               args:,
               save_result_type:,
             ))
@@ -2750,7 +2887,37 @@ fn save_result_type_from_handle(
           )
       }
     }
-    Error(Nil) -> Ok(None)
+    Error(Nil) ->
+      Error(
+        "Missing handle function in "
+        <> module_path
+        <> ". ServerMsg has save constructors, so Rally requires handle.",
+      )
+  }
+}
+
+fn route_modules_with_function(
+  route_modules: List(String),
+  modules: List(SourceModule),
+  function_name: String,
+) -> List(String) {
+  route_modules
+  |> list.filter(fn(module_path) {
+    source_module_has_function(modules, module_path, function_name)
+  })
+}
+
+fn source_module_has_function(
+  modules: List(SourceModule),
+  module_path: String,
+  function_name: String,
+) -> Bool {
+  case find_source_module(modules, module_path) {
+    Ok(source) ->
+      list.any(source.ast.functions, fn(def) {
+        def.definition.name == function_name
+      })
+    Error(Nil) -> False
   }
 }
 

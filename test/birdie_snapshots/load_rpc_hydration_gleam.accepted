@@ -1,6 +1,8 @@
 ---
 version: 2.0.0
 title: load_rpc_hydration_gleam
+file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
+test_name: load_rpc_hydration_snapshot_test
 ---
 @target(javascript)
 import generated/rally/browser

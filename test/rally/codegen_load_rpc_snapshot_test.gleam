@@ -22,6 +22,8 @@ fn public_games_load() -> LoadRpc {
     route_modules: ["public/pages/games"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [],
     save_result_type: None,
   )
@@ -38,6 +40,8 @@ fn public_game_detail_load() -> LoadRpc {
     route_modules: ["public/pages/games/id_"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: ["public/pages/games/id_"],
+    apply_broadcast_modules: ["public/pages/games/id_"],
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )
@@ -54,6 +58,8 @@ fn admin_games_load() -> LoadRpc {
     route_modules: ["admin/pages/games"],
     navigation_sources: [],
     update_uses_page_shared_state: True,
+    broadcast_subscription_modules: ["admin/pages/games"],
+    apply_broadcast_modules: ["admin/pages/games"],
     args: [],
     save_result_type: Some("GameUpdate"),
   )
@@ -129,6 +135,12 @@ pub fn load_rpc_browser_runtime_helpers_are_app_neutral_test() {
   |> should.be_true()
   content_for("src/generated/rally/client_transport_ffi.mjs")
   |> string.contains("function is_topic_frame(frame)")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("const REQUEST_TIMEOUT_MS = 30_000")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("Rally request timed out after 30 seconds.")
   |> should.be_true()
   content_for("src/generated/rally/server_ws.gleam")
   |> string.contains("let prefix = \"sub:\"")
@@ -273,9 +285,18 @@ pub fn load_rpc_generates_page_topic_transport_test() {
   |> string.contains("pub fn public_apply_broadcast(")
   |> should.be_true()
   browser_app
+  |> string.contains("public_pages.GamesPage(model) -> []")
+  |> should.be_true()
+  browser_app
   |> string.contains(
     "public_pages.GamesIdPage(route_params:, model:) ->\n      public_game_detail_page.broadcast_subscriptions(route_params, model)",
   )
+  |> should.be_true()
+  browser_app
+  |> string.contains("query_pairs_for_path(path)")
+  |> should.be_true()
+  browser_app
+  |> string.contains("effect.batch([page_effect, loaded_effect])")
   |> should.be_true()
 }
 
@@ -402,6 +423,8 @@ pub type LoadResult {
     route_modules: ["public/pages/games", "public/pages/home_"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -416,6 +439,8 @@ pub type LoadResult {
     route_modules: ["public/pages/games/id_"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
@@ -430,6 +455,8 @@ pub type LoadResult {
     route_modules: ["admin/pages/games"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [],
     save_result_type: Some("GameUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
@@ -473,6 +500,8 @@ pub type GameSummary {
     route_modules: ["public/pages/games"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -566,9 +595,93 @@ pub fn handle(message: ServerMsg) -> Result(CounterUpdate, SaveError) {
     route_modules: ["public/pages/counter"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [],
     save_result_type: Some("CounterUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "public_counter" })
+}
+
+pub fn load_rpc_discover_rejects_save_messages_without_handle_test() {
+  let root = "./tmp/load_rpc_save_without_handle_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/public/pages")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/counter.gleam",
+      "pub type ServerMsg {
+  PublicCounterLoad
+  PublicCounterIncrement
+}
+
+pub type LoadResult {
+  PublicCounterLoaded(count: Int)
+}
+",
+    )
+
+  let assert Error(message) = discover(src)
+
+  message
+  |> string.contains("Missing handle function in public/pages/counter")
+  |> should.be_true()
+  message
+  |> string.contains("ServerMsg has save constructors")
+  |> should.be_true()
+}
+
+pub fn load_rpc_discover_tracks_optional_broadcast_hooks_test() {
+  let root = "./tmp/load_rpc_optional_broadcast_hooks_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) = simplifile.create_directory_all(src <> "/public/pages")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games.gleam",
+      "pub type ServerMsg {
+  PublicGamesLoad
+}
+
+pub type LoadResult {
+  PublicGamesLoaded(count: Int)
+}
+
+pub fn broadcast_subscriptions(model: Model) -> List(Int) {
+  todo
+}
+
+pub fn apply_broadcast(model: Model, message: Event) {
+  todo
+}
+
+pub type Model {
+  Model
+}
+
+pub type Event {
+  Event
+}
+",
+    )
+
+  let assert Ok(discovered) = discover(src)
+
+  let assert Ok(LoadRpc(
+    name: "public_games",
+    module_path: "public/pages/games",
+    wire_module: "public/pages/games",
+    import_on_client: False,
+    request_constructor: "PublicGamesLoad",
+    load_result_constructor: "PublicGamesLoaded",
+    route_modules: ["public/pages/games"],
+    navigation_sources: [],
+    update_uses_page_shared_state: False,
+    broadcast_subscription_modules: ["public/pages/games"],
+    apply_broadcast_modules: ["public/pages/games"],
+    args: [],
+    save_result_type: None,
+  )) = list.find(discovered, fn(load) { load.name == "public_games" })
 }
 
 pub fn load_rpc_discover_rejects_transitive_wire_payload_leaks_test() {
@@ -758,6 +871,8 @@ pub type LoadResult {
     route_modules: ["public/pages/games"],
     navigation_sources: [],
     update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
