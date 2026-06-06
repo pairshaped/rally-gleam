@@ -126,7 +126,7 @@ Most Rally apps use only a few modules directly:
 | `rally/runtime/system` | App startup and background jobs |
 | `rally/runtime/session` | Session cookie generation, parsing, response headers |
 | `rally/runtime/auth` | Auth policy types, load result types, secret hashing, login codes |
-| `rally/runtime/auth_http` | Standard sign-in, sign-out, and email-code provider HTTP routes |
+| `rally/runtime/auth_http` | Standard sign-in, sign-out, email-code, and Google provider HTTP routes |
 | `rally/runtime/env` | `APP_ENV` parsing and production cookie policy |
 | `rally/runtime/migrate` | Numbered SQLite migrations |
 | `rally/runtime/test_db` | Fast in-memory SQLite for tests |
@@ -139,7 +139,7 @@ The `rally/internal/...` modules are codegen implementation. App code should tre
 
 For short login-code flows, use `auth.generate_login_code`, then store `auth.hash_login_code(scope:, code:, secret_key:)`. Later, check the submitted code with `auth.verify_login_code(stored:, scope:, code:, secret_key:)`. The scope is usually an email address or another app-owned lookup value. Rally trims and lowercases both the scope and the code before hashing. The `secret_key` should be a stable app secret that is not stored in the database.
 
-`rally/runtime/auth_http` owns the standard email-code HTTP flow. `POST /sign_in/code` asks the app to deliver a code for an email, `POST /sign_in` verifies a submitted code and issues the Rally auth session, and `/sign_out` clears it. Apps provide callbacks for user lookup, code storage/delivery, return-path narrowing, and authorization policy.
+`rally/runtime/auth_http` owns the standard provider route mechanics. The email-code flow uses `POST /sign_in/code` to ask the app to deliver a code for an email, then `POST /sign_in` verifies a submitted code and issues the Rally auth session. The Google flow uses `/sign_in/google` and `/sign_in/google/callback` for provider redirect, state cookies, and session issuing after the app exchanges the provider code and returns a local user id. Apps provide callbacks for user lookup/upsert, code storage/delivery, OAuth credentials, provider identity verification, return-path narrowing, and authorization policy.
 
 ## Generated files
 

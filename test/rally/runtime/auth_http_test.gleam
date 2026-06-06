@@ -46,6 +46,113 @@ pub fn issue_user_session_sets_auth_cookie_test() {
   |> should.be_true()
 }
 
+pub fn start_google_sign_in_redirects_to_google_and_sets_state_cookie_test() {
+  let resp =
+    request.new()
+    |> request.set_query([#("return_to", "/admin/games")])
+    |> auth_http.start_google_sign_in(
+      client_id: "google-client",
+      redirect_uri: "https://app.test/sign_in/google/callback",
+      default_return_to: "/games",
+      return_to: fn(path) { path },
+      secure: False,
+    )
+
+  let assert Ok(location) = response.get_header(resp, "location")
+  location
+  |> string.starts_with("https://accounts.google.com/o/oauth2/v2/auth?")
+  |> should.be_true()
+  location
+  |> string.contains("client_id=google-client")
+  |> should.be_true()
+  location
+  |> string.contains(
+    "redirect_uri=https%3A%2F%2Fapp.test%2Fsign_in%2Fgoogle%2Fcallback",
+  )
+  |> should.be_true()
+  location
+  |> string.contains("scope=openid%20email%20profile")
+  |> should.be_true()
+
+  let assert Response(headers:, body: mist.Bytes(_), status: 302) = resp
+  let headers = string.inspect(headers)
+  headers
+  |> string.contains("__rally_google_state")
+  |> should.be_true()
+  headers
+  |> string.contains("__rally_google_return_to")
+  |> should.be_true()
+}
+
+pub fn finish_google_sign_in_issues_session_when_state_matches_test() {
+  let resp =
+    request.new()
+    |> request.set_query([#("code", "provider-code"), #("state", "state-123")])
+    |> request.set_header(
+      "cookie",
+      "__rally_google_state=state-123; __rally_google_return_to=/admin/games",
+    )
+    |> auth_http.finish_google_sign_in(
+      session: session.new_auth_session(test_key()),
+      sign_in: fn(code) {
+        case code {
+          "provider-code" -> Ok(7)
+          _ -> Error(Nil)
+        }
+      },
+      default_return_to: "/games",
+      return_to: fn(path) { path },
+      secure: False,
+    )
+
+  response.get_header(resp, "location")
+  |> should.equal(Ok("/admin/games"))
+
+  let assert Response(headers:, body: mist.Bytes(_), status: 302) = resp
+  let headers = string.inspect(headers)
+  headers
+  |> string.contains(session.auth_cookie_name)
+  |> should.be_true()
+  headers
+  |> string.contains("__rally_google_state=;")
+  |> should.be_true()
+  headers
+  |> string.contains("__rally_google_return_to=;")
+  |> should.be_true()
+}
+
+pub fn finish_google_sign_in_rejects_state_mismatch_test() {
+  let resp =
+    request.new()
+    |> request.set_query([#("code", "provider-code"), #("state", "state-123")])
+    |> request.set_header(
+      "cookie",
+      "__rally_google_state=other-state; __rally_google_return_to=/admin/games",
+    )
+    |> auth_http.finish_google_sign_in(
+      session: session.new_auth_session(test_key()),
+      sign_in: fn(_code) { Ok(7) },
+      default_return_to: "/games",
+      return_to: fn(path) { path },
+      secure: False,
+    )
+
+  response.get_header(resp, "location")
+  |> should.equal(Ok("/sign_in?return_to=%2Fadmin%2Fgames&error=invalid"))
+
+  let assert Response(headers:, body: mist.Bytes(_), status: 302) = resp
+  let headers = string.inspect(headers)
+  headers
+  |> string.contains(session.auth_cookie_name)
+  |> should.be_false()
+  headers
+  |> string.contains("__rally_google_state=;")
+  |> should.be_true()
+  headers
+  |> string.contains("__rally_google_return_to=;")
+  |> should.be_true()
+}
+
 pub fn authenticated_user_decodes_cookie_and_loads_user_test() {
   let auth_session = session.new_auth_session(test_key())
   let assert Ok(encoded) =

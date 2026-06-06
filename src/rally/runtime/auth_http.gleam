@@ -45,6 +45,19 @@ pub type CodeAuthRoutes(context) {
   )
 }
 
+@target(erlang)
+pub type GoogleAuthRoutes(context) {
+  GoogleAuthRoutes(
+    session: fn(context) -> session.AuthSession,
+    client_id: fn(context) -> String,
+    redirect_uri: fn(context) -> String,
+    sign_in: fn(String, context) -> Result(Int, Nil),
+    sign_in_default_return_to: String,
+    sign_in_return_to: fn(String) -> String,
+    secure: Bool,
+  )
+}
+
 @target(javascript)
 pub fn ensure() -> Nil {
   Nil
@@ -98,6 +111,39 @@ pub fn route_code_auth(
 }
 
 @target(erlang)
+pub fn route_google_auth(
+  req req: Request(Connection),
+  context context: context,
+  routes routes: GoogleAuthRoutes(context),
+) -> Result(response.Response(ResponseData), Nil) {
+  case req.method, req.path {
+    http.Get, "/sign_in/google" ->
+      start_google_sign_in(
+        req: req,
+        client_id: routes.client_id(context),
+        redirect_uri: routes.redirect_uri(context),
+        default_return_to: routes.sign_in_default_return_to,
+        return_to: routes.sign_in_return_to,
+        secure: routes.secure,
+      )
+      |> Ok
+
+    http.Get, "/sign_in/google/callback" ->
+      finish_google_sign_in(
+        req: req,
+        session: routes.session(context),
+        sign_in: fn(code) { routes.sign_in(code, context) },
+        default_return_to: routes.sign_in_default_return_to,
+        return_to: routes.sign_in_return_to,
+        secure: routes.secure,
+      )
+      |> Ok
+
+    _, _ -> Error(Nil)
+  }
+}
+
+@target(erlang)
 pub fn read_sign_in_form(
   req req: Request(Connection),
   invalid_return_to invalid_return_to: String,
@@ -118,6 +164,84 @@ pub fn read_sign_in_form(
       )
       Error(invalid_sign_in_redirect(invalid_return_to))
     }
+  }
+}
+
+@target(erlang)
+/// Start the standard Google OAuth sign-in workflow.
+/// Rally owns local return-path safety, state cookies, and the provider
+/// redirect. The app owns OAuth credentials.
+pub fn start_google_sign_in(
+  req req: Request(body),
+  client_id client_id: String,
+  redirect_uri redirect_uri: String,
+  default_return_to default_return_to: String,
+  return_to return_to: fn(String) -> String,
+  secure secure: Bool,
+) -> response.Response(ResponseData) {
+  let state = session.generate_id()
+  let return_to = request_return_to(req, default_return_to, return_to)
+
+  redirect(google_authorize_url(client_id, redirect_uri, state))
+  |> response.set_cookie(
+    google_state_cookie_name,
+    state,
+    session.auth_cookie_attributes(secure: secure),
+  )
+  |> response.set_cookie(
+    google_return_to_cookie_name,
+    return_to,
+    session.auth_cookie_attributes(secure: secure),
+  )
+}
+
+@target(erlang)
+/// Finish the standard Google OAuth sign-in workflow.
+/// Rally verifies the state cookie and issues the Rally auth session. The app
+/// exchanges the provider code, verifies identity, and returns the local user.
+pub fn finish_google_sign_in(
+  req req: Request(body),
+  session session: session.AuthSession,
+  sign_in sign_in: fn(String) -> Result(Int, Nil),
+  default_return_to default_return_to: String,
+  return_to return_to: fn(String) -> String,
+  secure secure: Bool,
+) -> response.Response(ResponseData) {
+  let cookies = request.get_cookies(req)
+  let return_to =
+    cookie_value(cookies, google_return_to_cookie_name)
+    |> safe_local_path(default: default_return_to)
+    |> return_to
+
+  let invalid = fn() {
+    invalid_sign_in_redirect(return_to)
+    |> clear_google_oauth_cookies(secure)
+  }
+
+  case request.get_query(req) {
+    Ok(pairs) ->
+      case
+        form_value(pairs, "code"),
+        form_value(pairs, "state"),
+        cookie_value(cookies, google_state_cookie_name)
+      {
+        Ok(code), Ok(state), Ok(expected_state) if state == expected_state ->
+          case sign_in(code) {
+            Ok(user_id) ->
+              issue_user_session(
+                session: session,
+                return_to: return_to,
+                user_id: user_id,
+                secure: secure,
+              )
+              |> clear_google_oauth_cookies(secure)
+            Error(Nil) -> invalid()
+          }
+
+        _, _, _ -> invalid()
+      }
+
+    Error(Nil) -> invalid()
   }
 }
 
@@ -293,6 +417,21 @@ pub fn issue_user_session(
 }
 
 @target(erlang)
+pub fn request_return_to(
+  req req: Request(body),
+  default_return_to default_return_to: String,
+  return_to return_to: fn(String) -> String,
+) -> String {
+  case request.get_query(req) {
+    Ok(pairs) ->
+      form_value(pairs, "return_to")
+      |> safe_local_path(default: default_return_to)
+      |> return_to
+    Error(Nil) -> default_return_to
+  }
+}
+
+@target(erlang)
 pub fn form_value(
   pairs: List(#(String, String)),
   name: String,
@@ -318,6 +457,66 @@ pub fn safe_local_path(
       }
     Error(Nil) -> default
   }
+}
+
+@target(erlang)
+const google_state_cookie_name = "__rally_google_state"
+
+@target(erlang)
+const google_return_to_cookie_name = "__rally_google_return_to"
+
+@target(erlang)
+fn cookie_value(
+  cookies: List(#(String, String)),
+  name: String,
+) -> Result(String, Nil) {
+  list.find_map(cookies, fn(cookie) {
+    case cookie.0 {
+      key if key == name -> Ok(cookie.1)
+      _ -> Error(Nil)
+    }
+  })
+}
+
+@target(erlang)
+fn google_authorize_url(
+  client_id: String,
+  redirect_uri: String,
+  state: String,
+) -> String {
+  "https://accounts.google.com/o/oauth2/v2/auth?"
+  <> query_string([
+    #("client_id", client_id),
+    #("redirect_uri", redirect_uri),
+    #("response_type", "code"),
+    #("scope", "openid email profile"),
+    #("state", state),
+  ])
+}
+
+@target(erlang)
+fn query_string(pairs: List(#(String, String))) -> String {
+  pairs
+  |> list.map(fn(pair) {
+    uri.percent_encode(pair.0) <> "=" <> uri.percent_encode(pair.1)
+  })
+  |> string.join("&")
+}
+
+@target(erlang)
+fn clear_google_oauth_cookies(
+  resp: response.Response(ResponseData),
+  secure: Bool,
+) -> response.Response(ResponseData) {
+  resp
+  |> response.expire_cookie(
+    google_state_cookie_name,
+    session.auth_cookie_attributes(secure: secure),
+  )
+  |> response.expire_cookie(
+    google_return_to_cookie_name,
+    session.auth_cookie_attributes(secure: secure),
+  )
 }
 
 @target(erlang)

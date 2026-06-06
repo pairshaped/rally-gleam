@@ -8,7 +8,7 @@ tags:
     - auth
     - template
 created_at: 2026-06-05T22:34:09Z
-updated_at: 2026-06-06T03:18:56Z
+updated_at: 2026-06-06T03:25:07Z
 ---
 
 Rally now has the shared session/user context pipeline for the template apps. The next provider slice should build on that pipeline instead of changing the core model.
@@ -44,3 +44,9 @@ Provider auth should follow ADR 0012. Rally owns provider routing mechanics, cal
 Validation: `gleam format && gleam test` passes with 467 tests.
 
 Remaining: Google SSO callback flow and full provider callback shape for OAuth credentials/user upsert.
+
+- Added Rally-owned Google OAuth route mechanics: GET /sign_in/google creates state and return_to cookies before redirecting to Google, and GET /sign_in/google/callback verifies state, calls the app-owned provider sign-in callback, issues the same Rally auth session, and clears temporary cookies.
+- Kept Google code exchange, identity verification, credential loading, and user lookup/upsert app-owned.
+- Documented rally/runtime/auth_http as the shared provider route surface for email-code and Google.
+
+Remaining: wire the Google route surface through Scoreboard/template bootstrap and settle the full provider callback shape for app credentials/user upsert.
