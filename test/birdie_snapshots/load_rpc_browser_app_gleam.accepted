@@ -198,7 +198,8 @@ pub fn public_page_topics(
 ) -> List(push_payload.Topic) {
   case page {
     public_pages.GamesPage(model) -> public_games_page.topics(model)
-    public_pages.GamesIdPage(model) -> public_game_detail_page.topics(model)
+    public_pages.GamesIdPage(route_params:, model:) ->
+      public_game_detail_page.topics(route_params, model)
     _ -> []
   }
 }
@@ -217,11 +218,11 @@ pub fn public_apply_push(
         effect.map(page_effect, public_pages.GamesMsg),
       )
     }
-    public_pages.GamesIdPage(model) -> {
+    public_pages.GamesIdPage(route_params:, model:) -> {
       let #(model, page_effect) =
         public_game_detail_page.apply_push(model, message)
       #(
-        public_pages.GamesIdPage(model),
+        public_pages.GamesIdPage(route_params:, model: model),
         effect.map(page_effect, public_pages.GamesIdMsg),
       )
     }

@@ -544,6 +544,8 @@ let listeners = new Set();
 let reconnectTimer = null;
 let reconnectAttempts = 0;
 let requestId = 0;
+let currentTopicFrame = null;
+let sentTopicFrame = null;
 
 import { BitArray, Ok } from \"../../gleam.mjs\";
 import { decode_result_envelope } from \"./client_protocol.mjs\";
@@ -580,13 +582,18 @@ export function send_frame(frame) {
 }
 
 export function send_topic_frame(topics) {
-  const text = \"rally:topics:\" + Array.from(topics).join(\",\");
+  const names = Array.from(topics);
+  const text = names.length === 0 ? \"unsub\" : \"sub:\" + names.join(\",\");
+  currentTopicFrame = text;
 
   if (socket && socket.readyState === WebSocket.OPEN) {
+    if (text === sentTopicFrame) return undefined;
     socket.send(text);
+    sentTopicFrame = text;
     return undefined;
   }
 
+  pending = pending.filter(frame => !is_topic_frame(frame));
   pending.push(text);
   ensure_socket();
   return undefined;
@@ -620,9 +627,17 @@ function ensure_socket() {
 
   socket.addEventListener(\"open\", () => {
     reconnectAttempts = 0;
+    sentTopicFrame = null;
     const queued = pending;
     pending = [];
-    for (const frame of queued) socket.send(frame);
+    for (const frame of queued) {
+      socket.send(frame);
+      if (is_topic_frame(frame)) sentTopicFrame = frame;
+    }
+    if (currentTopicFrame && currentTopicFrame !== sentTopicFrame) {
+      socket.send(currentTopicFrame);
+      sentTopicFrame = currentTopicFrame;
+    }
   });
 
   socket.addEventListener(\"message\", event => {
@@ -643,15 +658,21 @@ function ensure_socket() {
 
   socket.addEventListener(\"close\", () => {
     socket = null;
+    sentTopicFrame = null;
     schedule_reconnect();
   });
 
   socket.addEventListener(\"error\", () => {
     const current = socket;
     socket = null;
+    sentTopicFrame = null;
     if (current) current.close();
     schedule_reconnect();
   });
+}
+
+function is_topic_frame(frame) {
+  return typeof frame === \"string\" && (frame === \"unsub\" || frame.startsWith(\"sub:\"));
 }
 
 function dispatch_result_frame(frame) {
@@ -1223,14 +1244,10 @@ pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(" <>
   case page {
 " <> string.join(
     list.map(route_modules, fn(module_path) {
-      "    "
-      <> pages
-      <> "."
-      <> route_constructor_for_module(module_path)
-      <> "Page(model) ->
-      "
-      <> browser_app_source_page_alias(module_path, loads)
-      <> ".topics(model)"
+      "    " <> browser_app_page_pattern(pages, module_path) <> " ->
+      " <> browser_app_source_page_alias(module_path, loads) <> browser_app_topics_call(
+        module_path,
+      )
     }),
     "\n",
   ) <> "
@@ -1278,9 +1295,14 @@ pub fn " <> mount <> "_apply_push(
         list.map(route_modules, fn(module_path) {
           let constructor = route_constructor_for_module(module_path)
           let page = browser_app_source_page_alias(module_path, loads)
-          "    " <> pages <> "." <> constructor <> "Page(model) -> {
+          "    " <> browser_app_page_pattern(pages, module_path) <> " -> {
       let #(model, page_effect) = " <> page <> ".apply_push(model, message)
-      #(" <> pages <> "." <> constructor <> "Page(model), effect.map(page_effect, " <> pages <> "." <> route_message_constructor(
+      #(" <> browser_app_page_constructor(
+            pages,
+            constructor,
+            module_path,
+            "model",
+          ) <> ", effect.map(page_effect, " <> pages <> "." <> route_message_constructor(
             module_path,
           ) <> "))
     }"
@@ -1301,6 +1323,39 @@ pub fn " <> mount <> "_apply_push(
   #(page, effect.none())
 }
 "
+  }
+}
+
+fn browser_app_page_pattern(pages: String, module_path: String) -> String {
+  let constructor = route_constructor_for_module(module_path)
+  case dynamic_segments_from_module(module_path) {
+    [] -> pages <> "." <> constructor <> "Page(model)"
+    _ -> pages <> "." <> constructor <> "Page(route_params:, model:)"
+  }
+}
+
+fn browser_app_page_constructor(
+  pages: String,
+  constructor: String,
+  module_path: String,
+  model: String,
+) -> String {
+  case dynamic_segments_from_module(module_path) {
+    [] -> pages <> "." <> constructor <> "Page(" <> model <> ")"
+    _ ->
+      pages
+      <> "."
+      <> constructor
+      <> "Page(route_params:, model: "
+      <> model
+      <> ")"
+  }
+}
+
+fn browser_app_topics_call(module_path: String) -> String {
+  case dynamic_segments_from_module(module_path) {
+    [] -> ".topics(model)"
+    _ -> ".topics(route_params, model)"
   }
 }
 
@@ -3443,10 +3498,16 @@ pub fn sync_topic_frame(
   current current: List(String),
   frame frame: String,
 ) -> Result(List(String), Nil) {
-  let prefix = \"rally:topics:\"
-  case string.starts_with(frame, prefix) {
-    False -> Error(Nil)
-    True -> {
+  let prefix = \"sub:\"
+  case frame {
+    \"unsub\" -> {
+      current
+      |> list.each(topics.leave)
+      Ok([])
+    }
+    _ -> case string.starts_with(frame, prefix) {
+      False -> Error(Nil)
+      True -> {
       let next =
         frame
         |> string.drop_start(string.length(prefix))
@@ -3460,6 +3521,7 @@ pub fn sync_topic_frame(
       |> list.filter(fn(topic) { !list.contains(current, topic) })
       |> list.each(topics.join)
       Ok(next)
+      }
     }
   }
 }

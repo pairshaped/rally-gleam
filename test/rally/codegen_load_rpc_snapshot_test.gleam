@@ -119,7 +119,22 @@ pub fn load_rpc_browser_runtime_helpers_are_app_neutral_test() {
   |> string.contains("__rallySocket")
   |> should.be_true()
   content_for("src/generated/rally/client_transport_ffi.mjs")
-  |> string.contains("Array.from(topics).join")
+  |> string.contains("const text = names.length === 0 ? \"unsub\" : \"sub:\"")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("let currentTopicFrame = null")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("if (text === sentTopicFrame) return undefined")
+  |> should.be_true()
+  content_for("src/generated/rally/client_transport_ffi.mjs")
+  |> string.contains("function is_topic_frame(frame)")
+  |> should.be_true()
+  content_for("src/generated/rally/server_ws.gleam")
+  |> string.contains("let prefix = \"sub:\"")
+  |> should.be_true()
+  content_for("src/generated/rally/server_ws.gleam")
+  |> string.contains("\"unsub\" ->")
   |> should.be_true()
   content_for("src/generated/rally/browser_mount.gleam")
   |> string.contains("cookie_name")
@@ -266,6 +281,11 @@ pub fn load_rpc_generates_page_topic_transport_test() {
   |> should.be_true()
   browser_app
   |> string.contains("pub fn public_apply_push(")
+  |> should.be_true()
+  browser_app
+  |> string.contains(
+    "public_pages.GamesIdPage(route_params:, model:) ->\n      public_game_detail_page.topics(route_params, model)",
+  )
   |> should.be_true()
 }
 
