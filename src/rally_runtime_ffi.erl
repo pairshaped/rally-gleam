@@ -87,10 +87,10 @@ encode_push_frame(Page, Msg) ->
             %% No push frame facade registered; fall back to ETF via Libero boundary.
             case persistent_term:get({libero, wire_module}, undefined) of
                 undefined ->
-                    'libero@wire':encode_push(Page, Msg);
+                    'libero@etf@wire':encode_push(Page, Msg);
                 Mod ->
                     Encoded = Mod:encode_push(Page, Msg),
-                    'libero@wire':encode_push(Page, Encoded)
+                    'libero@etf@wire':encode_push(Page, Encoded)
             end;
         PushMod ->
             %% Single facade: protocol-specific encode + frame in one call.

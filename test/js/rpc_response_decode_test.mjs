@@ -17,7 +17,7 @@ import {
   setResultCtors,
   setOptionCtors,
   setListCtors,
-} from "../../../libero/src/libero/decoders_prelude.mjs";
+} from "../../../libero-gleam/src/libero/decoders_prelude.mjs";
 
 // ---------- Gleam stdlib type stubs ----------
 

@@ -34,7 +34,9 @@ pub fn transport_ffi_has_no_byte_level_frame_awareness_test() {
   let assert True = string.contains(content, "encode_request")
 
   // Must NOT import libero wire FFI directly
-  let assert False = string.contains(content, "libero/rpc_ffi.mjs")
+  let old_rpc_module = "rpc" <> "_ffi.mjs"
+  let assert False = string.contains(content, old_rpc_module)
+  let assert False = string.contains(content, "libero/etf/wire_ffi.mjs")
   let assert False = string.contains(content, "libero/json/wire_ffi.mjs")
 
   // Must import from the protocol_wire facade

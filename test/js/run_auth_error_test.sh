@@ -24,7 +24,7 @@ trap cleanup EXIT
 #   ./protocol_wire.mjs             -> tmp/auth_error_test/src/generated/protocol_wire.mjs
 mkdir -p "$TEST_DIR/src/generated"
 mkdir -p "$TEST_DIR/gleam_stdlib/gleam"
-mkdir -p "$TEST_DIR/libero/libero"
+mkdir -p "$TEST_DIR/libero/libero/etf"
 
 cp "$RALLY_ROOT/src/rally/runtime/transport_ffi.mjs" "$TEST_DIR/src/generated/"
 
@@ -49,8 +49,8 @@ MODEOF
 
 # --- libero stubs ---
 
-cat > "$TEST_DIR/libero/libero/rpc_ffi.mjs" << 'MODEOF'
-import { Ok, Error as ResultError } from "../../gleam_stdlib/gleam.mjs";
+cat > "$TEST_DIR/libero/libero/etf/wire_ffi.mjs" << 'MODEOF'
+import { Ok, Error as ResultError } from "../../../gleam_stdlib/gleam.mjs";
 export function encode_request(_module, _requestId, _msg) {
   return new Uint8Array([0]).buffer;
 }
@@ -73,7 +73,7 @@ MODEOF
 # --- generated protocol facade shim ---
 
 cat > "$TEST_DIR/src/generated/protocol_wire.mjs" << 'MODEOF'
-export { encode_request, decode_server_frame } from "../../libero/libero/rpc_ffi.mjs";
+export { encode_request, decode_server_frame } from "../../libero/libero/etf/wire_ffi.mjs";
 MODEOF
 
 node "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/auth_error_handling_test.mjs"

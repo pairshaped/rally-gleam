@@ -100,7 +100,7 @@ fn encode_request_envelope(
   ffi_encode(coerce(#(module, request_id, value)))
 }
 
-@external(erlang, "libero_ffi", "encode")
+@external(erlang, "libero_etf_ffi", "encode")
 fn ffi_encode(value: Dynamic) -> BitArray
 
 @external(erlang, "gleam_stdlib", "identity")

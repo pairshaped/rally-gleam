@@ -1,7 +1,7 @@
 // Behavioral test: prove that decode_server_frame returns properly
 // structured response and push frames with correctly typed values.
 //
-// PREREQUISITE — libero's rpc_ffi.mjs imports from gleam_stdlib, which
+// PREREQUISITE — libero's ETF wire FFI imports from gleam_stdlib, which
 // only exists after `gleam build -t javascript`. This test imports
 // libero source directly, so it needs shim files at the expected paths.
 //
@@ -21,7 +21,7 @@ import { strict as assert } from "assert";
 import {
   decode_server_frame,
   encode_value,
-} from "../../../libero/src/libero/rpc_ffi.mjs";
+} from "../../../libero-gleam/src/libero/etf/wire_ffi.mjs";
 
 // ---------- Helpers ----------
 
