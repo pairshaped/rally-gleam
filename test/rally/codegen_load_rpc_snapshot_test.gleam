@@ -21,7 +21,7 @@ fn public_games_load() -> LoadRpc {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [],
     save_result_type: None,
   )
@@ -37,7 +37,7 @@ fn public_game_detail_load() -> LoadRpc {
     load_result_constructor: "PublicGameDetailLoaded",
     route_modules: ["public/pages/games/id_"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )
@@ -53,7 +53,7 @@ fn admin_games_load() -> LoadRpc {
     load_result_constructor: "AdminGamesLoaded",
     route_modules: ["admin/pages/games"],
     navigation_sources: [],
-    update_uses_page_context: True,
+    update_uses_page_shared_state: True,
     args: [],
     save_result_type: Some("GameUpdate"),
   )
@@ -403,7 +403,7 @@ pub type LoadResult {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games", "public/pages/home_"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -417,7 +417,7 @@ pub type LoadResult {
     load_result_constructor: "PublicGameDetailLoaded",
     route_modules: ["public/pages/games/id_"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [LoadArg(label: "game_id", type_ref: "Int")],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_game_detail" })
@@ -431,7 +431,7 @@ pub type LoadResult {
     load_result_constructor: "AdminGamesLoaded",
     route_modules: ["admin/pages/games"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [],
     save_result_type: Some("GameUpdate"),
   )) = list.find(discovered, fn(load) { load.name == "admin_games" })
@@ -474,7 +474,7 @@ pub type GameSummary {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
@@ -711,7 +711,7 @@ pub type LoadResult {
     load_result_constructor: "PublicGamesLoaded",
     route_modules: ["public/pages/games"],
     navigation_sources: [],
-    update_uses_page_context: False,
+    update_uses_page_shared_state: False,
     args: [],
     save_result_type: None,
   )) = list.find(discovered, fn(load) { load.name == "public_games" })

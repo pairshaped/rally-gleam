@@ -8,6 +8,8 @@ pub fn ensure() -> Nil {
 }
 
 @target(javascript)
+import admin/page_shared_state as admin_page_shared_state
+@target(javascript)
 import admin/pages/games as admin_games_wire
 @target(javascript)
 import broadcasts as push_payload
@@ -48,7 +50,7 @@ import lustre/effect.{type Effect}
 @target(javascript)
 import lustre/element.{type Element}
 @target(javascript)
-import page_context.{type PageContext}
+import public/page_shared_state as public_page_shared_state
 @target(javascript)
 import public/pages/games as public_games_page
 @target(javascript)
@@ -232,46 +234,46 @@ pub fn public_apply_push(
 
 @target(javascript)
 pub fn admin_load_client(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: admin_page_shared_state.AdminPageSharedState,
   query_params query_params: admin_page_input.QueryParams,
   route route: admin_routes.Route,
 ) -> #(admin_pages.Page, Effect(admin_pages.Message)) {
-  let page = admin_pages.load_sync(page_context, query_params, route)
+  let page = admin_pages.load_sync(page_shared_state, query_params, route)
   #(page, admin_request_effect(route, admin_load_route(route)))
 }
 
 @target(javascript)
 pub fn admin_load_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: admin_page_shared_state.AdminPageSharedState,
   query_params query_params: admin_page_input.QueryParams,
   path path: String,
 ) -> #(String, admin_pages.Page, Effect(admin_pages.Message)) {
   let route = admin_routes.parse_path(path)
   let canonical_path = admin_routes.route_to_path(route)
   let #(page, page_effect) =
-    admin_load_client(page_context:, query_params:, route:)
+    admin_load_client(page_shared_state:, query_params:, route:)
   #(canonical_path, page, page_effect)
 }
 
 @target(javascript)
 pub fn admin_initial_page(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: admin_page_shared_state.AdminPageSharedState,
   query_params query_params: admin_page_input.QueryParams,
   route route: admin_routes.Route,
   update_page update_page: fn(
-    PageContext,
+    admin_page_shared_state.AdminPageSharedState,
     admin_pages.Page,
     admin_pages.Message,
   ) -> #(admin_pages.Page, Effect(admin_pages.Message)),
 ) -> #(admin_pages.Page, Effect(admin_pages.Message)) {
-  let page = admin_pages.load_sync(page_context, query_params, route)
+  let page = admin_pages.load_sync(page_shared_state, query_params, route)
 
   case admin_load_route(route) {
     AdminNoLoad -> #(page, effect.none())
     AdminGamesLoad(message: _, to_message:) -> {
       initial_loaded_page(
         page: page,
-        page_context: page_context,
+        page_shared_state: page_shared_state,
         hydration: hydration.admin_games_load_result(),
         to_message: to_message,
         load_client: fn() {
@@ -285,17 +287,17 @@ pub fn admin_initial_page(
 
 @target(javascript)
 pub fn admin_initial_page_from_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: admin_page_shared_state.AdminPageSharedState,
   query_params query_params: admin_page_input.QueryParams,
   path path: String,
   update_page update_page: fn(
-    PageContext,
+    admin_page_shared_state.AdminPageSharedState,
     admin_pages.Page,
     admin_pages.Message,
   ) -> #(admin_pages.Page, Effect(admin_pages.Message)),
 ) -> #(admin_pages.Page, Effect(admin_pages.Message)) {
   admin_initial_page(
-    page_context:,
+    page_shared_state:,
     query_params:,
     route: admin_routes.parse_path(path),
     update_page:,
@@ -316,46 +318,46 @@ fn admin_request_effect(
 
 @target(javascript)
 pub fn public_load_client(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: public_page_shared_state.PublicPageSharedState,
   query_params query_params: public_page_input.QueryParams,
   route route: public_routes.Route,
 ) -> #(public_pages.Page, Effect(public_pages.Message)) {
-  let page = public_pages.load_sync(page_context, query_params, route)
+  let page = public_pages.load_sync(page_shared_state, query_params, route)
   #(page, public_request_effect(route, public_load_route(route)))
 }
 
 @target(javascript)
 pub fn public_load_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: public_page_shared_state.PublicPageSharedState,
   query_params query_params: public_page_input.QueryParams,
   path path: String,
 ) -> #(String, public_pages.Page, Effect(public_pages.Message)) {
   let route = public_routes.parse_path(path)
   let canonical_path = public_routes.route_to_path(route)
   let #(page, page_effect) =
-    public_load_client(page_context:, query_params:, route:)
+    public_load_client(page_shared_state:, query_params:, route:)
   #(canonical_path, page, page_effect)
 }
 
 @target(javascript)
 pub fn public_initial_page(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: public_page_shared_state.PublicPageSharedState,
   query_params query_params: public_page_input.QueryParams,
   route route: public_routes.Route,
   update_page update_page: fn(
-    PageContext,
+    public_page_shared_state.PublicPageSharedState,
     public_pages.Page,
     public_pages.Message,
   ) -> #(public_pages.Page, Effect(public_pages.Message)),
 ) -> #(public_pages.Page, Effect(public_pages.Message)) {
-  let page = public_pages.load_sync(page_context, query_params, route)
+  let page = public_pages.load_sync(page_shared_state, query_params, route)
 
   case public_load_route(route) {
     PublicNoLoad -> #(page, effect.none())
     PublicGamesLoad(to_message:) -> {
       initial_loaded_page(
         page: page,
-        page_context: page_context,
+        page_shared_state: page_shared_state,
         hydration: hydration.public_games_load_result(),
         to_message: to_message,
         load_client: fn() {
@@ -367,7 +369,7 @@ pub fn public_initial_page(
     PublicGameDetailLoad(to_message:) -> {
       initial_loaded_page(
         page: page,
-        page_context: page_context,
+        page_shared_state: page_shared_state,
         hydration: hydration.public_game_detail_load_result(),
         to_message: to_message,
         load_client: fn() {
@@ -381,17 +383,17 @@ pub fn public_initial_page(
 
 @target(javascript)
 pub fn public_initial_page_from_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: public_page_shared_state.PublicPageSharedState,
   query_params query_params: public_page_input.QueryParams,
   path path: String,
   update_page update_page: fn(
-    PageContext,
+    public_page_shared_state.PublicPageSharedState,
     public_pages.Page,
     public_pages.Message,
   ) -> #(public_pages.Page, Effect(public_pages.Message)),
 ) -> #(public_pages.Page, Effect(public_pages.Message)) {
   public_initial_page(
-    page_context:,
+    page_shared_state:,
     query_params:,
     route: public_routes.parse_path(path),
     update_page:,
@@ -424,11 +426,11 @@ fn public_request_effect(
 }
 
 @target(javascript)
-pub type AdminMountModel(shell_state, page_shared_state) {
+pub type AdminMountModel(shell_state) {
   AdminMountModel(
     page: admin_pages.Page,
     shell_state: shell_state,
-    page_shared_state: page_shared_state,
+    page_shared_state: admin_page_shared_state.AdminPageSharedState,
   )
 }
 
@@ -442,17 +444,19 @@ pub type AdminMountMsg {
 }
 
 @target(javascript)
-pub type AdminMountConfig(shell_state, page_shared_state) {
+pub type AdminMountConfig(shell_state) {
   AdminMountConfig(
-    page_context: fn(page_shared_state) -> PageContext,
-    page_shared_state: fn() -> page_shared_state,
+    page_shared_state: fn() -> admin_page_shared_state.AdminPageSharedState,
     shell_state: fn(String, Bool) -> shell_state,
     set_active_path: fn(shell_state, String) -> shell_state,
     set_dark_mode: fn(shell_state, Bool) -> shell_state,
-    update_page: fn(PageContext, admin_pages.Page, admin_pages.Message) ->
-      #(admin_pages.Page, Effect(admin_pages.Message)),
+    update_page: fn(
+      admin_page_shared_state.AdminPageSharedState,
+      admin_pages.Page,
+      admin_pages.Message,
+    ) -> #(admin_pages.Page, Effect(admin_pages.Message)),
     view: fn(
-      AdminMountModel(shell_state, page_shared_state),
+      AdminMountModel(shell_state),
       fn(admin_pages.Message) -> AdminMountMsg,
       fn(Bool) -> AdminMountMsg,
       fn(String) -> AdminMountMsg,
@@ -461,9 +465,7 @@ pub type AdminMountConfig(shell_state, page_shared_state) {
 }
 
 @target(javascript)
-pub fn start_admin_mount(
-  config config: AdminMountConfig(shell_state, page_shared_state),
-) -> Nil {
+pub fn start_admin_mount(config config: AdminMountConfig(shell_state)) -> Nil {
   start(
     init: fn(_flags) { admin_mount_init(config) },
     update: fn(model, msg) { admin_mount_update(config, model, msg) },
@@ -475,8 +477,8 @@ pub fn start_admin_mount(
 
 @target(javascript)
 fn admin_mount_init(
-  config config: AdminMountConfig(shell_state, page_shared_state),
-) -> #(AdminMountModel(shell_state, page_shared_state), Effect(AdminMountMsg)) {
+  config config: AdminMountConfig(shell_state),
+) -> #(AdminMountModel(shell_state), Effect(AdminMountMsg)) {
   let route = admin_routes.parse_path(browser.path())
   let current_path = admin_routes.route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
@@ -484,10 +486,9 @@ fn admin_mount_init(
     admin_page_input.QueryParams(values: browser_mount.query_pairs())
   let page_shared_state = config.page_shared_state()
   let shell_state = config.shell_state(current_path, dark_mode)
-  let page_context = config.page_context(page_shared_state)
   let #(page, page_effect) =
     admin_initial_page(
-      page_context:,
+      page_shared_state:,
       query_params: query_params,
       route:,
       update_page: config.update_page,
@@ -511,10 +512,10 @@ fn admin_mount_init(
 
 @target(javascript)
 fn admin_mount_update(
-  config config: AdminMountConfig(shell_state, page_shared_state),
-  model model: AdminMountModel(shell_state, page_shared_state),
+  config config: AdminMountConfig(shell_state),
+  model model: AdminMountModel(shell_state),
   msg msg: AdminMountMsg,
-) -> #(AdminMountModel(shell_state, page_shared_state), Effect(AdminMountMsg)) {
+) -> #(AdminMountModel(shell_state), Effect(AdminMountMsg)) {
   case msg {
     AdminPageMsg(inner) -> {
       case admin_message_path(inner) {
@@ -526,10 +527,9 @@ fn admin_mount_update(
             push_history: True,
           )
         None -> {
-          let page_context = config.page_context(model.page_shared_state)
           let #(page, page_effect) =
             map_page_effect(
-              config.update_page(page_context, model.page, inner),
+              config.update_page(model.page_shared_state, model.page, inner),
               AdminPageMsg,
             )
           #(
@@ -586,18 +586,17 @@ fn admin_mount_update(
 
 @target(javascript)
 fn admin_mount_navigate(
-  config config: AdminMountConfig(shell_state, page_shared_state),
-  model model: AdminMountModel(shell_state, page_shared_state),
+  config config: AdminMountConfig(shell_state),
+  model model: AdminMountModel(shell_state),
   path path: String,
   push_history push_history: Bool,
-) -> #(AdminMountModel(shell_state, page_shared_state), Effect(AdminMountMsg)) {
+) -> #(AdminMountModel(shell_state), Effect(AdminMountMsg)) {
   let route = admin_routes.parse_path(path)
   let canonical_path = admin_routes.route_to_path(route)
   let shell_state = config.set_active_path(model.shell_state, canonical_path)
-  let page_context = config.page_context(model.page_shared_state)
   let #(page, page_effect) =
     admin_load_client(
-      page_context:,
+      page_shared_state: model.page_shared_state,
       query_params: admin_page_input.empty_query_params(),
       route:,
     )
@@ -621,11 +620,11 @@ fn admin_mount_navigate(
 }
 
 @target(javascript)
-pub type PublicMountModel(shell_state, page_shared_state) {
+pub type PublicMountModel(shell_state) {
   PublicMountModel(
     page: public_pages.Page,
     shell_state: shell_state,
-    page_shared_state: page_shared_state,
+    page_shared_state: public_page_shared_state.PublicPageSharedState,
   )
 }
 
@@ -639,17 +638,19 @@ pub type PublicMountMsg {
 }
 
 @target(javascript)
-pub type PublicMountConfig(shell_state, page_shared_state) {
+pub type PublicMountConfig(shell_state) {
   PublicMountConfig(
-    page_context: fn(page_shared_state) -> PageContext,
-    page_shared_state: fn() -> page_shared_state,
+    page_shared_state: fn() -> public_page_shared_state.PublicPageSharedState,
     shell_state: fn(String, Bool) -> shell_state,
     set_active_path: fn(shell_state, String) -> shell_state,
     set_dark_mode: fn(shell_state, Bool) -> shell_state,
-    update_page: fn(PageContext, public_pages.Page, public_pages.Message) ->
-      #(public_pages.Page, Effect(public_pages.Message)),
+    update_page: fn(
+      public_page_shared_state.PublicPageSharedState,
+      public_pages.Page,
+      public_pages.Message,
+    ) -> #(public_pages.Page, Effect(public_pages.Message)),
     view: fn(
-      PublicMountModel(shell_state, page_shared_state),
+      PublicMountModel(shell_state),
       fn(public_pages.Message) -> PublicMountMsg,
       fn(Bool) -> PublicMountMsg,
       fn(String) -> PublicMountMsg,
@@ -659,7 +660,7 @@ pub type PublicMountConfig(shell_state, page_shared_state) {
 
 @target(javascript)
 pub fn start_public_mount(
-  config config: PublicMountConfig(shell_state, page_shared_state),
+  config config: PublicMountConfig(shell_state),
 ) -> Nil {
   start(
     init: fn(_flags) { public_mount_init(config) },
@@ -677,8 +678,8 @@ pub fn start_public_mount(
 
 @target(javascript)
 fn public_mount_init(
-  config config: PublicMountConfig(shell_state, page_shared_state),
-) -> #(PublicMountModel(shell_state, page_shared_state), Effect(PublicMountMsg)) {
+  config config: PublicMountConfig(shell_state),
+) -> #(PublicMountModel(shell_state), Effect(PublicMountMsg)) {
   let route = public_routes.parse_path(browser.path())
   let current_path = public_routes.route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
@@ -686,10 +687,9 @@ fn public_mount_init(
     public_page_input.QueryParams(values: browser_mount.query_pairs())
   let page_shared_state = config.page_shared_state()
   let shell_state = config.shell_state(current_path, dark_mode)
-  let page_context = config.page_context(page_shared_state)
   let #(page, page_effect) =
     public_initial_page(
-      page_context:,
+      page_shared_state:,
       query_params: query_params,
       route:,
       update_page: config.update_page,
@@ -713,10 +713,10 @@ fn public_mount_init(
 
 @target(javascript)
 fn public_mount_update(
-  config config: PublicMountConfig(shell_state, page_shared_state),
-  model model: PublicMountModel(shell_state, page_shared_state),
+  config config: PublicMountConfig(shell_state),
+  model model: PublicMountModel(shell_state),
   msg msg: PublicMountMsg,
-) -> #(PublicMountModel(shell_state, page_shared_state), Effect(PublicMountMsg)) {
+) -> #(PublicMountModel(shell_state), Effect(PublicMountMsg)) {
   case msg {
     PublicPageMsg(inner) -> {
       case public_message_path(inner) {
@@ -728,10 +728,9 @@ fn public_mount_update(
             push_history: True,
           )
         None -> {
-          let page_context = config.page_context(model.page_shared_state)
           let #(page, page_effect) =
             map_page_effect(
-              config.update_page(page_context, model.page, inner),
+              config.update_page(model.page_shared_state, model.page, inner),
               PublicPageMsg,
             )
           #(
@@ -788,18 +787,17 @@ fn public_mount_update(
 
 @target(javascript)
 fn public_mount_navigate(
-  config config: PublicMountConfig(shell_state, page_shared_state),
-  model model: PublicMountModel(shell_state, page_shared_state),
+  config config: PublicMountConfig(shell_state),
+  model model: PublicMountModel(shell_state),
   path path: String,
   push_history push_history: Bool,
-) -> #(PublicMountModel(shell_state, page_shared_state), Effect(PublicMountMsg)) {
+) -> #(PublicMountModel(shell_state), Effect(PublicMountMsg)) {
   let route = public_routes.parse_path(path)
   let canonical_path = public_routes.route_to_path(route)
   let shell_state = config.set_active_path(model.shell_state, canonical_path)
-  let page_context = config.page_context(model.page_shared_state)
   let #(page, page_effect) =
     public_load_client(
-      page_context:,
+      page_shared_state: model.page_shared_state,
       query_params: public_page_input.empty_query_params(),
       route:,
     )
@@ -912,16 +910,16 @@ pub fn navigation_effects(
 @target(javascript)
 fn initial_loaded_page(
   page page: page,
-  page_context page_context: context,
+  page_shared_state page_shared_state: shared_state,
   hydration hydration: Result(result, Nil),
   to_message to_message: fn(result) -> message,
   load_client load_client: fn() -> Effect(message),
-  update_page update_page: fn(context, page, message) ->
+  update_page update_page: fn(shared_state, page, message) ->
     #(page, Effect(message)),
 ) -> #(page, Effect(message)) {
   case hydration {
     Ok(result) -> {
-      let #(page, _) = update_page(page_context, page, to_message(result))
+      let #(page, _) = update_page(page_shared_state, page, to_message(result))
       #(page, effect.none())
     }
     Error(Nil) -> #(page, load_client())

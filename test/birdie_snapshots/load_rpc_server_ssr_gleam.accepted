@@ -8,6 +8,8 @@ pub fn ensure() -> Nil {
 }
 
 @target(erlang)
+import admin/page_shared_state as admin_page_shared_state
+@target(erlang)
 import admin/pages/games as admin_games_wire
 @target(erlang)
 import generated/proute/admin/page_input as admin_page_input
@@ -36,7 +38,7 @@ import lustre/effect.{type Effect}
 @target(erlang)
 import lustre/element.{type Element}
 @target(erlang)
-import page_context.{type PageContext}
+import public/page_shared_state as public_page_shared_state
 @target(erlang)
 import public/pages/games as public_games_page
 @target(erlang)
@@ -116,7 +118,7 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
 
 @target(erlang)
 pub fn admin_render_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: admin_page_shared_state.AdminPageSharedState,
   query_params query_params: admin_page_input.QueryParams,
   path path: String,
   load_context load_context: load_context.Connection,
@@ -124,12 +126,12 @@ pub fn admin_render_path(
   let route = admin_routes.parse_path(path)
   let #(page, hydration) =
     admin_boot_page(
-      page_context:,
+      page_shared_state:,
       query_params:,
       route:,
       load_context:,
       update_page: fn(page, message) {
-        admin_pages.update(page_context, page, message)
+        admin_pages.update(page_shared_state, page, message)
       },
     )
 
@@ -142,7 +144,7 @@ pub fn admin_render_path(
 
 @target(erlang)
 pub fn public_render_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: public_page_shared_state.PublicPageSharedState,
   query_params query_params: public_page_input.QueryParams,
   path path: String,
   load_context load_context: load_context.Connection,
@@ -150,7 +152,7 @@ pub fn public_render_path(
   let route = public_routes.parse_path(path)
   let #(page, hydration) =
     public_boot_page(
-      page_context:,
+      page_shared_state:,
       query_params:,
       route:,
       load_context:,
@@ -166,14 +168,14 @@ pub fn public_render_path(
 
 @target(erlang)
 pub fn admin_boot_page(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: admin_page_shared_state.AdminPageSharedState,
   query_params query_params: admin_page_input.QueryParams,
   route route: admin_routes.Route,
   load_context load_context: load_context.Connection,
   update_page update_page: fn(admin_pages.Page, admin_pages.Message) ->
     #(admin_pages.Page, Effect(admin_pages.Message)),
 ) -> #(admin_pages.Page, List(String)) {
-  let page = admin_pages.load_sync(page_context, query_params, route)
+  let page = admin_pages.load_sync(page_shared_state, query_params, route)
 
   case admin_load_route(route) {
     AdminNoLoad -> #(page, [])
@@ -195,14 +197,14 @@ pub fn admin_boot_page(
 
 @target(erlang)
 pub fn public_boot_page(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: public_page_shared_state.PublicPageSharedState,
   query_params query_params: public_page_input.QueryParams,
   route route: public_routes.Route,
   load_context load_context: load_context.Connection,
   update_page update_page: fn(public_pages.Page, public_pages.Message) ->
     #(public_pages.Page, Effect(public_pages.Message)),
 ) -> #(public_pages.Page, List(String)) {
-  let page = public_pages.load_sync(page_context, query_params, route)
+  let page = public_pages.load_sync(page_shared_state, query_params, route)
 
   case public_load_route(route) {
     PublicNoLoad -> #(page, [])

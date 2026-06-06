@@ -50,8 +50,8 @@ pub type LoadRpc {
     route_modules: List(String),
     /// Page message constructors that navigate to this load route.
     navigation_sources: List(PageNavigation),
-    /// Whether this load's Proute mount update dispatcher needs PageContext.
-    update_uses_page_context: Bool,
+    /// Whether this load's Proute mount update dispatcher needs page shared state.
+    update_uses_page_shared_state: Bool,
     args: List(LoadArg),
     save_result_type: Option(String),
   )
@@ -100,7 +100,10 @@ pub fn discover(src_root src_root: String) -> Result(List(LoadRpc), String) {
       ..load,
       route_modules:,
       navigation_sources: navigation_sources(load, modules),
-      update_uses_page_context: mount_update_uses_page_context(load, modules),
+      update_uses_page_shared_state: mount_update_uses_page_shared_state(
+        load,
+        modules,
+      ),
     )
   })
   |> Ok
@@ -735,8 +738,6 @@ import generated/rally/result.{type ApiLoadError, ApiLoadError}
 @target(javascript)
 import gleam/option.{type Option, None, Some}
 @target(javascript)
-import page_context.{type PageContext}
-@target(javascript)
 import lustre
 @target(javascript)
 import lustre/effect.{type Effect}
@@ -864,15 +865,15 @@ pub fn navigation_effects(
 @target(javascript)
 fn initial_loaded_page(
   page page: page,
-  page_context page_context: context,
+  page_shared_state page_shared_state: shared_state,
   hydration hydration: Result(result, Nil),
   to_message to_message: fn(result) -> message,
   load_client load_client: fn() -> Effect(message),
-  update_page update_page: fn(context, page, message) -> #(page, Effect(message)),
+  update_page update_page: fn(shared_state, page, message) -> #(page, Effect(message)),
 ) -> #(page, Effect(message)) {
   case hydration {
     Ok(result) -> {
-      let #(page, _) = update_page(page_context, page, to_message(result))
+      let #(page, _) = update_page(page_shared_state, page, to_message(result))
       #(page, effect.none())
     }
     Error(Nil) -> #(page, load_client())
@@ -905,6 +906,11 @@ import generated/proute/" <> mount <> "/pages as " <> mount_alias(
 import generated/proute/" <> mount <> "/routes as " <> mount_alias(
       mount,
       "routes",
+    ) <> "
+@target(javascript)
+import " <> mount <> "/page_shared_state as " <> mount_alias(
+      mount,
+      "page_shared_state",
     ) })
   |> string.join("\n")
   |> fn(imports) {
@@ -930,11 +936,11 @@ fn browser_app_mount_lifecycle(mount: String) -> String {
   let browser_path_changed = prefix <> "BrowserPathChanged"
 
   "@target(javascript)
-pub type " <> model <> "(shell_state, page_shared_state) {
+pub type " <> model <> "(shell_state) {
   " <> model <> "(
     page: " <> pages <> ".Page,
     shell_state: shell_state,
-    page_shared_state: page_shared_state,
+    page_shared_state: " <> browser_app_page_shared_state_type(mount) <> ",
   )
 }
 
@@ -948,17 +954,16 @@ pub type " <> msg <> " {
 }
 
 @target(javascript)
-pub type " <> config <> "(shell_state, page_shared_state) {
+pub type " <> config <> "(shell_state) {
   " <> config <> "(
-    page_context: fn(page_shared_state) -> PageContext,
-    page_shared_state: fn() -> page_shared_state,
+    page_shared_state: fn() -> " <> browser_app_page_shared_state_type(mount) <> ",
     shell_state: fn(String, Bool) -> shell_state,
     set_active_path: fn(shell_state, String) -> shell_state,
     set_dark_mode: fn(shell_state, Bool) -> shell_state,
-    update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) ->
+    update_page: fn(" <> browser_app_page_shared_state_type(mount) <> ", " <> pages <> ".Page, " <> pages <> ".Message) ->
       #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
     view: fn(
-      " <> model <> "(shell_state, page_shared_state),
+      " <> model <> "(shell_state),
       fn(" <> pages <> ".Message) -> " <> msg <> ",
       fn(Bool) -> " <> msg <> ",
       fn(String) -> " <> msg <> ",
@@ -968,7 +973,7 @@ pub type " <> config <> "(shell_state, page_shared_state) {
 
 @target(javascript)
 pub fn start_" <> mount <> "_mount(
-  config config: " <> config <> "(shell_state, page_shared_state),
+  config config: " <> config <> "(shell_state),
 ) -> Nil {
   start(
     init: fn(_flags) { " <> mount <> "_mount_init(config) },
@@ -981,18 +986,17 @@ pub fn start_" <> mount <> "_mount(
 
 @target(javascript)
 fn " <> mount <> "_mount_init(
-  config config: " <> config <> "(shell_state, page_shared_state),
-) -> #(" <> model <> "(shell_state, page_shared_state), Effect(" <> msg <> ")) {
+  config config: " <> config <> "(shell_state),
+) -> #(" <> model <> "(shell_state), Effect(" <> msg <> ")) {
   let route = " <> routes <> ".parse_path(browser.path())
   let current_path = " <> routes <> ".route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
   let query_params = " <> page_input <> ".QueryParams(values: browser_mount.query_pairs())
   let page_shared_state = config.page_shared_state()
   let shell_state = config.shell_state(current_path, dark_mode)
-  let page_context = config.page_context(page_shared_state)
   let #(page, page_effect) =
     " <> mount <> "_initial_page(
-      page_context:,
+      page_shared_state:,
       query_params: query_params,
       route:,
       update_page: config.update_page,
@@ -1016,10 +1020,10 @@ fn " <> mount <> "_mount_init(
 
 @target(javascript)
 fn " <> mount <> "_mount_update(
-  config config: " <> config <> "(shell_state, page_shared_state),
-  model model: " <> model <> "(shell_state, page_shared_state),
+  config config: " <> config <> "(shell_state),
+  model model: " <> model <> "(shell_state),
   msg msg: " <> msg <> ",
-) -> #(" <> model <> "(shell_state, page_shared_state), Effect(" <> msg <> ")) {
+) -> #(" <> model <> "(shell_state), Effect(" <> msg <> ")) {
   case msg {
     " <> page_msg <> "(inner) -> {
       case " <> mount <> "_message_path(inner) {
@@ -1030,10 +1034,9 @@ fn " <> mount <> "_mount_update(
           push_history: True,
         )
         None -> {
-          let page_context = config.page_context(model.page_shared_state)
           let #(page, page_effect) =
             map_page_effect(
-              config.update_page(page_context, model.page, inner),
+              config.update_page(model.page_shared_state, model.page, inner),
               " <> page_msg <> ",
             )
           #(
@@ -1090,18 +1093,17 @@ fn " <> mount <> "_mount_update(
 
 @target(javascript)
 fn " <> mount <> "_mount_navigate(
-  config config: " <> config <> "(shell_state, page_shared_state),
-  model model: " <> model <> "(shell_state, page_shared_state),
+  config config: " <> config <> "(shell_state),
+  model model: " <> model <> "(shell_state),
   path path: String,
   push_history push_history: Bool,
-) -> #(" <> model <> "(shell_state, page_shared_state), Effect(" <> msg <> ")) {
+) -> #(" <> model <> "(shell_state), Effect(" <> msg <> ")) {
   let route = " <> routes <> ".parse_path(path)
   let canonical_path = " <> routes <> ".route_to_path(route)
   let shell_state = config.set_active_path(model.shell_state, canonical_path)
-  let page_context = config.page_context(model.page_shared_state)
   let #(page, page_effect) =
     " <> mount <> "_load_client(
-      page_context:,
+      page_shared_state: model.page_shared_state,
       query_params: " <> page_input <> ".empty_query_params(),
       route:,
     )
@@ -1399,35 +1401,41 @@ fn browser_app_mount_initial_page(
 
   "@target(javascript)
 pub fn " <> mount <> "_load_client(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: " <> browser_app_page_shared_state_type(
+    mount,
+  ) <> ",
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
-  let page = " <> pages <> ".load_sync(page_context, query_params, route)
+  let page = " <> pages <> ".load_sync(page_shared_state, query_params, route)
   #(page, " <> mount <> "_request_effect(route, " <> mount <> "_load_route(route)))
 }
 
 @target(javascript)
 pub fn " <> mount <> "_load_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: " <> browser_app_page_shared_state_type(
+    mount,
+  ) <> ",
   query_params query_params: " <> page_input <> ".QueryParams,
   path path: String,
 ) -> #(String, " <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
   let route = " <> routes <> ".parse_path(path)
   let canonical_path = " <> routes <> ".route_to_path(route)
   let #(page, page_effect) =
-    " <> mount <> "_load_client(page_context:, query_params:, route:)
+    " <> mount <> "_load_client(page_shared_state:, query_params:, route:)
   #(canonical_path, page, page_effect)
 }
 
 @target(javascript)
 pub fn " <> mount <> "_initial_page(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: " <> browser_app_page_shared_state_type(
+    mount,
+  ) <> ",
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
-  update_page update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+  update_page update_page: fn(" <> browser_app_page_shared_state_type(mount) <> ", " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
-  let page = " <> pages <> ".load_sync(page_context, query_params, route)
+  let page = " <> pages <> ".load_sync(page_shared_state, query_params, route)
 
   case " <> mount <> "_load_route(route) {
     " <> prefix <> "NoLoad -> #(page, effect.none())
@@ -1437,13 +1445,15 @@ pub fn " <> mount <> "_initial_page(
 
 @target(javascript)
 pub fn " <> mount <> "_initial_page_from_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: " <> browser_app_page_shared_state_type(
+    mount,
+  ) <> ",
   query_params query_params: " <> page_input <> ".QueryParams,
   path path: String,
-  update_page update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
+  update_page update_page: fn(" <> browser_app_page_shared_state_type(mount) <> ", " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
   " <> mount <> "_initial_page(
-    page_context:,
+    page_shared_state:,
     query_params:,
     route: " <> routes <> ".parse_path(path),
     update_page:,
@@ -1461,6 +1471,13 @@ fn " <> mount <> "_request_effect(
   }
 }
 "
+}
+
+fn browser_app_page_shared_state_type(mount: String) -> String {
+  mount_alias(mount, "page_shared_state")
+  <> "."
+  <> mount_type_prefix(mount)
+  <> "PageSharedState"
 }
 
 fn browser_app_mount_navigation_functions(
@@ -1738,7 +1755,7 @@ fn browser_app_initial_page_case(load: LoadRpc) -> String {
   <> "to_message:) -> {
       initial_loaded_page(
         page: page,
-        page_context: page_context,
+        page_shared_state: page_shared_state,
         hydration: hydration."
   <> load.name
   <> "_load_result(),
@@ -2266,8 +2283,6 @@ import gleam/list
 import lustre/effect.{type Effect}
 @target(erlang)
 import lustre/element.{type Element}
-@target(erlang)
-import page_context.{type PageContext}
 " <> server_ssr_mount_imports(mounts) <> wire_imports(
     loads,
     "@target(erlang)",
@@ -2481,7 +2496,7 @@ fn discover_source(
               load_result_constructor:,
               route_modules: [module_path],
               navigation_sources: [],
-              update_uses_page_context: False,
+              update_uses_page_shared_state: False,
               args:,
               save_result_type:,
             ))
@@ -2622,24 +2637,24 @@ fn navigation_args(
   })
 }
 
-fn mount_update_uses_page_context(
+fn mount_update_uses_page_shared_state(
   load: LoadRpc,
   modules: List(SourceModule),
 ) -> Bool {
   modules
   |> list.any(fn(source) {
     load_mount_from_module(source.module_path) == load_mount(load)
-    && source_update_uses_page_context(source)
+    && source_update_uses_page_shared_state(source)
   })
 }
 
-fn source_update_uses_page_context(source: SourceModule) -> Bool {
+fn source_update_uses_page_shared_state(source: SourceModule) -> Bool {
   case
     list.find(source.ast.functions, fn(def) { def.definition.name == "update" })
   {
     Ok(def) ->
       case def.definition.parameters {
-        [first, ..] -> function_parameter_name(first) == Ok("page_context")
+        [first, ..] -> function_parameter_name(first) == Ok("page_shared_state")
         [] -> False
       }
     Error(Nil) -> False
@@ -4294,6 +4309,11 @@ import generated/proute/" <> mount <> "/pages as " <> mount_alias(
 import generated/proute/" <> mount <> "/routes as " <> mount_alias(
       mount,
       "routes",
+    ) <> "
+@target(erlang)
+import " <> mount <> "/page_shared_state as " <> mount_alias(
+      mount,
+      "page_shared_state",
     ) })
   |> string.join("\n")
   |> fn(imports) {
@@ -4475,7 +4495,9 @@ fn server_ssr_mount_render_path(
 
   "@target(erlang)
 pub fn " <> mount <> "_render_path(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: " <> server_ssr_page_shared_state_type(
+    mount,
+  ) <> ",
   query_params query_params: " <> page_input <> ".QueryParams,
   path path: String,
   " <> server_ssr_mount_context_param(mount, loads, load_context:) <> "
@@ -4483,7 +4505,7 @@ pub fn " <> mount <> "_render_path(
   let route = " <> routes <> ".parse_path(path)
   let #(page, hydration) =
     " <> mount <> "_boot_page(
-      page_context:,
+      page_shared_state:,
       query_params:,
       route:,
       " <> server_ssr_mount_context_arg(loads, load_context:) <> "
@@ -4526,15 +4548,22 @@ fn server_ssr_mount_context_arg(
   }
 }
 
+fn server_ssr_page_shared_state_type(mount: String) -> String {
+  mount_alias(mount, "page_shared_state")
+  <> "."
+  <> mount_type_prefix(mount)
+  <> "PageSharedState"
+}
+
 fn server_ssr_mount_update_call(pages: String, loads: List(LoadRpc)) -> String {
-  case mount_loads_update_uses_page_context(loads) {
-    True -> pages <> ".update(page_context, page, message)"
+  case mount_loads_update_uses_page_shared_state(loads) {
+    True -> pages <> ".update(page_shared_state, page, message)"
     False -> pages <> ".update(page, message)"
   }
 }
 
-fn mount_loads_update_uses_page_context(loads: List(LoadRpc)) -> Bool {
-  list.any(loads, fn(load) { load.update_uses_page_context })
+fn mount_loads_update_uses_page_shared_state(loads: List(LoadRpc)) -> Bool {
+  list.any(loads, fn(load) { load.update_uses_page_shared_state })
 }
 
 fn server_ssr_mount_boot_page(
@@ -4549,13 +4578,15 @@ fn server_ssr_mount_boot_page(
 
   "@target(erlang)
 pub fn " <> mount <> "_boot_page(
-  page_context page_context: PageContext,
+  page_shared_state page_shared_state: " <> server_ssr_page_shared_state_type(
+    mount,
+  ) <> ",
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
   " <> server_ssr_mount_context_param(mount, loads, load_context:) <> "
   update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, List(String)) {
-  let page = " <> pages <> ".load_sync(page_context, query_params, route)
+  let page = " <> pages <> ".load_sync(page_shared_state, query_params, route)
 
   case " <> mount <> "_load_route(route) {
     " <> prefix <> "NoLoad -> #(page, [])
