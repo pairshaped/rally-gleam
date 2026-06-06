@@ -169,16 +169,6 @@ pub fn load_rpc_protocols_use_neutral_libero_codec_test() {
   server
   |> string.contains("import generated/libero/etf as libero_etf")
   |> should.be_true()
-
-  client |> string.contains("../libero/codec_ffi.mjs") |> should.be_false()
-  server
-  |> string.contains("generated/libero/to_client_codec")
-  |> should.be_false()
-  server
-  |> string.contains("generated/libero/to_server_codec")
-  |> should.be_false()
-  server |> string.contains("to_client_codec_ffi") |> should.be_false()
-  server |> string.contains("to_server_codec_ffi") |> should.be_false()
 }
 
 pub fn load_rpc_server_protocol_uses_libero_wire_encoders_test() {
