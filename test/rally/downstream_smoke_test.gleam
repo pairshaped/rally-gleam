@@ -51,7 +51,6 @@ fn assert_no_warning(output: String, phase: String, dir: String) -> Nil {
 
 pub fn scaffold_builds_without_warnings_test() {
   let root = rally_root()
-  let proute_root = root <> "/../proute"
   let dir = make_temp_dir()
   let assert Some(gleam) = find_executable("gleam")
   let assert Ok(Nil) = init.init_project(dir)
@@ -63,10 +62,6 @@ pub fn scaffold_builds_without_warnings_test() {
     |> string.replace(
       "rally = \">= 1.0.0 and < 2.0.0\"",
       "rally = { path = \"" <> root <> "\" }",
-    )
-    |> string.replace(
-      "proute = \">= 0.1.0 and < 1.0.0\"",
-      "proute = { path = \"" <> proute_root <> "\" }",
     )
   let assert Ok(Nil) = simplifile.write(dir <> "/gleam.toml", patched)
 

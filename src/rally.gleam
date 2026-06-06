@@ -402,15 +402,10 @@ fn run_marmot_command_if_configured(
 }
 
 fn run_proute_if_configured(
-  toml_map: dict.Dict(String, tom.Toml),
+  _toml_map: dict.Dict(String, tom.Toml),
 ) -> Result(Nil, RallyError) {
   case simplifile.is_file("proute.toml") {
     Ok(True) -> {
-      use Nil <- result.try(ensure_dependency(
-        toml_map,
-        package: "proute",
-        reason: "Rally delegates route generation to Proute when proute.toml exists.",
-      ))
       use gleam <- result.try(find_gleam())
       run_command(
         program: gleam,

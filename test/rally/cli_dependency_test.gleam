@@ -5,7 +5,7 @@ import tom
 
 pub fn dependency_check_accepts_runtime_dependency_test() {
   let assert Ok(toml) =
-    tom.parse("[dependencies]\nlibero = \">= 6.0.0 and < 7.0.0\"\n")
+    tom.parse("[dependencies]\nlibero = \">= 7.0.0 and < 8.0.0\"\n")
 
   rally.ensure_dependency(toml, package: "libero", reason: "needed")
   |> should.be_ok()
@@ -21,9 +21,9 @@ pub fn dependency_check_accepts_dev_dependency_test() {
 
 pub fn dependency_check_accepts_underscore_dev_dependency_test() {
   let assert Ok(toml) =
-    tom.parse("[dev_dependencies]\nproute = \">= 1.0.0 and < 2.0.0\"\n")
+    tom.parse("[dev_dependencies]\nglinter = \">= 2.19.0 and < 3.0.0\"\n")
 
-  rally.ensure_dependency(toml, package: "proute", reason: "needed")
+  rally.ensure_dependency(toml, package: "glinter", reason: "needed")
   |> should.be_ok()
 }
 

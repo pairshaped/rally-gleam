@@ -77,21 +77,21 @@ get_system_conn() ->
         Conn -> {ok, Conn}
     end.
 
-encode_push_payload(Page, Msg) ->
-    Mod = persistent_term:get({libero, wire_module}),
-    Mod:encode_push(Page, Msg).
+encode_push_payload(_Page, Msg) ->
+    case persistent_term:get({libero, wire_module}, undefined) of
+        undefined ->
+            Msg;
+        Mod ->
+            Mod:encode_term(Msg)
+    end.
 
 encode_push_frame(Page, Msg) ->
     case persistent_term:get({libero, push_frame_module}, undefined) of
         undefined ->
-            %% No push frame facade registered; fall back to ETF via Libero boundary.
-            case persistent_term:get({libero, wire_module}, undefined) of
-                undefined ->
-                    'libero@etf@wire':encode_push(Page, Msg);
-                Mod ->
-                    Encoded = Mod:encode_push(Page, Msg),
-                    'libero@etf@wire':encode_push(Page, Encoded)
-            end;
+            %% No typed push frame facade registered; fall back to a generic ETF
+            %% push frame for low-level runtime effects and tests.
+            Payload = libero_etf_ffi:encode({Page, encode_push_payload(Page, Msg)}),
+            <<1, Payload/binary>>;
         PushMod ->
             %% Single facade: protocol-specific encode + frame in one call.
             PushMod:encode_push_frame(Page, Msg)

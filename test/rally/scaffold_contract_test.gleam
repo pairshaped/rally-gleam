@@ -71,6 +71,7 @@ pub fn scaffold_uses_proute_and_rally_context_config_test() {
   |> should.equal(True)
   toml |> string.contains("module = \"sqlight\"") |> should.equal(True)
   toml |> string.contains("type = \"Connection\"") |> should.equal(True)
+  toml |> string.contains("proute = ") |> should.equal(False)
 
   let assert Ok(proute) = simplifile.read(dir <> "/proute.toml")
   proute |> string.contains("[proute]") |> should.equal(True)

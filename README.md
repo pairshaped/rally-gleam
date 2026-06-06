@@ -21,6 +21,8 @@ Rally chooses conventions so application code can stay small, generated code can
 | [Libero](https://libero.hexdocs.pm/) | Typed wire codecs for page-local load/save contracts and broadcasts |
 | [Lustre](https://hexdocs.pm/lustre/) | TEA views, updates, and effects |
 
+Proute is included through Rally. Apps configure routes with `proute.toml`; they do not need to list `proute` directly.
+
 ## What Rally Generates
 
 Rally reads page modules and writes the routing, SSR, WebSocket transport, request and response encoding, and dispatch code around them.

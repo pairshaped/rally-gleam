@@ -29,7 +29,7 @@ pub fn init_project_writes_hex_scaffold_test() {
   |> string.contains("rally = \">= 1.0.0 and < 2.0.0\"")
   |> should.be_true()
   toml
-  |> string.contains("libero = \">= 6.0.0 and < 7.0.0\"")
+  |> string.contains("libero = \">= 7.0.0 and < 8.0.0\"")
   |> should.be_true()
   toml
   |> string.contains("lustre = \">= 5.7.0 and < 7.0.0\"")
@@ -214,7 +214,7 @@ version = \"1.0.0\"
 [dependencies]
 gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
 rally = { path = \"/tmp/rally\" }
-libero = \">= 6.0.0 and < 7.0.0\"
+libero = \">= 7.0.0 and < 8.0.0\"
 
 [dev_dependencies]
 gleeunit = \">= 1.0.0 and < 2.0.0\"

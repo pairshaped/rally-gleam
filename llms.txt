@@ -24,7 +24,7 @@ gleam run
 
 `rally init` creates the Rally Scoreboard Example starter app. `rally gen` runs configured Marmot codegen, runs Proute when `proute.toml` exists, and generates Rally/Libero glue under `src/generated/**`. `rally regen` deletes `src/generated` first, then runs `gen`. `rally build` runs `gen` and builds the current package for Erlang and JavaScript. `rally migrate` delegates to Marmot migrate, and `rally reset` delegates to Marmot reset. Rally has no migration runner of its own. `rally server` stops any process listening on `PORT` or 8080, then runs `gleam run` in the foreground. Open `http://localhost:8080` to see the app. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`.
 
-Rally checks delegated package dependencies before shelling out. `[tools.marmot]` requires a direct `marmot` dependency, `proute.toml` requires `proute`, and Rally/Libero wire codegen requires `libero`.
+Rally checks delegated package dependencies before shelling out. `[tools.marmot]` requires a direct `marmot` dependency, and Rally/Libero wire codegen requires `libero`. Proute is a Rally dependency; apps configure routes with `proute.toml` but do not need to list `proute` directly.
 
 `APP_ENV=dev` is the default. Set `APP_ENV=prod` in production for secure session cookies and quieter console output.
 

@@ -429,7 +429,7 @@ fn required_deps() -> List(#(String, String)) {
     #("gleam_http", ">= 4.0.0 and < 5.0.0"),
     #("gleam_stdlib", ">= 0.60.0 and < 2.0.0"),
     #("rally", ">= 1.0.0 and < 2.0.0"),
-    #("libero", ">= 6.0.0 and < 7.0.0"),
+    #("libero", ">= 7.0.0 and < 8.0.0"),
     #("lustre", ">= 5.7.0 and < 7.0.0"),
     #("mist", ">= 6.0.0 and < 7.0.0"),
     #("sqlight", ">= 1.0.0 and < 2.0.0"),
@@ -444,7 +444,6 @@ fn required_dev_deps() -> List(#(String, String)) {
     #("birdie", ">= 2.0.0 and < 3.0.0"),
     #("glinter", ">= 2.16.0 and < 3.0.0"),
     #("marmot", ">= 1.3.0 and < 2.0.0"),
-    #("proute", ">= 0.1.0 and < 1.0.0"),
   ]
 }
 
@@ -584,7 +583,7 @@ gleam_erlang = \">= 1.0.0 and < 2.0.0\"
 gleam_http = \">= 4.0.0 and < 5.0.0\"
 gleam_stdlib = \">= 0.60.0 and < 2.0.0\"
 rally = \">= 1.0.0 and < 2.0.0\"
-libero = \">= 6.0.0 and < 7.0.0\"
+libero = \">= 7.0.0 and < 8.0.0\"
 lustre = \">= 5.7.0 and < 7.0.0\"
 mist = \">= 6.0.0 and < 7.0.0\"
 sqlight = \">= 1.0.0 and < 2.0.0\"
@@ -596,7 +595,6 @@ gleeunit = \">= 1.0.0 and < 2.0.0\"
 birdie = \">= 2.0.0 and < 3.0.0\"
 glinter = \">= 2.16.0 and < 3.0.0\"
 marmot = \">= 1.3.0 and < 2.0.0\"
-proute = \">= 0.1.0 and < 1.0.0\"
 
 [tools.glinter]
 stats = true

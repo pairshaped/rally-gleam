@@ -47,8 +47,9 @@ Rally-managed wire types, and writes Rally generated files.
 `gleam run` in the foreground.
 
 Rally checks delegated dependencies before shelling out. `[tools.marmot]`
-requires a direct `marmot` dependency. `proute.toml` requires `proute`. Rally
-wire generation requires `libero`.
+requires a direct `marmot` dependency. Rally wire generation requires `libero`.
+Proute is a Rally dependency; apps configure routes with `proute.toml` but do
+not need to list `proute` directly.
 
 ## Consequences
 
