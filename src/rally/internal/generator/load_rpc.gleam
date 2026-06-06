@@ -865,6 +865,7 @@ pub fn navigation_effects(
 @target(javascript)
 fn initial_loaded_page(
   page page: page,
+  page_effect page_effect: Effect(message),
   page_shared_state page_shared_state: shared_state,
   hydration hydration: Result(result, Nil),
   to_message to_message: fn(result) -> message,
@@ -874,9 +875,9 @@ fn initial_loaded_page(
   case hydration {
     Ok(result) -> {
       let #(page, _) = update_page(page_shared_state, page, to_message(result))
-      #(page, effect.none())
+      #(page, page_effect)
     }
-    Error(Nil) -> #(page, load_client())
+    Error(Nil) -> #(page, effect.batch([page_effect, load_client()]))
   }
 }
 
@@ -1407,8 +1408,11 @@ pub fn " <> mount <> "_load_client(
   query_params query_params: " <> page_input <> ".QueryParams,
   route route: " <> routes <> ".Route,
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
-  let page = " <> pages <> ".load_sync(page_shared_state, query_params, route)
-  #(page, " <> mount <> "_request_effect(route, " <> mount <> "_load_route(route)))
+  let #(page, page_effect) = " <> pages <> ".load(page_shared_state, query_params, route)
+  #(page, effect.batch([
+    page_effect,
+    " <> mount <> "_request_effect(route, " <> mount <> "_load_route(route)),
+  ]))
 }
 
 @target(javascript)
@@ -1435,10 +1439,10 @@ pub fn " <> mount <> "_initial_page(
   route route: " <> routes <> ".Route,
   update_page update_page: fn(" <> browser_app_page_shared_state_type(mount) <> ", " <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)) {
-  let page = " <> pages <> ".load_sync(page_shared_state, query_params, route)
+  let #(page, page_effect) = " <> pages <> ".load(page_shared_state, query_params, route)
 
   case " <> mount <> "_load_route(route) {
-    " <> prefix <> "NoLoad -> #(page, effect.none())
+    " <> prefix <> "NoLoad -> #(page, page_effect)
 " <> string.join(list.map(loads, browser_app_initial_page_case), "\n") <> "
   }
 }
@@ -1755,6 +1759,7 @@ fn browser_app_initial_page_case(load: LoadRpc) -> String {
   <> "to_message:) -> {
       initial_loaded_page(
         page: page,
+        page_effect: page_effect,
         page_shared_state: page_shared_state,
         hydration: hydration."
   <> load.name
@@ -4636,12 +4641,18 @@ fn server_ssr_load_result_message(
   route_module: String,
 ) -> String {
   let pages = mount_alias(load_mount(load), "pages")
-  pages
-  <> "."
-  <> route_message_constructor(route_module)
-  <> "("
-  <> page_alias(load)
-  <> ".loaded_from_wire(result))"
+  let message = route_message_constructor(route_module)
+  let page = page_alias(load)
+  let wire = wire_alias(load)
+
+  "case result {
+          Ok(" <> wire <> "." <> load.load_result_constructor <> "(data)) ->
+            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Ok(data)))
+          Error([message, ..]) ->
+            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(" <> page <> ".LoadError(message: message))))
+          Error([]) ->
+            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(" <> page <> ".LoadError(message: \"Could not load page.\"))))
+        }"
 }
 
 fn server_ssr_route_module_pattern(route_module: String) -> String {

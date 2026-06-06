@@ -1,6 +1,8 @@
 ---
 version: 2.0.0
 title: load_rpc_server_ssr_gleam
+file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
+test_name: load_rpc_server_ssr_snapshot_test
 ---
 @target(javascript)
 pub fn ensure() -> Nil {
@@ -95,7 +97,24 @@ pub fn admin_load_route(route route: admin_routes.Route) -> AdminLoadRoute {
   case route {
     admin_routes.AdminGames ->
       AdminGamesLoad(to_message: fn(result) {
-        admin_pages.AdminGamesMsg(admin_games_wire.loaded_from_wire(result))
+        case result {
+          Ok(admin_games_wire.AdminGamesLoaded(data)) ->
+            admin_pages.AdminGamesMsg(admin_games_wire.Loaded(Ok(data)))
+          Error([message, ..]) ->
+            admin_pages.AdminGamesMsg(
+              admin_games_wire.Loaded(
+                Error(admin_games_wire.LoadError(message: message)),
+              ),
+            )
+          Error([]) ->
+            admin_pages.AdminGamesMsg(
+              admin_games_wire.Loaded(
+                Error(admin_games_wire.LoadError(
+                  message: "Could not load page.",
+                )),
+              ),
+            )
+        }
       })
     _ -> AdminNoLoad
   }
@@ -106,11 +125,45 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
   case route {
     public_routes.Games ->
       PublicGamesLoad(to_message: fn(result) {
-        public_pages.GamesMsg(public_games_page.loaded_from_wire(result))
+        case result {
+          Ok(public_games_wire.PublicGamesLoaded(data)) ->
+            public_pages.GamesMsg(public_games_page.Loaded(Ok(data)))
+          Error([message, ..]) ->
+            public_pages.GamesMsg(
+              public_games_page.Loaded(
+                Error(public_games_page.LoadError(message: message)),
+              ),
+            )
+          Error([]) ->
+            public_pages.GamesMsg(
+              public_games_page.Loaded(
+                Error(public_games_page.LoadError(
+                  message: "Could not load page.",
+                )),
+              ),
+            )
+        }
       })
     public_routes.GamesId(id: _) ->
       PublicGameDetailLoad(to_message: fn(result) {
-        public_pages.GamesIdMsg(public_game_detail_page.loaded_from_wire(result))
+        case result {
+          Ok(public_game_detail_wire.PublicGameDetailLoaded(data)) ->
+            public_pages.GamesIdMsg(public_game_detail_page.Loaded(Ok(data)))
+          Error([message, ..]) ->
+            public_pages.GamesIdMsg(
+              public_game_detail_page.Loaded(
+                Error(public_game_detail_page.LoadError(message: message)),
+              ),
+            )
+          Error([]) ->
+            public_pages.GamesIdMsg(
+              public_game_detail_page.Loaded(
+                Error(public_game_detail_page.LoadError(
+                  message: "Could not load page.",
+                )),
+              ),
+            )
+        }
       })
     _ -> PublicNoLoad
   }
