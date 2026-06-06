@@ -37,6 +37,7 @@ pub type CodeAuthRoutes(context) {
   CodeAuthRoutes(
     session: fn(context) -> session.AuthSession,
     verify_code: fn(String, context) -> Result(Int, Nil),
+    deliver_code: fn(String, context) -> Result(Nil, Nil),
     sign_in_default_return_to: String,
     sign_in_return_to: fn(String) -> String,
     sign_out_default_return_to: String,
@@ -56,6 +57,15 @@ pub fn route_code_auth(
   routes routes: CodeAuthRoutes(context),
 ) -> Result(response.Response(ResponseData), Nil) {
   case req.method, req.path {
+    http.Post, "/sign_in/code" ->
+      request_sign_in_code(
+        req: req,
+        deliver_code: fn(email) { routes.deliver_code(email, context) },
+        default_return_to: routes.sign_in_default_return_to,
+        return_to: routes.sign_in_return_to,
+      )
+      |> Ok
+
     http.Post, "/sign_in" ->
       sign_in_with_code(
         req: req,
@@ -108,6 +118,36 @@ pub fn read_sign_in_form(
       )
       Error(invalid_sign_in_redirect(invalid_return_to))
     }
+  }
+}
+
+@target(erlang)
+/// Handle the standard email/code request workflow.
+/// Rally owns form parsing and redirects; the app owns user lookup, code
+/// storage, and delivery through the callback.
+pub fn request_sign_in_code(
+  req req: Request(Connection),
+  deliver_code deliver_code: fn(String) -> Result(Nil, Nil),
+  default_return_to default_return_to: String,
+  return_to return_to: fn(String) -> String,
+) -> response.Response(ResponseData) {
+  case read_sign_in_form(req, invalid_return_to: default_return_to) {
+    Ok(pairs) -> {
+      let return_to =
+        form_value(pairs, "return_to")
+        |> safe_local_path(default: default_return_to)
+        |> return_to
+
+      case form_value(pairs, "email") {
+        Ok(email) ->
+          case deliver_code(email) {
+            Ok(Nil) -> code_sent_redirect(return_to)
+            Error(Nil) -> invalid_sign_in_redirect(return_to)
+          }
+        Error(Nil) -> invalid_sign_in_redirect(return_to)
+      }
+    }
+    Error(response) -> response
   }
 }
 
@@ -220,6 +260,13 @@ pub fn invalid_sign_in_redirect(
   redirect(
     "/sign_in?return_to=" <> uri.percent_encode(return_to) <> "&error=invalid",
   )
+}
+
+@target(erlang)
+pub fn code_sent_redirect(
+  return_to: String,
+) -> response.Response(ResponseData) {
+  redirect("/sign_in?return_to=" <> uri.percent_encode(return_to) <> "&sent=1")
 }
 
 @target(erlang)

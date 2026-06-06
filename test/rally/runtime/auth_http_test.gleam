@@ -21,6 +21,12 @@ pub fn invalid_sign_in_redirect_sets_error_query_test() {
   |> should.equal(Ok("/sign_in?return_to=%2Fadmin%2Fgames&error=invalid"))
 }
 
+pub fn code_sent_redirect_sets_sent_query_test() {
+  auth_http.code_sent_redirect("/admin/games")
+  |> response.get_header("location")
+  |> should.equal(Ok("/sign_in?return_to=%2Fadmin%2Fgames&sent=1"))
+}
+
 pub fn issue_user_session_sets_auth_cookie_test() {
   let resp =
     auth_http.issue_user_session(
