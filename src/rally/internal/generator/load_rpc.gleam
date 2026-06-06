@@ -930,8 +930,12 @@ fn browser_app_mount_lifecycle(mount: String) -> String {
   let browser_path_changed = prefix <> "BrowserPathChanged"
 
   "@target(javascript)
-pub type " <> model <> "(shared_state) {
-  " <> model <> "(page: " <> pages <> ".Page, shared_state: shared_state)
+pub type " <> model <> "(shell_state, page_shared_state) {
+  " <> model <> "(
+    page: " <> pages <> ".Page,
+    shell_state: shell_state,
+    page_shared_state: page_shared_state,
+  )
 }
 
 @target(javascript)
@@ -944,16 +948,17 @@ pub type " <> msg <> " {
 }
 
 @target(javascript)
-pub type " <> config <> "(shared_state) {
+pub type " <> config <> "(shell_state, page_shared_state) {
   " <> config <> "(
-    page_context: fn(shared_state) -> PageContext,
-    shared_state: fn(String, Bool) -> shared_state,
-    set_active_path: fn(shared_state, String) -> shared_state,
-    set_dark_mode: fn(shared_state, Bool) -> shared_state,
+    page_context: fn(page_shared_state) -> PageContext,
+    page_shared_state: fn() -> page_shared_state,
+    shell_state: fn(String, Bool) -> shell_state,
+    set_active_path: fn(shell_state, String) -> shell_state,
+    set_dark_mode: fn(shell_state, Bool) -> shell_state,
     update_page: fn(PageContext, " <> pages <> ".Page, " <> pages <> ".Message) ->
       #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
     view: fn(
-      " <> model <> "(shared_state),
+      " <> model <> "(shell_state, page_shared_state),
       fn(" <> pages <> ".Message) -> " <> msg <> ",
       fn(Bool) -> " <> msg <> ",
       fn(String) -> " <> msg <> ",
@@ -962,7 +967,9 @@ pub type " <> config <> "(shared_state) {
 }
 
 @target(javascript)
-pub fn start_" <> mount <> "_mount(config config: " <> config <> "(shared_state)) -> Nil {
+pub fn start_" <> mount <> "_mount(
+  config config: " <> config <> "(shell_state, page_shared_state),
+) -> Nil {
   start(
     init: fn(_flags) { " <> mount <> "_mount_init(config) },
     update: fn(model, msg) { " <> mount <> "_mount_update(config, model, msg) },
@@ -974,14 +981,15 @@ pub fn start_" <> mount <> "_mount(config config: " <> config <> "(shared_state)
 
 @target(javascript)
 fn " <> mount <> "_mount_init(
-  config config: " <> config <> "(shared_state),
-) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
+  config config: " <> config <> "(shell_state, page_shared_state),
+) -> #(" <> model <> "(shell_state, page_shared_state), Effect(" <> msg <> ")) {
   let route = " <> routes <> ".parse_path(browser.path())
   let current_path = " <> routes <> ".route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
   let query_params = " <> page_input <> ".QueryParams(values: browser_mount.query_pairs())
-  let shared_state = config.shared_state(current_path, dark_mode)
-  let page_context = config.page_context(shared_state)
+  let page_shared_state = config.page_shared_state()
+  let shell_state = config.shell_state(current_path, dark_mode)
+  let page_context = config.page_context(page_shared_state)
   let #(page, page_effect) =
     " <> mount <> "_initial_page(
       page_context:,
@@ -991,7 +999,7 @@ fn " <> mount <> "_mount_init(
     )
 
   #(
-    " <> model <> "(page: page, shared_state:),
+    " <> model <> "(page: page, shell_state:, page_shared_state:),
     effect.batch([
       startup_effects(
         page_effect: page_effect,
@@ -1008,10 +1016,10 @@ fn " <> mount <> "_mount_init(
 
 @target(javascript)
 fn " <> mount <> "_mount_update(
-  config config: " <> config <> "(shared_state),
-  model model: " <> model <> "(shared_state),
+  config config: " <> config <> "(shell_state, page_shared_state),
+  model model: " <> model <> "(shell_state, page_shared_state),
   msg msg: " <> msg <> ",
-) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
+) -> #(" <> model <> "(shell_state, page_shared_state), Effect(" <> msg <> ")) {
   case msg {
     " <> page_msg <> "(inner) -> {
       case " <> mount <> "_message_path(inner) {
@@ -1022,7 +1030,7 @@ fn " <> mount <> "_mount_update(
           push_history: True,
         )
         None -> {
-          let page_context = config.page_context(model.shared_state)
+          let page_context = config.page_context(model.page_shared_state)
           let #(page, page_effect) =
             map_page_effect(
               config.update_page(page_context, model.page, inner),
@@ -1055,9 +1063,9 @@ fn " <> mount <> "_mount_update(
       )
     }
     " <> dark_mode_changed <> "(dark_mode) -> {
-      let shared_state = config.set_dark_mode(model.shared_state, dark_mode)
+      let shell_state = config.set_dark_mode(model.shell_state, dark_mode)
       #(
-        " <> model <> "(..model, shared_state:),
+        " <> model <> "(..model, shell_state:),
         browser_mount.dark_mode_changed_effects(dark_mode),
       )
     }
@@ -1082,15 +1090,15 @@ fn " <> mount <> "_mount_update(
 
 @target(javascript)
 fn " <> mount <> "_mount_navigate(
-  config config: " <> config <> "(shared_state),
-  model model: " <> model <> "(shared_state),
+  config config: " <> config <> "(shell_state, page_shared_state),
+  model model: " <> model <> "(shell_state, page_shared_state),
   path path: String,
   push_history push_history: Bool,
-) -> #(" <> model <> "(shared_state), Effect(" <> msg <> ")) {
+) -> #(" <> model <> "(shell_state, page_shared_state), Effect(" <> msg <> ")) {
   let route = " <> routes <> ".parse_path(path)
   let canonical_path = " <> routes <> ".route_to_path(route)
-  let shared_state = config.set_active_path(model.shared_state, canonical_path)
-  let page_context = config.page_context(shared_state)
+  let shell_state = config.set_active_path(model.shell_state, canonical_path)
+  let page_context = config.page_context(model.page_shared_state)
   let #(page, page_effect) =
     " <> mount <> "_load_client(
       page_context:,
@@ -1099,7 +1107,7 @@ fn " <> mount <> "_mount_navigate(
     )
 
   #(
-    " <> model <> "(page: page, shared_state:),
+    " <> model <> "(page: page, shell_state:, page_shared_state: model.page_shared_state),
     effect.batch([
       navigation_effects(
         path: canonical_path,

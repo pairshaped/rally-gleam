@@ -424,8 +424,12 @@ fn public_request_effect(
 }
 
 @target(javascript)
-pub type AdminMountModel(shared_state) {
-  AdminMountModel(page: admin_pages.Page, shared_state: shared_state)
+pub type AdminMountModel(shell_state, page_shared_state) {
+  AdminMountModel(
+    page: admin_pages.Page,
+    shell_state: shell_state,
+    page_shared_state: page_shared_state,
+  )
 }
 
 @target(javascript)
@@ -438,16 +442,17 @@ pub type AdminMountMsg {
 }
 
 @target(javascript)
-pub type AdminMountConfig(shared_state) {
+pub type AdminMountConfig(shell_state, page_shared_state) {
   AdminMountConfig(
-    page_context: fn(shared_state) -> PageContext,
-    shared_state: fn(String, Bool) -> shared_state,
-    set_active_path: fn(shared_state, String) -> shared_state,
-    set_dark_mode: fn(shared_state, Bool) -> shared_state,
+    page_context: fn(page_shared_state) -> PageContext,
+    page_shared_state: fn() -> page_shared_state,
+    shell_state: fn(String, Bool) -> shell_state,
+    set_active_path: fn(shell_state, String) -> shell_state,
+    set_dark_mode: fn(shell_state, Bool) -> shell_state,
     update_page: fn(PageContext, admin_pages.Page, admin_pages.Message) ->
       #(admin_pages.Page, Effect(admin_pages.Message)),
     view: fn(
-      AdminMountModel(shared_state),
+      AdminMountModel(shell_state, page_shared_state),
       fn(admin_pages.Message) -> AdminMountMsg,
       fn(Bool) -> AdminMountMsg,
       fn(String) -> AdminMountMsg,
@@ -456,7 +461,9 @@ pub type AdminMountConfig(shared_state) {
 }
 
 @target(javascript)
-pub fn start_admin_mount(config config: AdminMountConfig(shared_state)) -> Nil {
+pub fn start_admin_mount(
+  config config: AdminMountConfig(shell_state, page_shared_state),
+) -> Nil {
   start(
     init: fn(_flags) { admin_mount_init(config) },
     update: fn(model, msg) { admin_mount_update(config, model, msg) },
@@ -468,15 +475,16 @@ pub fn start_admin_mount(config config: AdminMountConfig(shared_state)) -> Nil {
 
 @target(javascript)
 fn admin_mount_init(
-  config config: AdminMountConfig(shared_state),
-) -> #(AdminMountModel(shared_state), Effect(AdminMountMsg)) {
+  config config: AdminMountConfig(shell_state, page_shared_state),
+) -> #(AdminMountModel(shell_state, page_shared_state), Effect(AdminMountMsg)) {
   let route = admin_routes.parse_path(browser.path())
   let current_path = admin_routes.route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
   let query_params =
     admin_page_input.QueryParams(values: browser_mount.query_pairs())
-  let shared_state = config.shared_state(current_path, dark_mode)
-  let page_context = config.page_context(shared_state)
+  let page_shared_state = config.page_shared_state()
+  let shell_state = config.shell_state(current_path, dark_mode)
+  let page_context = config.page_context(page_shared_state)
   let #(page, page_effect) =
     admin_initial_page(
       page_context:,
@@ -486,7 +494,7 @@ fn admin_mount_init(
     )
 
   #(
-    AdminMountModel(page: page, shared_state:),
+    AdminMountModel(page: page, shell_state:, page_shared_state:),
     effect.batch([
       startup_effects(
         page_effect: page_effect,
@@ -503,10 +511,10 @@ fn admin_mount_init(
 
 @target(javascript)
 fn admin_mount_update(
-  config config: AdminMountConfig(shared_state),
-  model model: AdminMountModel(shared_state),
+  config config: AdminMountConfig(shell_state, page_shared_state),
+  model model: AdminMountModel(shell_state, page_shared_state),
   msg msg: AdminMountMsg,
-) -> #(AdminMountModel(shared_state), Effect(AdminMountMsg)) {
+) -> #(AdminMountModel(shell_state, page_shared_state), Effect(AdminMountMsg)) {
   case msg {
     AdminPageMsg(inner) -> {
       case admin_message_path(inner) {
@@ -518,7 +526,7 @@ fn admin_mount_update(
             push_history: True,
           )
         None -> {
-          let page_context = config.page_context(model.shared_state)
+          let page_context = config.page_context(model.page_shared_state)
           let #(page, page_effect) =
             map_page_effect(
               config.update_page(page_context, model.page, inner),
@@ -551,9 +559,9 @@ fn admin_mount_update(
       )
     }
     AdminDarkModeChanged(dark_mode) -> {
-      let shared_state = config.set_dark_mode(model.shared_state, dark_mode)
+      let shell_state = config.set_dark_mode(model.shell_state, dark_mode)
       #(
-        AdminMountModel(..model, shared_state:),
+        AdminMountModel(..model, shell_state:),
         browser_mount.dark_mode_changed_effects(dark_mode),
       )
     }
@@ -578,15 +586,15 @@ fn admin_mount_update(
 
 @target(javascript)
 fn admin_mount_navigate(
-  config config: AdminMountConfig(shared_state),
-  model model: AdminMountModel(shared_state),
+  config config: AdminMountConfig(shell_state, page_shared_state),
+  model model: AdminMountModel(shell_state, page_shared_state),
   path path: String,
   push_history push_history: Bool,
-) -> #(AdminMountModel(shared_state), Effect(AdminMountMsg)) {
+) -> #(AdminMountModel(shell_state, page_shared_state), Effect(AdminMountMsg)) {
   let route = admin_routes.parse_path(path)
   let canonical_path = admin_routes.route_to_path(route)
-  let shared_state = config.set_active_path(model.shared_state, canonical_path)
-  let page_context = config.page_context(shared_state)
+  let shell_state = config.set_active_path(model.shell_state, canonical_path)
+  let page_context = config.page_context(model.page_shared_state)
   let #(page, page_effect) =
     admin_load_client(
       page_context:,
@@ -595,7 +603,11 @@ fn admin_mount_navigate(
     )
 
   #(
-    AdminMountModel(page: page, shared_state:),
+    AdminMountModel(
+      page: page,
+      shell_state:,
+      page_shared_state: model.page_shared_state,
+    ),
     effect.batch([
       navigation_effects(
         path: canonical_path,
@@ -609,8 +621,12 @@ fn admin_mount_navigate(
 }
 
 @target(javascript)
-pub type PublicMountModel(shared_state) {
-  PublicMountModel(page: public_pages.Page, shared_state: shared_state)
+pub type PublicMountModel(shell_state, page_shared_state) {
+  PublicMountModel(
+    page: public_pages.Page,
+    shell_state: shell_state,
+    page_shared_state: page_shared_state,
+  )
 }
 
 @target(javascript)
@@ -623,16 +639,17 @@ pub type PublicMountMsg {
 }
 
 @target(javascript)
-pub type PublicMountConfig(shared_state) {
+pub type PublicMountConfig(shell_state, page_shared_state) {
   PublicMountConfig(
-    page_context: fn(shared_state) -> PageContext,
-    shared_state: fn(String, Bool) -> shared_state,
-    set_active_path: fn(shared_state, String) -> shared_state,
-    set_dark_mode: fn(shared_state, Bool) -> shared_state,
+    page_context: fn(page_shared_state) -> PageContext,
+    page_shared_state: fn() -> page_shared_state,
+    shell_state: fn(String, Bool) -> shell_state,
+    set_active_path: fn(shell_state, String) -> shell_state,
+    set_dark_mode: fn(shell_state, Bool) -> shell_state,
     update_page: fn(PageContext, public_pages.Page, public_pages.Message) ->
       #(public_pages.Page, Effect(public_pages.Message)),
     view: fn(
-      PublicMountModel(shared_state),
+      PublicMountModel(shell_state, page_shared_state),
       fn(public_pages.Message) -> PublicMountMsg,
       fn(Bool) -> PublicMountMsg,
       fn(String) -> PublicMountMsg,
@@ -642,7 +659,7 @@ pub type PublicMountConfig(shared_state) {
 
 @target(javascript)
 pub fn start_public_mount(
-  config config: PublicMountConfig(shared_state),
+  config config: PublicMountConfig(shell_state, page_shared_state),
 ) -> Nil {
   start(
     init: fn(_flags) { public_mount_init(config) },
@@ -660,15 +677,16 @@ pub fn start_public_mount(
 
 @target(javascript)
 fn public_mount_init(
-  config config: PublicMountConfig(shared_state),
-) -> #(PublicMountModel(shared_state), Effect(PublicMountMsg)) {
+  config config: PublicMountConfig(shell_state, page_shared_state),
+) -> #(PublicMountModel(shell_state, page_shared_state), Effect(PublicMountMsg)) {
   let route = public_routes.parse_path(browser.path())
   let current_path = public_routes.route_to_path(route)
   let dark_mode = browser_mount.device_dark_mode()
   let query_params =
     public_page_input.QueryParams(values: browser_mount.query_pairs())
-  let shared_state = config.shared_state(current_path, dark_mode)
-  let page_context = config.page_context(shared_state)
+  let page_shared_state = config.page_shared_state()
+  let shell_state = config.shell_state(current_path, dark_mode)
+  let page_context = config.page_context(page_shared_state)
   let #(page, page_effect) =
     public_initial_page(
       page_context:,
@@ -678,7 +696,7 @@ fn public_mount_init(
     )
 
   #(
-    PublicMountModel(page: page, shared_state:),
+    PublicMountModel(page: page, shell_state:, page_shared_state:),
     effect.batch([
       startup_effects(
         page_effect: page_effect,
@@ -695,10 +713,10 @@ fn public_mount_init(
 
 @target(javascript)
 fn public_mount_update(
-  config config: PublicMountConfig(shared_state),
-  model model: PublicMountModel(shared_state),
+  config config: PublicMountConfig(shell_state, page_shared_state),
+  model model: PublicMountModel(shell_state, page_shared_state),
   msg msg: PublicMountMsg,
-) -> #(PublicMountModel(shared_state), Effect(PublicMountMsg)) {
+) -> #(PublicMountModel(shell_state, page_shared_state), Effect(PublicMountMsg)) {
   case msg {
     PublicPageMsg(inner) -> {
       case public_message_path(inner) {
@@ -710,7 +728,7 @@ fn public_mount_update(
             push_history: True,
           )
         None -> {
-          let page_context = config.page_context(model.shared_state)
+          let page_context = config.page_context(model.page_shared_state)
           let #(page, page_effect) =
             map_page_effect(
               config.update_page(page_context, model.page, inner),
@@ -743,9 +761,9 @@ fn public_mount_update(
       )
     }
     PublicDarkModeChanged(dark_mode) -> {
-      let shared_state = config.set_dark_mode(model.shared_state, dark_mode)
+      let shell_state = config.set_dark_mode(model.shell_state, dark_mode)
       #(
-        PublicMountModel(..model, shared_state:),
+        PublicMountModel(..model, shell_state:),
         browser_mount.dark_mode_changed_effects(dark_mode),
       )
     }
@@ -770,15 +788,15 @@ fn public_mount_update(
 
 @target(javascript)
 fn public_mount_navigate(
-  config config: PublicMountConfig(shared_state),
-  model model: PublicMountModel(shared_state),
+  config config: PublicMountConfig(shell_state, page_shared_state),
+  model model: PublicMountModel(shell_state, page_shared_state),
   path path: String,
   push_history push_history: Bool,
-) -> #(PublicMountModel(shared_state), Effect(PublicMountMsg)) {
+) -> #(PublicMountModel(shell_state, page_shared_state), Effect(PublicMountMsg)) {
   let route = public_routes.parse_path(path)
   let canonical_path = public_routes.route_to_path(route)
-  let shared_state = config.set_active_path(model.shared_state, canonical_path)
-  let page_context = config.page_context(shared_state)
+  let shell_state = config.set_active_path(model.shell_state, canonical_path)
+  let page_context = config.page_context(model.page_shared_state)
   let #(page, page_effect) =
     public_load_client(
       page_context:,
@@ -787,7 +805,11 @@ fn public_mount_navigate(
     )
 
   #(
-    PublicMountModel(page: page, shared_state:),
+    PublicMountModel(
+      page: page,
+      shell_state:,
+      page_shared_state: model.page_shared_state,
+    ),
     effect.batch([
       navigation_effects(
         path: canonical_path,
