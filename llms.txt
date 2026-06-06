@@ -202,5 +202,5 @@ gleam run
 - [Rally on GitHub](https://github.com/pairshaped/rally-gleam)
 - [Gleam](https://gleam.run)
 - [Lustre](https://hexdocs.pm/lustre)
-- [Libero](https://hexdocs.pm/libero)
-- [Marmot](https://hexdocs.pm/marmot)
+- [Libero](https://libero.hexdocs.pm/)
+- [Marmot](https://marmot.hexdocs.pm/)

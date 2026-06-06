@@ -3,7 +3,7 @@
 # Rally
 
 [![Package Version](https://img.shields.io/hexpm/v/rally)](https://hex.pm/packages/rally)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/rally/)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://rally.hexdocs.pm/)
 
 Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules with page-local models, messages, load handlers, save handlers, views, and broadcast hooks. Rally generates routing composition, server-side rendering, WebSocket transport, request/result protocol code, hydration, browser lifecycle, and typed client-server messaging.
 
@@ -144,7 +144,7 @@ pub fn load(
 
 There is no separate API schema. Rally discovers page-local `ServerMsg`,
 `LoadResult`, `load`, `handle`, and broadcast contracts, then passes those
-page-owned wire types to [Libero](https://hexdocs.pm/libero/) as codec seeds.
+page-owned wire types to [Libero](https://libero.hexdocs.pm/) as codec seeds.
 Libero generates typed codec artifacts. Rally generates the browser and server
 glue that calls those codecs.
 
