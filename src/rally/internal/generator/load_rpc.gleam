@@ -1057,7 +1057,7 @@ fn " <> mount <> "_mount_update(
         server_frame_effect(
           page: model.page,
           bytes: bytes,
-          apply_push: " <> mount <> "_apply_push,
+          apply_broadcast: " <> mount <> "_apply_broadcast,
           on_page: " <> page_msg <> ",
         )
       #(
@@ -1200,13 +1200,13 @@ fn browser_app_server_frame_effect(
 pub fn server_frame_effect(
   page page: page,
   bytes bytes: BitArray,
-  apply_push apply_push: fn(page, String, " <> push_type_ref(contract) <> ") ->
+  apply_broadcast apply_broadcast: fn(page, String, " <> push_type_ref(contract) <> ") ->
     #(page, Effect(page_msg)),
   on_page on_page: fn(page_msg) -> msg,
 ) -> #(page, Effect(msg)) {
   case client_protocol.decode_server_frame(bytes) {
     Ok(client_protocol.Push(module:, message:)) ->
-      map_page_effect(apply_push(page, module, message), on_page)
+      map_page_effect(apply_broadcast(page, module, message), on_page)
     Error(Nil) -> #(page, effect.none())
   }
 }
@@ -1216,7 +1216,7 @@ pub fn server_frame_effect(
 pub fn server_frame_effect(
   page page: page,
   bytes _bytes: BitArray,
-  apply_push _apply_push: fn(page, String, Nil) -> #(page, Effect(page_msg)),
+  apply_broadcast _apply_broadcast: fn(page, String, Nil) -> #(page, Effect(page_msg)),
   on_page _on_page: fn(page_msg) -> msg,
 ) -> #(page, Effect(msg)) {
   #(page, effect.none())
@@ -1278,7 +1278,12 @@ pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(" <>
     _ -> []
   }
 }
-" <> browser_app_mount_apply_push(mount, loads, route_modules, push_contract:)
+" <> browser_app_mount_apply_broadcast(
+    mount,
+    loads,
+    route_modules,
+    push_contract:,
+  )
 }
 
 fn browser_app_sync_topics(push_contract: Option(PushContract)) -> String {
@@ -1298,7 +1303,7 @@ pub fn sync_topics(topics topics: List(String)) -> Effect(msg) {
   }
 }
 
-fn browser_app_mount_apply_push(
+fn browser_app_mount_apply_broadcast(
   mount: String,
   loads: List(LoadRpc),
   route_modules: List(String),
@@ -1309,7 +1314,7 @@ fn browser_app_mount_apply_push(
   case push_contract {
     Some(contract) -> "
 @target(javascript)
-pub fn " <> mount <> "_apply_push(
+pub fn " <> mount <> "_apply_broadcast(
   page page: " <> pages <> ".Page,
   module _module: String,
   message message: " <> push_type_ref(contract) <> ",
@@ -1320,7 +1325,7 @@ pub fn " <> mount <> "_apply_push(
           let constructor = route_constructor_for_module(module_path)
           let page = browser_app_source_page_alias(module_path, loads)
           "    " <> browser_app_page_pattern(pages, module_path) <> " -> {
-      let #(model, page_effect) = " <> page <> ".apply_push(model, message)
+      let #(model, page_effect) = " <> page <> ".apply_broadcast(model, message)
       #(" <> browser_app_page_constructor(
             pages,
             constructor,
@@ -1339,7 +1344,7 @@ pub fn " <> mount <> "_apply_push(
 "
     None -> "
 @target(javascript)
-pub fn " <> mount <> "_apply_push(
+pub fn " <> mount <> "_apply_broadcast(
   page page: " <> pages <> ".Page,
   module _module: String,
   message _message: Nil,
