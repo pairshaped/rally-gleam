@@ -1,7 +1,0 @@
----
-version: 1.5.5
-title: cascade_delete
-file: ./test/schema_test.gleam
-test_name: cascade_delete_test
----
-#([0], [0], [0])

@@ -1,7 +1,0 @@
----
-version: 1.5.5
-title: article_tags
-file: ./test/schema_test.gleam
-test_name: tags_test
----
-["fp", "gleam"]

@@ -1,6 +1,6 @@
 # Libero Boundary Spec
 
-Status: implemented boundary, kept for rationale
+Status: intended boundary
 Date: 2026-05-09
 Last checked: 2026-05-13
 
@@ -10,7 +10,7 @@ Rally should be a protocol-oblivious consumer of Libero. Rally decides what
 messages exist and when to send them. Libero decides how those typed messages
 become protocol data and back.
 
-This boundary is now represented by generated `protocol_wire` facades. Rally
+This boundary is represented by generated `protocol_wire` facades. Rally
 backs onto Libero for scanning, dispatch generation, wire transforms, protocol
 facades, and typed decoders.
 
@@ -21,10 +21,9 @@ Libero-owned modules or updated facade imports. It should not need to rewrite
 WebSocket transport logic, response handling, push handling, page init, SSR
 hydration, or the message inspector because the configured protocol changed.
 
-Rally's generated Lustre clients default to ETF. JSON is useful for
-non-Gleam clients such as a Rust CLI or Go tool that call the same handler
-contract. Rally should benefit from Libero's protocol choice without owning the
-choice.
+Rally's generated browser lifecycle glue defaults to ETF. JSON is useful for
+non-Gleam tools that call the same handler contract. Rally should benefit from
+Libero's protocol choice without owning the choice.
 
 ## Ownership
 
@@ -65,8 +64,8 @@ Current protocol boundary:
 - Generated `transport.gleam` exposes framework send, register, and read
   helpers instead of raw frame parsing.
 - Generated app code uses generated codec and hydration helpers.
-- `rally/runtime/wire.gleam` remains as a small ETF wrapper for legacy and
-  direct runtime helpers.
+- `rally/runtime/wire.gleam` remains as a small ETF wrapper for direct runtime
+  helpers.
 
 ## Boundary Shape
 
@@ -96,9 +95,9 @@ frame = generated_libero.encode_request(page, 0, params)
 SSR hydration should use generated Libero helpers rather than raw
 `decode_safe_raw` plus `apply_typed_decoder` calls in Rally-generated app code.
 
-## Generated Client Surface
+## Generated Browser Surface
 
-Generated Rally client code should expose framework operations:
+Generated Rally browser code should expose framework operations:
 
 - `send_rpc(msg, callback)`
 - `send_page_init(page, params)`
@@ -118,32 +117,13 @@ If an advanced consumer needs raw Libero codec functions, it can import Libero
 directly. Rally's generated surface should guide normal app code toward the
 typed contract.
 
-## Migration Steps
-
-The migration checklist below is retained as historical context.
-
-1. Add higher-level protocol facade functions to Libero while keeping ETF.
-2. Update `rally/runtime/transport_ffi.mjs` to call Libero frame helpers instead
-   of parsing frame bytes.
-3. Update generated `transport.gleam` so raw decode helpers are not part of the
-   public generated surface.
-4. Move SSR flag typed decoding behind generated Libero helpers.
-5. Update generated app code to call typed hydration helpers instead of
-   `transport.apply_typed_decoder`.
-6. Update `rally/runtime/effect.gleam` and push delivery to call Libero push
-   helpers through `rally/runtime/wire.gleam`.
-7. Update the RealWorld CLI to use Libero request/response helpers.
-8. Regenerate snapshots and update tests to assert Rally does not inspect frame
-   bytes.
-9. Update `llms.txt` and README language after implementation.
-
 ## Test Plan
 
 - Existing `gleam test` in Rally.
 - JS transport tests for response callbacks and framework error routing.
-- Snapshot tests for generated `transport.gleam`, `codec.gleam`, and app code.
-- RealWorld CLI smoke test against HTTP RPC.
-- A guard test that generated Rally client code does not contain
+- Snapshot tests for generated Rally, Libero, and browser app code.
+- Scoreboard smoke test for SSR, hydration, browser navigation, and save.
+- A guard test that generated Rally browser code does not contain
   `decode_safe_raw`, `apply_typed_decoder`, `0x00`, or `0x01`.
 - Libero tests for the new frame facade.
 
@@ -151,10 +131,10 @@ The migration checklist below is retained as historical context.
 
 - Rally WebSocket code never reads protocol tag bytes.
 - Rally WebSocket code never slices request IDs out of raw response frames.
-- Rally generated client code does not expose raw decode helpers.
+- Rally generated browser code does not expose raw decode helpers.
 - Rally app generation does not manually apply typed decoders for flags.
 - Rally push handling receives decoded protocol events from Libero.
-- The RealWorld CLI does not match response bytes by hand.
+- The Rally Scoreboard smoke path does not match response bytes by hand.
 - Adding JSON as a configured Libero protocol would leave Rally's transport
   lifecycle, response handling, push handling, page init, and hydration logic
   unchanged except for regenerated Libero-owned modules.

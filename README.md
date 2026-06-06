@@ -5,7 +5,7 @@
 [![Package Version](https://img.shields.io/hexpm/v/rally)](https://hex.pm/packages/rally)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/rally/)
 
-Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules and `server_*` handler functions. Rally generates routing, server-side rendering, WebSocket transport, and typed client-server messaging.
+Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules with page-local models, messages, load handlers, save handlers, views, and broadcast hooks. Rally generates routing composition, server-side rendering, WebSocket transport, request/result protocol code, hydration, browser lifecycle, and typed client-server messaging.
 
 The page file is the contract. Client state, server calls, and the message types that cross the wire all live together until you choose to extract shared code.
 
@@ -16,6 +16,8 @@ Rally apps use SQLite by default: embedded database, migrations, and type-safe S
 Rally reads page modules and writes the routing, SSR, WebSocket transport, request and response encoding, and dispatch code around them.
 
 You still write the UI, SQL, auth policy, and server handlers.
+
+`rally build` follows the Rally Scoreboard unified-source path. It runs configured Marmot codegen, runs Proute when `proute.toml` exists, composes Proute routes with Libero codecs, writes `src/generated/rally/**` and `src/generated/libero/**`, then builds the current package for Erlang and JavaScript.
 
 ## Create an app
 
@@ -31,76 +33,136 @@ gleam run
 
 `rally init` writes the starter app into the current Gleam project, including `src/my_app.gleam`. It replaces the default files from `gleam new` that Rally needs to take over: `gleam.toml`, `.gitignore`, `README.md`, and `src/my_app.gleam`. If you already wrote your own `README.md`, Rally leaves it alone. If any other target file already exists, Rally stops before writing anything and tells you which file needs attention.
 
-`rally migrate` applies SQLite migrations from `migrations/`, creates local databases under `db/`, and runs Marmot SQL codegen. `rally build` then generates the routing, SSR, and transport code and builds the JavaScript client. Start the server with `gleam run` and open `http://localhost:8080`. The starter is a counter that persists in SQLite: the value survives page refreshes because clicks go through RPC to the database. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run`. Run `rally migrate` before `rally build` and before deploying against a new database.
+`rally migrate` delegates to `marmot migrate`, so Marmot owns the configured database path and migration directory. The starter uses `db/migrations` and stores local SQLite databases under `db/`. `rally build` then regenerates framework glue and builds the app for Erlang and JavaScript. Start the server with `gleam run -m rally server` and open `http://localhost:8080`. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`. Run `rally migrate` before `rally build` and before deploying against a new database.
+
+Common workflow commands:
+
+| Command | What it does |
+|---|---|
+| `gleam run -m rally gen` | Runs Marmot, Proute, Rally, and Libero codegen without building |
+| `gleam run -m rally regen` | Deletes `src/generated` and then runs `gen` |
+| `gleam run -m rally build` | Runs `gen`, then builds Erlang and JavaScript targets |
+| `gleam run -m rally migrate` | Delegates to `marmot migrate` |
+| `gleam run -m rally reset` | Delegates to `marmot reset`, including seeds |
+| `gleam run -m rally server` | Stops any process on `PORT` or 8080, then runs `gleam run` in the foreground |
 
 ## Writing a page
 
-A page file in `src/<namespace>/pages/` is a Lustre component with server calls:
+A page file in `src/<namespace>/pages/` is a Lustre component with server load
+and save handlers beside the client UI:
 
 ```gleam
 import gleam/int
-import lustre/element.{type Element, text}
+import lustre/attribute
+import lustre/element.{type Element}
 import lustre/element/html
-import rally/runtime/effect.{type Effect}
-import rally/runtime/effect
-import server_context.{type ServerContext}
+import lustre/effect.{type Effect}
+import lustre/effect
+import lustre/event
+import generated/proute/public/page_input
+import public/page_shared_state.{type PublicPageSharedState}
+import rally/runtime/load as runtime_load
 
-// MODEL -- client state for this page.
+@target(javascript)
+import generated/rally/server
+
+@target(erlang)
+import sqlight
 
 pub type Model {
-  Model(count: Int)
+  Model(count: Int, error: String)
 }
 
-pub fn init() -> #(Model, Effect(Msg)) {
-  #(Model(count: 0), effect.none())
-}
-
-// UPDATE -- client messages and how they change the model.
-
-pub type Msg {
+pub type Message {
   Increment
-  GotIncrement(Result(Int, List(String)))
+  Loaded(Result(Int, runtime_load.LoadError))
+  Saved(Result(GameUpdate, SaveError))
 }
 
-pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
+pub type ServerMsg {
+  PublicHomeLoad
+  PublicHomeIncrement
+}
+
+pub type LoadResult {
+  PublicHomeLoaded(count: Int)
+}
+
+pub type GameUpdate {
+  GameUpdate(count: Int)
+}
+
+pub type SaveError {
+  SaveError(message: String)
+}
+
+pub fn initial_model(
+  _page_shared_state: PublicPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model(count: 0, error: "")
+}
+
+pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message)) {
   case msg {
-    Increment ->
-      // effect.rpc sends ServerIncrement to server_increment and
-      // routes the response back through GotIncrement.
-      #(model, effect.rpc(ServerIncrement(amount: 1), on_response: GotIncrement))
-
-    GotIncrement(Ok(amount)) ->
-      #(Model(count: model.count + amount), effect.none())
-
-    GotIncrement(Error(_)) ->
-      #(model, effect.none())
+    Increment -> #(model, save_effect(Increment))
+    Loaded(Ok(count)) -> #(Model(count:, error: ""), effect.none())
+    Loaded(Error(error)) -> #(Model(..model, error: error.message), effect.none())
+    Saved(Ok(GameUpdate(count:))) -> #(Model(count:, error: ""), effect.none())
+    Saved(Error(SaveError(message:))) ->
+      #(Model(..model, error: message), effect.none())
   }
 }
 
-// VIEW -- shared by server (SSR) and client (SPA).
-
-pub fn view(model: Model) -> Element(Msg) {
-  html.button([], [text("Count: " <> int.to_string(model.count))])
+pub fn view(model: Model) -> Element(Message) {
+  html.main([], [
+    html.button([event.on_click(Increment)], [
+      html.text("Count: " <> int.to_string(model.count)),
+    ]),
+    case model.error {
+      "" -> html.text("")
+      message -> html.p([attribute.class("error")], [html.text(message)])
+    },
+  ])
 }
 
-// SERVER -- message type and handler.
-// Rally scans the handler signature to generate the wire contract.
-
-pub type ServerIncrement {
-  ServerIncrement(amount: Int)
+@target(javascript)
+fn save_effect(_msg: Message) -> Effect(Message) {
+  server.save_public_home(
+    message: PublicHomeIncrement,
+    on_result: fn(result) {
+      Saved(case result {
+        Ok(update) -> Ok(update)
+        Error(_) -> Error(SaveError(message: "Could not save counter."))
+      })
+    },
+  )
 }
 
-pub fn server_increment(
-  msg msg: ServerIncrement,
-  server_context _server_context: ServerContext,
-) -> Result(Int, List(String)) {
-  Ok(msg.amount)
+@target(erlang)
+pub fn load(db: sqlight.Connection) -> Result(Int, runtime_load.LoadError) {
+  // Read from the database here.
+  Ok(0)
+}
+
+@target(erlang)
+pub fn handle(
+  db: sqlight.Connection,
+  message: ServerMsg,
+) -> Result(GameUpdate, SaveError) {
+  case message {
+    PublicHomeLoad -> Error(SaveError(message: "Load is not a save action."))
+    PublicHomeIncrement -> {
+      // Write to the database here.
+      Ok(GameUpdate(count: 1))
+    }
+  }
 }
 ```
 
-`Model`, `Msg`, `init`, `update`, and `view` are normal Lustre TEA. `ServerIncrement` and `server_increment` define the server call. The client sends the typed message with `effect.rpc`.
+`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA. `ServerMsg`, `LoadResult`, `load`, and `handle` define the server boundary. Rally generates browser functions such as `generated/rally/server.save_public_home`, server dispatch, SSR loading, hydration, and WebSocket transport.
 
-There is no separate API schema. Rally scans the handler signature and wires it into the generated client and server code. Rally uses [Libero](https://hexdocs.pm/libero/) as its lower-level wire codec library, the same way Marmot-generated SQL access code uses SQLite underneath.
+There is no separate API schema. Rally scans page-local handler signatures and wires them into generated browser and server code. Rally uses [Libero](https://hexdocs.pm/libero/) as its lower-level wire codec library, the same way Marmot-generated SQL access code uses SQLite underneath.
 
 ## File-based routing
 
@@ -121,7 +183,6 @@ Most Rally apps use only a few modules directly:
 
 | Module | Use it for |
 |---|---|
-| `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
 | `rally/runtime/load` | Standard page load error type |
 | `rally/runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
 | `rally/runtime/system` | App startup and background jobs |
@@ -129,7 +190,6 @@ Most Rally apps use only a few modules directly:
 | `rally/runtime/auth` | Auth policy types, load result types, secret hashing, login codes |
 | `rally/runtime/auth_http` | Standard sign-in, sign-out, email-code, and Google provider HTTP routes |
 | `rally/runtime/env` | `APP_ENV` parsing and production cookie policy |
-| `rally/runtime/migrate` | Numbered SQLite migrations |
 | `rally/runtime/test_db` | Fast in-memory SQLite for tests |
 
 The `rally/internal/...` modules are codegen implementation. App code should treat them as private. The generated files under `src/generated/` are the boundary Rally presents to your app.
@@ -144,22 +204,22 @@ For short login-code flows, use `auth.generate_login_code`, then store `auth.has
 
 ## Generated files
 
-Running `gleam run -m rally` reads `[[tools.rally.clients]]` from gleam.toml and produces:
+Running `gleam run -m rally build` reads the app's standard project config and produces unified-source generated files:
 
-**Server-side** (in `src/generated/<namespace>/`): router, page dispatch, RPC dispatch, SSR handler, WebSocket handler, HTTP handler, protocol wire facade.
+- `src/generated/proute/**`: route types, route params, query params, and page dispatch, generated by Proute when `proute.toml` exists.
+- `src/generated/rally/**`: request/result protocols, client transport, browser mount/app glue, hydration, SSR, websocket handling, theme helpers, and load/save result envelopes.
+- `src/generated/libero/**`: ETF codec helpers, decoder registration, atoms/wire modules, and Libero contract metadata.
 
-**Client-side** (in `.generated_clients/<namespace>/`): Lustre SPA entry, WebSocket transport, tree-shaken page modules, codec, effect shim.
-
-The client package is a standalone Gleam project. The server project is the input to codegen.
+For broadcast-aware pages in the unified-source surface, app code owns typed topics and broadcast event payloads. Page `broadcast_subscriptions` and `apply_broadcast` hooks live together in a `// BROADCAST` section. Generated Rally glue maps typed topics to text topic sync frames, filters broadcasts on the server per connection, and calls page `apply_broadcast` hooks with decoded events.
 
 ## Examples
 
-- [`examples/realworld/`](https://github.com/pairshaped/rally-gleam/tree/master/examples/realworld): Conduit clone with auth, articles, comments, tags, favorites, follows. Uses both RPC and stateful server models.
+- [Rally Scoreboard](../rally-scoreboard-example/): unified-source Rally example with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
 
 ## More docs
 
 - [Pages](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/pages.md): routing, page lifecycle, SSR loading, and layouts
-- [Server messaging](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/server-messaging.md): RPC, stateful server pages, and broadcast
+- [Server messaging](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/server-messaging.md): page-local load/save handlers and typed broadcasts
 - [Runtime](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/runtime.md): the `rally/runtime/*` modules app code imports
 - [Configuration](https://github.com/pairshaped/rally-gleam/blob/master/pages/guides/configuration.md): `gleam.toml`, generated paths, and protocols
 - [Comparisons](https://github.com/pairshaped/rally-gleam/blob/master/pages/reference/comparisons.md): Rally, Lustre server components, and Lamdera-style apps

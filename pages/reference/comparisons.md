@@ -2,11 +2,11 @@
 
 Rally makes a specific set of architectural choices. This page explains those choices, what they cost, and how they compare to other approaches.
 
-## Single source, generated client
+## Single Source
 
-You write one Gleam project. Libero (Rally's codegen) reads your source, extracts client-side types and functions, and generates a complete client package: its own `gleam.toml`, dependencies, transport layer, and codec. The output is a self-contained Gleam project that compiles to JavaScript for the browser.
+You write one Gleam project. Proute reads route files and produces route params, query params, page enums, and dispatch. Rally reads page contracts and produces browser boot, SSR, hydration, transport, topic sync, and load/save glue. Libero reads the same page-local server contracts and produces codecs and wire helpers.
 
-The tradeoff: you depend on the codegen to correctly split client from server. When something goes wrong at the boundary, debugging means reading generated code and understanding how the tree shaker decided what belongs where. The generated output is plain Gleam, so it is readable, but it is still code you did not write.
+The tradeoff: page modules carry more responsibility. Each authored page owns its client model, messages, load/save contract, and broadcast hooks until you extract shared code. The generated output is plain Gleam, so it is readable, but it is still code you did not write.
 
 ## Colocation-first
 
@@ -26,7 +26,7 @@ The joke version is: zero tradeoffs, you do not need anything more than `sqlite3
 
 Lamdera's architecture is the starting point: explicit server handler types as the client-server contract, server-side state per connection, TEA on both sides. If you've used Lamdera, the shape of a Rally app will feel familiar.
 
-Where they diverge: Gleam on the BEAM gives you OTP processes, `pg` groups, and native concurrency that Elm cannot access. Where the BEAM offers a better primitive, Rally uses it. Broadcast uses four levels of `pg` groups instead of custom fanout logic. Handler state lives in the process dictionary instead of a managed store. Messages encode with native ETF instead of JSON. Libero handles RPC dispatch instead of routing everything through a single update function.
+Where they diverge: Gleam on the BEAM gives you OTP processes, `pg` groups, and native concurrency that Elm cannot access. Where the BEAM offers a better primitive, Rally uses it. Broadcast uses `pg` groups instead of custom fanout logic. Page-local save messages encode with native ETF instead of JSON. Libero handles typed request/result encoding instead of routing everything through a single update function.
 
 ## Rally vs Lustre server components
 
@@ -34,14 +34,14 @@ These are two different architectures for building full-stack apps with Lustre.
 
 **Lustre server components** run the TEA loop on the server. Model, update, and view all execute server-side. On first connect, the server sends the full VDOM. On each update, it diffs the old and new VDOM and sends only the patch. The client is a thin JavaScript shell (~10KB) that applies DOM patches and forwards browser events back to the server.
 
-**Rally** runs TEA in the browser for UI state. Server work is explicit: most pages call stateless `server_*` RPC handlers, while pages needing per-connection server state use `server_init`/`server_update` with `ToServer`/`ToClient` messages. The wire carries domain messages, not VDOM patches.
+**Rally** runs TEA in the browser for UI state. Server work is explicit: pages call typed load/save handlers and subscribe to typed broadcast topics. The wire carries domain messages, not VDOM patches.
 
 | | Lustre server components | Rally |
 |---|---|---|
 | **Where UI runs** | Server (model + update + view) | Client (model + update + view) |
 | **What goes over the wire** | VDOM patches down, DOM events up | Domain messages in both directions |
 | **Interaction latency** | Every event round-trips to server | Local state changes are instant |
-| **Server memory** | Model + VDOM + event handler cache (shared across subscribers) | Optional ServerModel per connection for stateful pages; RPC pages keep no page model on the server |
+| **Server memory** | Model + VDOM + event handler cache (shared across subscribers) | Request state, topic subscriptions, and app-owned resources. Page UI models live in the browser |
 | **Client JS bundle** | Minimal (DOM patcher, ~10KB) | Full app logic (Lustre + page modules) |
 | **Real-time multi-user** | Built in (all subscribers see same state) | Requires explicit broadcast |
 

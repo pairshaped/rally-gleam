@@ -1,7 +1,0 @@
----
-version: 1.5.5
-title: favorite_toggle
-file: ./test/schema_test.gleam
-test_name: favorite_toggle_test
----
-#([1], [0])

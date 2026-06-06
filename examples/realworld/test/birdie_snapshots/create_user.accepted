@@ -1,7 +1,0 @@
----
-version: 1.5.5
-title: create_user
-file: ./test/schema_test.gleam
-test_name: create_user_test
----
-[#(1, "jake", "jake@example.com", "", "")]

@@ -1016,7 +1016,7 @@ fn " <> mount <> "_mount_init(
         on_shell_navigation: " <> shell_navigate <> ",
         on_browser_navigation: " <> browser_path_changed <> ",
       ),
-      sync_topics(" <> mount <> "_page_topics(page)),
+      sync_topics(" <> mount <> "_page_broadcast_subscriptions(page)),
     ]),
   )
 }
@@ -1046,7 +1046,7 @@ fn " <> mount <> "_mount_update(
             " <> model <> "(..model, page: page),
             effect.batch([
               page_effect,
-              sync_topics(" <> mount <> "_page_topics(page)),
+              sync_topics(" <> mount <> "_page_broadcast_subscriptions(page)),
             ]),
           )
         }
@@ -1064,7 +1064,7 @@ fn " <> mount <> "_mount_update(
         " <> model <> "(..model, page: page),
         effect.batch([
           page_effect,
-          sync_topics(" <> mount <> "_page_topics(page)),
+          sync_topics(" <> mount <> "_page_broadcast_subscriptions(page)),
         ]),
       )
     }
@@ -1120,7 +1120,7 @@ fn " <> mount <> "_mount_navigate(
         page_effect: page_effect,
         on_page: " <> page_msg <> ",
       ),
-      sync_topics(" <> mount <> "_page_topics(page)),
+      sync_topics(" <> mount <> "_page_broadcast_subscriptions(page)),
     ]),
   )
 }
@@ -1258,32 +1258,40 @@ fn browser_app_mount_topic_functions(
 ) -> String {
   let pages = mount_alias(mount, "pages")
   let route_modules = mount_route_modules(loads)
-  let topic_type = case push_contract {
-    Some(_) -> "push_payload.Topic"
-    None -> "String"
-  }
 
-  "@target(javascript)
-pub fn " <> mount <> "_page_topics(page page: " <> pages <> ".Page) -> List(" <> topic_type <> ") {
+  case push_contract {
+    None -> "@target(javascript)
+pub fn " <> mount <> "_page_broadcast_subscriptions(page _page: " <> pages <> ".Page) -> List(String) {
+  []
+}
+" <> browser_app_mount_apply_broadcast(
+        mount,
+        loads,
+        route_modules,
+        push_contract:,
+      )
+    Some(_) -> "@target(javascript)
+pub fn " <> mount <> "_page_broadcast_subscriptions(page page: " <> pages <> ".Page) -> List(push_payload.Topic) {
   case page {
 " <> string.join(
-    list.map(route_modules, fn(module_path) {
-      "    " <> browser_app_page_pattern(pages, module_path) <> " ->
-      " <> browser_app_source_page_alias(module_path, loads) <> browser_app_topics_call(
-        module_path,
-      )
-    }),
-    "\n",
-  ) <> "
+        list.map(route_modules, fn(module_path) {
+          "    " <> browser_app_page_pattern(pages, module_path) <> " ->
+      " <> browser_app_source_page_alias(module_path, loads) <> browser_app_broadcast_subscriptions_call(
+            module_path,
+          )
+        }),
+        "\n",
+      ) <> "
     _ -> []
   }
 }
 " <> browser_app_mount_apply_broadcast(
-    mount,
-    loads,
-    route_modules,
-    push_contract:,
-  )
+        mount,
+        loads,
+        route_modules,
+        push_contract:,
+      )
+  }
 }
 
 fn browser_app_sync_topics(push_contract: Option(PushContract)) -> String {
@@ -1381,10 +1389,10 @@ fn browser_app_page_constructor(
   }
 }
 
-fn browser_app_topics_call(module_path: String) -> String {
+fn browser_app_broadcast_subscriptions_call(module_path: String) -> String {
   case dynamic_segments_from_module(module_path) {
-    [] -> ".topics(model)"
-    _ -> ".topics(route_params, model)"
+    [] -> ".broadcast_subscriptions(model)"
+    _ -> ".broadcast_subscriptions(route_params, model)"
   }
 }
 
@@ -2059,6 +2067,16 @@ import generated/rally/result.{type ApiLoadError, type ApiSaveError}
 @target(javascript)
 import lustre/effect.{type Effect}
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
 @target(javascript)
 pub fn connect(
   url url: String,
@@ -2201,7 +2219,7 @@ pub type " <> server_ws_handlers_type_definition(loads, load_context:) <> " {
 " <> server_ws_handler_fields(loads, load_context:) <> "
   )
 }
-" <> server_ws_transport_loop(load_context) <> "
+" <> server_ws_transport_loop(loads, load_context) <> "
 
 @target(erlang)
 pub fn handle_client_frame(
@@ -2384,6 +2402,16 @@ import gleam/bit_array
 @target(javascript)
 import gleam/string
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
 " <> string.join(list.map(loads, hydration_load_result), "\n") <> "
 " <> string.join(list.map(loads, hydration_decode_result), "\n")
 }
@@ -3319,7 +3347,10 @@ fn map_page_load_result(
   }
 }
 
-fn server_ws_transport_loop(load_context: Option(LoadContext)) -> String {
+fn server_ws_transport_loop(
+  loads: List(LoadRpc),
+  load_context: Option(LoadContext),
+) -> String {
   case load_context {
     Some(load_context) -> {
       let load_context_type = load_context_type_ref(load_context)
@@ -3359,10 +3390,7 @@ pub fn handler(
 ) -> Next(ConnectionState(admin_auth), BitArray) {
   let handlers =
     Handlers(
-      load_context: fn(state: ConnectionState(admin_auth)) {
-        state.load_context
-      },
-      admin_auth: fn(state: ConnectionState(admin_auth)) { state.admin_auth },
+" <> server_ws_default_handler_fields(loads, load_context: Some(load_context)) <> "
     )
 
   case msg {
@@ -3394,6 +3422,34 @@ pub fn handler(
     }
     None -> ""
   }
+}
+
+fn server_ws_default_handler_fields(
+  loads: List(LoadRpc),
+  load_context load_context: Option(LoadContext),
+) -> String {
+  let load_context_fields = case
+    server_ws_has_direct_loads(loads, load_context:),
+    load_context
+  {
+    True, Some(_) -> [
+      "      load_context: fn(state: ConnectionState(admin_auth)) {
+        state.load_context
+      },",
+    ]
+    _, _ -> []
+  }
+
+  let authorization_fields =
+    server_ws_authorized_mounts(loads, load_context:)
+    |> list.map(fn(mount) {
+      "      " <> mount <> "_auth: fn(state: ConnectionState(admin_auth)) {
+        state.admin_auth
+      },"
+    })
+
+  list.append(load_context_fields, authorization_fields)
+  |> string.join("\n")
 }
 
 fn server_ws_handlers_type_definition(
@@ -4150,7 +4206,11 @@ fn send_" <> load.name <> "_save_result(
     )
 
   case result {
-    Ok(value) -> " <> server_ws_after_save_call(
+    Ok(" <> server_ws_after_save_value_pattern(
+        load,
+        load_context:,
+        push_contract:,
+      ) <> ") -> " <> server_ws_after_save_call(
         load,
         load_context:,
         push_contract:,
@@ -4208,6 +4268,17 @@ fn server_ws_after_save_call(
     }"
     True, None -> "Nil"
     False, _ -> "handlers.after_" <> load.name <> "_save(state, message, value)"
+  }
+}
+
+fn server_ws_after_save_value_pattern(
+  load: LoadRpc,
+  load_context load_context: Option(LoadContext),
+  push_contract push_contract: Option(PushContract),
+) -> String {
+  case server_ws_after_save_call(load, load_context:, push_contract:) {
+    "Nil" -> "_value"
+    _ -> "value"
   }
 }
 

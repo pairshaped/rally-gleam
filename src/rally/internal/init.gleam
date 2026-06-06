@@ -28,26 +28,30 @@ pub fn files(project_name: String) -> List(ScaffoldFile) {
   [
     ScaffoldFile(".env", env_example()),
     ScaffoldFile(".env.example", env_example()),
-    ScaffoldFile("migrations/001_create_counter.sql", migration_001()),
+    ScaffoldFile("db/migrations/001_create_counter.sql", migration_001()),
+    ScaffoldFile("db/seeds/001_counter.sql", seed_001()),
     ScaffoldFile("src/sql/counter/get.sql", counter_get_sql()),
     ScaffoldFile("src/sql/counter/increment.sql", counter_increment_sql()),
     ScaffoldFile("src/sql/counter/decrement.sql", counter_decrement_sql()),
     ScaffoldFile("src/public/pages/home_.gleam", home_page()),
-    ScaffoldFile("src/public/pages/layout.gleam", layout_page()),
+    ScaffoldFile("src/public/pages/not_found_.gleam", not_found_page()),
+    ScaffoldFile("src/public/page_shared_state.gleam", page_shared_state()),
+    ScaffoldFile("src/app_shell.gleam", app_shell()),
+    ScaffoldFile("src/app_ws.gleam", app_ws()),
+    ScaffoldFile("src/public_app.gleam", public_app()),
     ScaffoldFile("src/" <> project_name <> ".gleam", app_module(project_name)),
-    ScaffoldFile("src/public/shell.html", shell_html()),
-    ScaffoldFile("src/server_context.gleam", server_context()),
+    ScaffoldFile("proute.toml", proute_toml()),
   ]
 }
 
 fn create_dirs(root: String) -> Result(Nil, String) {
   [
-    "migrations",
+    "db/migrations",
+    "db/seeds",
     "db",
     "src/public/pages",
     "src/sql/counter",
-    "src/generated/public",
-    ".generated_clients/public/src/generated",
+    "src/generated",
   ]
   |> list.try_each(fn(dir) {
     let path = join(root, dir)
@@ -375,7 +379,7 @@ fn ensure_tool_sections(
 ) -> String {
   content
   |> ensure_glinter_section(parsed)
-  |> ensure_rally_section(parsed)
+  |> ensure_rally_context_section(parsed)
   |> ensure_marmot_section(parsed, project_name)
 }
 
@@ -391,30 +395,15 @@ fn ensure_glinter_section(
   }
 }
 
-fn ensure_rally_section(content: String, parsed: Dict(String, Toml)) -> String {
-  case has_public_client(parsed) {
-    True -> content
-    False ->
+fn ensure_rally_context_section(
+  content: String,
+  parsed: Dict(String, Toml),
+) -> String {
+  case tom.get(parsed, ["tools", "rally", "context"]) {
+    Ok(_) -> content
+    Error(_) ->
       string.trim_end(content)
-      <> "\n\n[[tools.rally.clients]]\nnamespace = \"public\"\nroute_root = \"/\"\n"
-  }
-}
-
-fn has_public_client(parsed: Dict(String, Toml)) -> Bool {
-  case tom.get(parsed, ["tools", "rally", "clients"]) {
-    Ok(tom.ArrayOfTables(clients)) ->
-      list.any(clients, fn(client) {
-        dict.get(client, "namespace") == Ok(tom.String("public"))
-      })
-    Ok(tom.Array(items)) ->
-      list.any(items, fn(item) {
-        case item {
-          tom.InlineTable(client) ->
-            dict.get(client, "namespace") == Ok(tom.String("public"))
-          _ -> False
-        }
-      })
-    _ -> False
+      <> "\n\n[tools.rally.context]\nmodule = \"sqlight\"\ntype = \"Connection\"\n"
   }
 }
 
@@ -442,7 +431,6 @@ fn required_deps() -> List(#(String, String)) {
     #("rally", ">= 1.0.0 and < 2.0.0"),
     #("libero", ">= 6.0.0 and < 7.0.0"),
     #("lustre", ">= 5.7.0 and < 7.0.0"),
-    #("marmot", ">= 1.3.0 and < 2.0.0"),
     #("mist", ">= 6.0.0 and < 7.0.0"),
     #("sqlight", ">= 1.0.0 and < 2.0.0"),
     #("simplifile", ">= 2.0.0 and < 3.0.0"),
@@ -455,6 +443,8 @@ fn required_dev_deps() -> List(#(String, String)) {
     #("gleeunit", ">= 1.0.0 and < 2.0.0"),
     #("birdie", ">= 2.0.0 and < 3.0.0"),
     #("glinter", ">= 2.16.0 and < 3.0.0"),
+    #("marmot", ">= 1.3.0 and < 2.0.0"),
+    #("proute", ">= 0.1.0 and < 1.0.0"),
   ]
 }
 
@@ -468,7 +458,6 @@ fn merge_gitignore(root: String) -> Result(Nil, String) {
 
   let required = [
     "build/", ".env", "db/", "erl_crash.dump", "*.bak", ".DS_Store",
-    ".generated_clients/",
   ]
   let missing =
     required
@@ -597,7 +586,6 @@ gleam_stdlib = \">= 0.60.0 and < 2.0.0\"
 rally = \">= 1.0.0 and < 2.0.0\"
 libero = \">= 6.0.0 and < 7.0.0\"
 lustre = \">= 5.7.0 and < 6.0.0\"
-marmot = \">= 1.3.0 and < 2.0.0\"
 mist = \">= 6.0.0 and < 7.0.0\"
 sqlight = \">= 1.0.0 and < 2.0.0\"
 simplifile = \">= 2.0.0 and < 3.0.0\"
@@ -607,15 +595,17 @@ gleam_time = \">= 1.7.0 and < 2.0.0\"
 gleeunit = \">= 1.0.0 and < 2.0.0\"
 birdie = \">= 2.0.0 and < 3.0.0\"
 glinter = \">= 2.16.0 and < 3.0.0\"
+marmot = \">= 1.3.0 and < 2.0.0\"
+proute = \">= 0.1.0 and < 1.0.0\"
 
 [tools.glinter]
 stats = true
 warnings_as_errors = true
 exclude = [\"src/generated/\"]
 
-[[tools.rally.clients]]
-namespace = \"public\"
-route_root = \"/\"
+[tools.rally.context]
+module = \"sqlight\"
+type = \"Connection\"
 
 [tools.marmot]
 database = \"db/" <> project_name <> ".db\"
@@ -626,376 +616,511 @@ output = \"src/generated/sql\"
 
 fn home_page() -> String {
   "// Scaffolded by rally: yours to customize.
+@target(erlang)
 import generated/sql/counter_sql
 import gleam/int
+import lustre/attribute
 import lustre/element.{type Element}
 import lustre/element/html
 import lustre/effect.{type Effect}
 import lustre/event
-import rally/runtime/effect as rally_effect
-import server_context.{type ServerContext}
+import generated/proute/public/page_input
+import public/page_shared_state.{type PublicPageSharedState}
+import rally/runtime/load as runtime_load
+
+@target(erlang)
+import sqlight
+
+@target(javascript)
+import generated/rally/server
+
+pub type ServerMsg {
+  PublicHomeLoad
+  PublicHomeIncrement
+  PublicHomeDecrement
+}
+
+pub type LoadResult {
+  PublicHomeLoaded(count: Int)
+}
+
+pub type GameUpdate {
+  GameUpdate(count: Int)
+}
+
+pub type SaveError {
+  SaveError(message: String)
+}
 
 pub type Model {
-  Model(count: Int)
+  Model(count: Int, error: String)
 }
 
-pub type Msg {
-  UserClickedIncrement
-  UserClickedDecrement
-  GotCount(Result(Int, Nil))
+pub type Message {
+  Increment
+  Decrement
+  Loaded(Result(Int, runtime_load.LoadError))
+  Saved(Result(GameUpdate, SaveError))
 }
 
-pub type ServerIncrement {
-  ServerIncrement
+pub fn initial_model(
+  _page_shared_state: PublicPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model(count: 0, error: \"\")
 }
 
-pub type ServerDecrement {
-  ServerDecrement
-}
-
-pub fn load(server_context: ServerContext) -> Model {
-  let assert Ok([row]) = counter_sql.get(db: server_context.db)
-  Model(count: row.value)
-}
-
-pub fn init() -> #(Model, Effect(Msg)) {
-  #(Model(count: 0), effect.none())
-}
-
-pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
+pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message)) {
   case msg {
-    UserClickedIncrement ->
-      #(model, rally_effect.rpc(ServerIncrement, on_response: GotCount))
-    UserClickedDecrement ->
-      #(model, rally_effect.rpc(ServerDecrement, on_response: GotCount))
-    GotCount(Ok(count)) -> #(Model(count:), effect.none())
-    GotCount(Error(_)) -> #(model, effect.none())
+    Increment | Decrement -> #(model, save_effect(msg))
+    Loaded(Ok(count)) -> #(Model(count:, error: \"\"), effect.none())
+    Loaded(Error(error)) -> #(
+      Model(..model, error: error.message),
+      effect.none(),
+    )
+    Saved(Ok(GameUpdate(count:))) -> #(
+      Model(count:, error: \"\"),
+      effect.none(),
+    )
+    Saved(Error(SaveError(message:))) -> #(
+      Model(..model, error: message),
+      effect.none(),
+    )
   }
 }
 
-pub fn view(model: Model) -> Element(Msg) {
-  html.div([], [
-    html.button([event.on_click(UserClickedIncrement)], [html.text(\"+\")]),
-    html.text(int.to_string(model.count)),
-    html.button([event.on_click(UserClickedDecrement)], [html.text(\"-\")]),
+pub fn view(model: Model) -> Element(Message) {
+  html.main([attribute.class(\"counter-page\")], [
+    html.h1([], [html.text(\"Rally Counter\")]),
+    html.div([attribute.class(\"counter\")], [
+      html.button([event.on_click(Decrement)], [html.text(\"-\")]),
+      html.strong([], [html.text(int.to_string(model.count))]),
+      html.button([event.on_click(Increment)], [html.text(\"+\")]),
+    ]),
+    case model.error {
+      \"\" -> html.text(\"\")
+      message -> html.p([attribute.class(\"error\")], [html.text(message)])
+    },
   ])
 }
 
-pub fn server_increment(
-  msg _msg: ServerIncrement,
-  server_context server_context: ServerContext,
-) -> Result(Int, Nil) {
-  case counter_sql.increment(db: server_context.db) {
-    Ok([row]) -> Ok(row.value)
-    _ -> Error(Nil)
+@target(javascript)
+fn save_effect(msg: Message) -> Effect(Message) {
+  case msg {
+    Increment ->
+      server.save_public_home(
+        message: PublicHomeIncrement,
+        on_result: fn(result) { Saved(map_save_result(result)) },
+      )
+    Decrement ->
+      server.save_public_home(
+        message: PublicHomeDecrement,
+        on_result: fn(result) { Saved(map_save_result(result)) },
+      )
+    Loaded(_) | Saved(_) -> effect.none()
   }
 }
 
-pub fn server_decrement(
-  msg _msg: ServerDecrement,
-  server_context server_context: ServerContext,
-) -> Result(Int, Nil) {
-  case counter_sql.decrement(db: server_context.db) {
+@target(erlang)
+fn save_effect(_msg: Message) -> Effect(Message) {
+  effect.none()
+}
+
+@target(javascript)
+fn map_save_result(
+  result: Result(GameUpdate, List(server.SaveError)),
+) -> Result(GameUpdate, SaveError) {
+  case result {
+    Ok(update) -> Ok(update)
+    Error([server.SaveError(message: message, ..), ..]) ->
+      Error(SaveError(message:))
+    Error([]) -> Error(SaveError(message: \"Could not save counter.\"))
+  }
+}
+
+@target(erlang)
+pub fn load(db: sqlight.Connection) -> Result(Int, runtime_load.LoadError) {
+  case counter_sql.get(db:) {
     Ok([row]) -> Ok(row.value)
-    _ -> Error(Nil)
+    _ -> Error(runtime_load.LoadError(message: \"Could not load counter.\"))
+  }
+}
+
+@target(erlang)
+pub fn handle(
+  db: sqlight.Connection,
+  message: ServerMsg,
+) -> Result(GameUpdate, SaveError) {
+  case message {
+    PublicHomeLoad ->
+      Error(SaveError(message: \"Load is not a save action.\"))
+    PublicHomeIncrement -> save_increment(counter_sql.increment(db:))
+    PublicHomeDecrement -> save_decrement(counter_sql.decrement(db:))
+  }
+}
+
+@target(erlang)
+fn save_increment(
+  result: Result(List(counter_sql.IncrementRow), sqlight.Error),
+) -> Result(GameUpdate, SaveError) {
+  case result {
+    Ok([row]) -> Ok(GameUpdate(count: row.value))
+    _ -> Error(SaveError(message: \"Could not save counter.\"))
+  }
+}
+
+@target(erlang)
+fn save_decrement(
+  result: Result(List(counter_sql.DecrementRow), sqlight.Error),
+) -> Result(GameUpdate, SaveError) {
+  case result {
+    Ok([row]) -> Ok(GameUpdate(count: row.value))
+    _ -> Error(SaveError(message: \"Could not save counter.\"))
   }
 }
 "
 }
 
-fn layout_page() -> String {
+fn page_shared_state() -> String {
   "// Scaffolded by rally: yours to customize.
-import lustre/element.{type Element}
 
-pub fn layout(content: Element(msg)) -> Element(msg) {
-  content
+pub type PublicPageSharedState {
+  PublicPageSharedState
 }
+"
+}
+
+fn not_found_page() -> String {
+  "// Scaffolded by rally: yours to customize.
+import generated/proute/public/page_input
+import lustre/attribute
+import lustre/effect.{type Effect}
+import lustre/element.{type Element}
+import lustre/element/html
+import public/page_shared_state.{type PublicPageSharedState}
+
+pub type Model {
+  Model
+}
+
+pub type Message {
+  NoOp
+}
+
+pub fn initial_model(
+  _page_shared_state: PublicPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model
+}
+
+pub fn update(
+  model: Model,
+  _msg: Message,
+) -> #(Model, Effect(Message)) {
+  #(model, effect.none())
+}
+
+pub fn view(_model: Model) -> Element(Message) {
+  html.main([attribute.class(\"not-found\")], [
+    html.h1([], [html.text(\"Not found\")]),
+    html.p([], [html.text(\"No route matched this page.\")]),
+  ])
+}
+"
+}
+
+fn app_shell() -> String {
+  "// Scaffolded by rally: yours to customize.
+import lustre/attribute
+import lustre/element.{type Element}
+import lustre/element/html
+import lustre/event
+
+pub fn public(
+  current_path current_path: String,
+  dark_mode dark_mode: Bool,
+  on_dark_mode_change on_dark_mode_change: fn(Bool) -> msg,
+  content content: Element(msg),
+) -> Element(msg) {
+  html.div([attribute.class(\"app\")], [
+    html.header([attribute.class(\"topbar\")], [
+      html.a(
+        [
+          attribute.href(\"/\"),
+          attribute.attribute(\"data-rally-spa-nav\", \"1\"),
+        ],
+        [html.text(\"Rally\")],
+      ),
+      html.span([attribute.class(\"current-path\")], [html.text(current_path)]),
+      html.button(
+        [event.on_click(on_dark_mode_change(!dark_mode))],
+        [html.text(theme_label(dark_mode))],
+      ),
+    ]),
+    content,
+  ])
+}
+
+fn theme_label(dark_mode: Bool) -> String {
+  case dark_mode {
+    True -> \"Light\"
+    False -> \"Dark\"
+  }
+}
+"
+}
+
+fn app_ws() -> String {
+  "@target(erlang)
+import generated/rally/server_ws
+@target(erlang)
+import gleam/erlang/process.{type Selector}
+@target(erlang)
+import gleam/option.{type Option, None}
+@target(erlang)
+import mist.{type Next, type WebsocketConnection, type WebsocketMessage}
+@target(erlang)
+import sqlight
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(erlang)
+pub type State =
+  server_ws.ConnectionState(Nil)
+
+@target(erlang)
+pub fn on_init(
+  _conn: WebsocketConnection,
+  db: sqlight.Connection,
+) -> #(State, Option(Selector(BitArray))) {
+  server_ws.on_init(load_context: db, admin_auth: None)
+}
+
+@target(erlang)
+pub fn on_close(state: State) -> Nil {
+  server_ws.on_close(state)
+}
+
+@target(erlang)
+pub fn handler(
+  state state: State,
+  msg msg: WebsocketMessage(BitArray),
+  conn conn: WebsocketConnection,
+) -> Next(State, BitArray) {
+  server_ws.handler(state:, msg:, conn:)
+}
+"
+}
+
+fn public_app() -> String {
+  "@target(javascript)
+import app_shell
+@target(javascript)
+import generated/proute/public/pages
+@target(javascript)
+import generated/rally/browser_app
+@target(javascript)
+import lustre/element.{type Element, map}
+@target(javascript)
+import public/page_shared_state.{PublicPageSharedState}
+
+@target(javascript)
+pub type ShellState {
+  ShellState(current_path: String, dark_mode: Bool)
+}
+
+@target(javascript)
+pub fn main() -> Nil {
+  browser_app.start_public_mount(browser_app.PublicMountConfig(
+    page_shared_state: fn() { PublicPageSharedState },
+    shell_state: fn(current_path, dark_mode) {
+      ShellState(current_path:, dark_mode:)
+    },
+    set_active_path: fn(shell_state, path) {
+      ShellState(..shell_state, current_path: path)
+    },
+    set_dark_mode: fn(shell_state, dark_mode) {
+      ShellState(..shell_state, dark_mode:)
+    },
+    update_page: fn(_page_shared_state, page, message) {
+      pages.update(page, message)
+    },
+    view:,
+  ))
+}
+
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+fn view(
+  model: browser_app.PublicMountModel(ShellState),
+  on_page: fn(pages.Message) -> browser_app.PublicMountMsg,
+  on_dark_mode_change: fn(Bool) -> browser_app.PublicMountMsg,
+  _on_navigate: fn(String) -> browser_app.PublicMountMsg,
+) -> Element(browser_app.PublicMountMsg) {
+  app_shell.public(
+    current_path: model.shell_state.current_path,
+    dark_mode: model.shell_state.dark_mode,
+    on_dark_mode_change:,
+    content: pages.view(model.page) |> map(on_page),
+  )
+}
+"
+}
+
+fn proute_toml() -> String {
+  "[proute]
+pages_root = \"src\"
+
+[[proute.mounts]]
+name = \"public\"
+route_root = \"/\"
 "
 }
 
 fn app_module(project_name: String) -> String {
-  "// Scaffolded by rally: yours to customize.
-import envoy
+  "@target(erlang)
+import app_shell
+@target(erlang)
+import app_ws
+@target(erlang)
+import generated/proute/public/page_input
+@target(erlang)
+import generated/rally/server_ssr
+@target(erlang)
+import generated/rally/theme
+@target(erlang)
 import gleam/bytes_tree
-import gleam/erlang/process
-import gleam/http.{Get, Post}
-import gleam/http/request.{type Request, Request}
-import gleam/http/response
-import gleam/int
-import gleam/io
-import gleam/list
-import gleam/result
-import gleam/string
-import mist.{type Connection}
-import generated/public/http_handler as http_handler
-import generated/public/router as router
-import generated/public/ssr_handler as ssr_handler
-import generated/public/ws_handler as ws_handler
-import rally/runtime/db
-import rally/runtime/env
-import rally/runtime/session
-import rally/runtime/system
-import server_context.{type ServerContext, ServerContext}
-import simplifile
-import sqlight
+@target(erlang)
+import gleam/http/request.{type Request}
+@target(erlang)
+import gleam/http/response.{type Response}
+@target(erlang)
+import lustre/element
+@target(erlang)
+import mist.{type Connection, type ResponseData}
+@target(erlang)
+import public/page_shared_state.{PublicPageSharedState}
+@target(erlang)
+import rally/runtime/bootstrap
+@target(erlang)
+import rally/runtime/document
 
-const db_dir = \"db\"
-
-const db_path = \"db/" <> project_name <> ".db\"
-
-const client_build_root = \".generated_clients/public/build/dev/javascript\"
-
-pub fn main() {
-  load_dotenv()
-  ensure_db_dir()
-  let db = start_db()
-  system.start(\"db/system.db\")
-  let server_context = ServerContext(db:)
-  let port = server_port()
-
-  let handler = fn(req: Request(Connection)) {
-    let Request(path: path, method: method, ..) = req
-    case path {
-      \"/ws\" -> {
-        let session_id = get_session_id(req)
-        let hostname = request_header(req, \"host\")
-        mist.websocket(
-          req,
-          ws_handler.handler,
-          fn(conn) {
-            ws_handler.on_init(
-              conn: conn,
-              server_context: server_context,
-              session_id: session_id,
-              hostname: hostname,
-            )
-          },
-          ws_handler.on_close,
-        )
-      }
-      \"/rpc\" -> handle_rpc(req, server_context)
-      _ -> {
-        case string.starts_with(path, \"/_build/\") {
-          True -> serve_static(string.drop_start(path, 8))
-          False ->
-            case method {
-              Get -> {
-                let session_id = get_session_id(req)
-                let hostname = request_header(req, \"host\")
-                let route = router.parse_route(request.to_uri(req))
-                let resp =
-                  ssr_handler.handle_request(
-                    route: route,
-                    server_context: server_context,
-                    session_id: session_id,
-                    hostname: hostname,
-                  )
-                set_session_cookie_if_missing(req, resp, session_id)
-              }
-              _ ->
-                response.new(405)
-                |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Not found\")))
-            }
-        }
-      }
-    }
-  }
-
-  io.println(\"Listening on http://localhost:\" <> int.to_string(port))
-  let assert Ok(_) =
-    mist.new(handler)
-    |> mist.port(port)
-    |> mist.start
-  process.sleep_forever()
-}
-
-fn load_dotenv() -> Nil {
-  case simplifile.read(\".env\") {
-    Ok(contents) ->
-      contents
-      |> string.split(\"\\n\")
-      |> list.each(load_dotenv_line)
-    Error(_) -> Nil
+@target(erlang)
+pub fn main() -> Nil {
+  case
+    bootstrap.start(
+      default_port: 8080,
+      handlers: bootstrap.Handlers(
+        auth: handle_auth_path,
+        websocket: handle_websocket_path,
+        admin: handle_admin_path,
+        public: handle_public_path,
+      ),
+    )
+  {
+    Ok(Nil) -> Nil
+    Error(error) -> panic as bootstrap.start_error_message(error)
   }
 }
 
-fn load_dotenv_line(raw_line: String) -> Nil {
-  let line = string.trim(raw_line)
-  case line == \"\" || string.starts_with(line, \"#\") {
-    True -> Nil
-    False -> {
-      let line = case string.starts_with(line, \"export \") {
-        True -> string.drop_start(line, 7)
-        False -> line
-      }
-      case string.split_once(line, \"=\") {
-        Ok(#(name, value)) -> set_env_if_missing(string.trim(name), value)
-        Error(_) -> Nil
-      }
-    }
-  }
+@target(erlang)
+fn handle_auth_path(
+  _req: Request(Connection),
+  _context: bootstrap.Context,
+) -> Result(Response(ResponseData), Nil) {
+  Error(Nil)
 }
 
-fn set_env_if_missing(name: String, value: String) -> Nil {
-  case name == \"\" {
-    True -> Nil
-    False ->
-      case envoy.get(name) {
-        Ok(_) -> Nil
-        Error(_) -> envoy.set(name, clean_env_value(value))
-      }
-  }
+@target(erlang)
+fn handle_websocket_path(
+  req req: Request(Connection),
+  context context: bootstrap.Context,
+) -> Response(ResponseData) {
+  mist.websocket(
+    req,
+    app_ws.handler,
+    fn(conn) { app_ws.on_init(conn, context.db) },
+    app_ws.on_close,
+  )
 }
 
-fn clean_env_value(value: String) -> String {
-  let value = string.trim(value)
-  case string.starts_with(value, \"\\\"\") && string.ends_with(value, \"\\\"\") {
-    True -> value |> string.drop_start(1) |> string.drop_end(1)
-    False ->
-      case string.starts_with(value, \"'\") && string.ends_with(value, \"'\") {
-        True -> value |> string.drop_start(1) |> string.drop_end(1)
-        False -> value
-      }
-  }
+@target(erlang)
+fn handle_admin_path(
+  _req: Request(Connection),
+  _context: bootstrap.Context,
+) -> Response(ResponseData) {
+  not_found()
 }
 
-fn ensure_db_dir() -> Nil {
-  let assert Ok(Nil) = simplifile.create_directory_all(db_dir)
-  Nil
-}
+@target(erlang)
+fn handle_public_path(
+  req req: Request(Connection),
+  context context: bootstrap.Context,
+) -> Response(ResponseData) {
+  let page =
+    server_ssr.public_render_path(
+      page_shared_state: PublicPageSharedState,
+      query_params: query_params(req),
+      path: req.path,
+      load_context: context.db,
+    )
 
-fn server_port() -> Int {
-  let raw = envoy.get(\"PORT\") |> result.unwrap(\"8080\")
-  case int.parse(raw) {
-    Ok(port) -> port
-    Error(_) ->
-      panic as {
-        \"Invalid PORT value: \"
-        <> raw
-        <> \". Set PORT to an integer, for example PORT=8080.\"
-      }
-  }
-}
+  let html =
+    app_shell.public(
+      current_path: page.current_path,
+      dark_mode: theme.request_dark_mode(req),
+      on_dark_mode_change: fn(_) { Nil },
+      content: page.content,
+    )
+    |> element.to_string
 
-fn handle_rpc(req: Request(Connection), server_context: ServerContext) {
-  case req.method {
-    Post -> {
-      let session_id = get_session_id(req)
-      case mist.read_body(req, max_body_limit: 16_000_000) {
-        Ok(Request(body: body, ..)) -> {
-          let resp =
-            http_handler.handle(
-              body: body,
-              server_context: server_context,
-              session_id: session_id,
-            )
-          set_session_cookie_if_missing(req, resp, session_id)
-        }
-        Error(_) ->
-          response.new(413)
-          |> response.set_body(
-            mist.Bytes(bytes_tree.from_string(\"Request body too large\")),
-          )
-      }
-    }
-    _ ->
-      response.new(405)
-      |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Not found\")))
-  }
-}
-
-fn request_header(req: Request(Connection), name: String) -> String {
-  case request.get_header(req, name) {
-    Ok(value) -> value
-    Error(_) -> \"\"
-  }
-}
-
-fn get_session_id(req: Request(Connection)) -> String {
-  case request.get_header(req, \"cookie\") {
-    Ok(cookie) ->
-      case session.extract_session_id(cookie) {
-        Ok(id) -> id
-        Error(_) -> session.generate_id()
-      }
-    Error(_) -> session.generate_id()
-  }
-}
-
-fn set_session_cookie_if_missing(req, resp, session_id: String) {
-  case request.get_header(req, \"cookie\") {
-    Ok(cookie) ->
-      case session.extract_session_id(cookie) {
-        Ok(_) -> resp
-        Error(_) ->
-          response.set_header(
-            resp,
-            \"set-cookie\",
-            session.set_cookie_header(session_id:, secure: env.secure_cookies()),
-          )
-      }
-    Error(_) ->
-      response.set_header(
-        resp,
-        \"set-cookie\",
-        session.set_cookie_header(session_id:, secure: env.secure_cookies()),
-      )
-  }
-}
-
-fn serve_static(path: String) {
-  let has_traversal =
-    path
-    |> string.split(\"/\")
-    |> list.any(fn(seg) { seg == \"..\" || seg == \".\" })
-
-  case has_traversal {
-    True ->
-      response.new(403)
-      |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Forbidden\")))
-    False -> {
-      let file_path = client_build_root <> \"/\" <> path
-      case simplifile.read(file_path) {
-        Ok(content) ->
-          response.new(200)
-          |> response.set_header(\"content-type\", content_type(path))
-          |> response.set_body(mist.Bytes(bytes_tree.from_string(content)))
-        Error(_) ->
-          response.new(404)
-          |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Not found\")))
-      }
-    }
-  }
-}
-
-fn content_type(path: String) -> String {
-  case string.ends_with(path, \".mjs\") || string.ends_with(path, \".js\") {
-    True -> \"application/javascript\"
-    False -> \"application/octet-stream\"
-  }
-}
-
-fn start_db() -> sqlight.Connection {
-  let assert Ok(conn) = db.open(db_path)
-  conn
-}
-"
-}
-
-fn shell_html() -> String {
-  "<!-- Scaffolded by rally: yours to customize. -->
-<!DOCTYPE html>
-<html>
+  let document_html =
+    \"<!doctype html>
+<html \" <> theme.document_attribute(req) <> \">
 <head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-  <title>My App</title>
+  <meta charset=\\\"utf-8\\\">
+  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">
+  <title>Rally</title>
 </head>
 <body>
-  <div id=\"app\"></div>
-  {{rally_client_script}}
+  <div id=\\\"app\\\"\" <> document.hydration_attr(page.hydration) <> \">\" <> html <> \"</div>
+  <script type=\\\"module\\\">
+    import { main } from '/_build/" <> project_name <> "/public_app.mjs';
+    main();
+  </script>
 </body>
-</html>
+</html>\"
+
+  document.html_response(document_html)
+}
+
+@target(erlang)
+fn query_params(req: Request(Connection)) -> page_input.QueryParams {
+  document.query_params(
+    req:,
+    from_values: fn(values) { page_input.QueryParams(values:) },
+    empty: page_input.empty_query_params,
+  )
+}
+
+@target(erlang)
+fn not_found() -> Response(ResponseData) {
+  response.new(404)
+  |> response.set_body(mist.Bytes(bytes_tree.from_string(\"Not found\")))
+}
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
 "
 }
 
@@ -1006,6 +1131,11 @@ fn migration_001() -> String {
 );
 
 INSERT INTO counter (id, value) VALUES (1, 0);
+"
+}
+
+fn seed_001() -> String {
+  "INSERT OR IGNORE INTO counter (id, value) VALUES (1, 0);
 "
 }
 
@@ -1024,16 +1154,6 @@ fn counter_decrement_sql() -> String {
 "
 }
 
-fn server_context() -> String {
-  "// Scaffolded by rally: yours to customize.
-import sqlight
-
-pub type ServerContext {
-  ServerContext(db: sqlight.Connection)
-}
-"
-}
-
 fn readme(project_name: String) -> String {
   "# " <> project_name <> "
 
@@ -1042,33 +1162,38 @@ fn readme(project_name: String) -> String {
 ```sh
 gleam run -m rally migrate
 gleam run -m rally build
-gleam run
+gleam run -m rally server
 ```
 
 Open http://localhost:8080.
 
-Set `PORT` in `.env` or run `PORT=8081 gleam run` to use another port.
+Set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server` to use another port.
+
+`rally server` stops any process already listening on `PORT` or 8080, then runs the app in the foreground. Use Ctrl-C to stop it.
 
 ## Project Layout
 
 - `src/public/pages/`: your pages. Edit `home_.gleam` or add routes here.
-- `src/public/shell.html`: the HTML shell that loads the client.
 - `src/sql/`: typed SQL queries for Marmot.
-- `migrations/`: SQLite migrations.
-- `src/server_context.gleam`: shared server resources passed to page loads and server handlers.
+- `db/migrations/`: SQLite migrations run by Marmot.
+- `db/seeds/`: optional seed files run by Marmot reset.
+- `src/public/page_shared_state.gleam`: shared page state for this mount.
+- `src/generated/`: Proute, Rally, Libero, and SQL code written by generators.
 - `db/`: local SQLite databases created when you run the app.
 
 ## Next Steps
 
 The scaffolded counter is disposable. It shows the request/SQL/UI loop.
 
-- Replace the counter migration in `migrations/` with your real schema.
+- Replace the counter migration in `db/migrations/` with your real schema.
 - Replace the counter queries in `src/sql/` with your app's queries.
 - Edit `src/public/pages/home_.gleam`, or add new pages under `src/public/pages/`.
-- Put shared server resources in `src/server_context.gleam`.
+- Put app-wide server resources in the load context configured in `gleam.toml`.
 - Run `gleam run -m rally migrate` after changing migrations or SQL.
+- Run `gleam run -m rally reset` to drop the local database, run migrations, and run seeds.
+- Run `gleam run -m rally regen` when you want to delete and recreate `src/generated/`.
 - Run `gleam run -m rally build` after changing pages, handlers, or shared client code.
-- Start the server with `gleam run`.
+- Start the server with `gleam run -m rally server`.
 
 ## Reset the Demo Database
 
@@ -1077,10 +1202,9 @@ The scaffold stores demo app data in `db/" <> project_name <> ".db`. Rally store
 To reset the demo counter, stop the server and run:
 
 ```sh
-rm -f db/" <> project_name <> ".db db/" <> project_name <> ".db-wal db/" <> project_name <> ".db-shm
-gleam run -m rally migrate
+gleam run -m rally reset
 ```
 
-This deletes local data for this app. `rally migrate` recreates the database, applies migrations, and regenerates the typed SQL modules.
+This deletes local data for this app. `rally reset` delegates to Marmot, which recreates the database, applies configured migrations, and runs configured seeds.
 "
 }

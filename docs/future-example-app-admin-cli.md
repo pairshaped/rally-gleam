@@ -10,12 +10,13 @@ only a full-stack web app framework.
 
 The app should have:
 
-- a public web client for end users
-- an admin web client for human operators
+- a public web surface for end users
+- an admin web surface for human operators
 - a Rust CLI that acts as another admin interface, mainly for AI agents
 
 The CLI should not be a separate product surface. It should use the same admin
-contract as the admin web app, over HTTP RPC instead of WebSocket RPC.
+load/save contract as the admin web app, over an HTTP request/result transport
+instead of the browser WebSocket transport.
 
 ## Candidate Domain
 
@@ -29,22 +30,22 @@ The app avoids full account auth. Public access uses unguessable claim codes.
 Admin and agent actions can use simple tokens while the example stays focused
 on multi-client architecture.
 
-## Client Surfaces
+## Surfaces
 
 ### Public Web Client
 
-- namespace: `public`
+- mount: `public`
 - route root: `/`
-- WebSocket RPC
+- generated Rally browser transport
 - submit a request
 - view request status by claim code
 - receive live status and reply updates
 
 ### Admin Web Client
 
-- namespace: `admin`
+- mount: `admin`
 - route root: `/admin`
-- WebSocket RPC
+- generated Rally browser transport
 - view the request queue
 - inspect request details
 - label, prioritize, assign, reply, and resolve requests
@@ -52,8 +53,8 @@ on multi-client architecture.
 
 ### Rust Admin CLI
 
-- generated from the `admin` namespace contract
-- HTTP RPC transport
+- built from the `admin` mount's typed load/save contract
+- HTTP request/result transport
 - intended for AI agents and scripts
 - same admin capability boundary as the admin web app, possibly with a narrower
   token scope
@@ -71,9 +72,9 @@ adminctl requests mark-review REQ-8K42
 
 ## What This Proves
 
-- Rally can generate multiple web clients from one app.
-- The public and admin web clients can be separate JavaScript packages.
-- The admin namespace can produce both a WebSocket client and an HTTP RPC client.
+- Rally can serve multiple web surfaces from one app.
+- The public and admin mounts can have separate route roots and page contracts.
+- The admin contract can support both the browser transport and an HTTP tool transport.
 - A Rust CLI can use the same typed admin contract as the admin Lustre app.
 - CLI changes can push live updates into the admin UI.
 - Public pages can receive live updates when admin actions publish user-visible
@@ -84,16 +85,15 @@ The demo moment:
 1. A public user submits a request.
 2. The admin UI sees it appear live.
 3. An agent uses `adminctl` to label it or draft a response.
-4. The admin UI updates live from that HTTP RPC action.
+4. The admin UI updates live from that HTTP action.
 5. When a public reply is posted, the public status page updates live.
 
 ## Why This Is Better Than A Normal CRUD Example
 
-RealWorld proves that Rally can build a conventional app. This example should
-prove the more specific Rally advantage: one typed server contract can serve
-multiple clients with different transports and different user experiences.
+Rally Scoreboard proves the unified page path. This example should prove the
+more specific Rally advantage: one typed server contract can serve multiple
+surfaces with different transports and different user experiences.
 
-The Rust CLI matters because it is not a side demo. It is another admin client.
-That makes generated SDKs and HTTP RPC feel like part of the framework story
-rather than extra plumbing.
-
+The Rust CLI matters because it is not a side demo. It is another admin surface.
+That makes tool transports feel like part of the framework story rather than
+extra plumbing.

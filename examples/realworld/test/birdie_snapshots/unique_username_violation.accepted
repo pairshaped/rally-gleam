@@ -1,7 +1,0 @@
----
-version: 1.5.5
-title: unique_username_violation
-file: ./test/schema_test.gleam
-test_name: unique_username_test
----
-Error(SqlightError(ConstraintUnique, "UNIQUE constraint failed: users.username", -1))

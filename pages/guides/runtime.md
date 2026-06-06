@@ -4,20 +4,19 @@ Most Rally apps import only a few `rally/runtime/*` modules directly. Generated 
 
 | Module | Use it for |
 | --- | --- |
-| `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
+| `rally/runtime/effect` | Page effects for navigation and broadcasts |
 | `rally/runtime/db` | SQLite open, timed query wrapper, nested transactions, SQL value helpers |
 | `rally/runtime/system` | App startup and background jobs |
 | `rally/runtime/session` | Session IDs and session cookie headers |
 | `rally/runtime/auth` | Auth policy and load result types used by page modules |
 | `rally/runtime/env` | `APP_ENV` parsing and production cookie policy |
-| `rally/runtime/migrate` | Numbered SQLite migrations |
 | `rally/runtime/test_db` | In-memory SQLite setup for tests |
 
 ## `effect`
 
-`effect.rpc` is the primary way pages talk to the server. It sends a request and delivers the response back to your update function. For pages using the stateful server model, `send_to_server` sends a message to the persistent server process instead.
+Generated Rally browser functions are the primary way pages talk to the server. They send a typed page-local request and deliver the response back to your update function.
 
-Broadcast effects are for server handlers that need to push a message to more than one connection. Call them from your server-side handler when something changes that multiple clients care about.
+Broadcast effects are for page handlers that need to push a message to more than one connection. Call them from your server-side handler when something changes that multiple clients care about.
 
 `effect.navigate` pushes a URL on the client side without a full page load. For arbitrary Lustre effects, import `lustre/effect` directly.
 
@@ -48,10 +47,6 @@ Rally's auth system is convention-based: it activates when a file at `src/<names
 ## `env`
 
 The `env` module parses the `APP_ENV` environment variable to determine which environment the app is running in. In production, session cookies get the `Secure` flag and browser console logging stays off. During development these restrictions are relaxed so you can work over plain HTTP and see client-side log output.
-
-## `migrate`
-
-`migrate.run` scans your migrations directory for numbered `.sql` files and runs any that haven't been applied yet. It validates filenames to catch ordering mistakes before touching the database. Migrations run inside a transaction, so a failure rolls back cleanly.
 
 ## `test_db`
 

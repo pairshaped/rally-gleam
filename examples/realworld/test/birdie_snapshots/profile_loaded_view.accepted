@@ -1,7 +1,0 @@
----
-version: 2.0.0
-title: profile_loaded_view
-file: ./test/view_test.gleam
-test_name: profile_loaded_view_test
----
-<div class="profile-page"><div class="user-info"><div class="container"><div class="row"><div class="col-xs-12 col-md-10 offset-md-1"><img class="user-img" src="https://i.imgur.com/test.jpg"><h4>jake</h4><p>I work at a thing</p><button class="btn btn-sm btn-outline-secondary action-btn"><i class="ion-plus-round"></i> Follow jake</button></div></div></div></div><div class="container"><div class="row"><div class="col-xs-12 col-md-10 offset-md-1"><div class="articles-toggle"><ul class="nav nav-pills outline-active"><li class="nav-item"><a class="nav-link active" href="#">My Articles</a></li><li class="nav-item"><a class="nav-link" href="#">Favorited Articles</a></li></ul></div><div class="article-preview"><div class="article-meta"><a href="/profile/jake"><img src="https://i.imgur.com/test.jpg"></a><div class="info"><a class="author" href="/profile/jake">jake</a><span class="date">1714800000</span></div><button class="btn btn-outline-primary btn-sm pull-xs-right"><i class="ion-heart"></i> 29</button></div><a class="preview-link" href="/article/how-to-train-your-dragon"><h1>How to train your dragon</h1><p>Ever wonder how?</p><span>Read more...</span></a></div></div></div></div></div>

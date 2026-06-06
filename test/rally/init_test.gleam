@@ -44,9 +44,14 @@ pub fn init_project_writes_hex_scaffold_test() {
   gitignore |> string.contains("db/") |> should.be_true()
 
   let assert Ok(migration) =
-    simplifile.read(dir <> "/migrations/001_create_counter.sql")
+    simplifile.read(dir <> "/db/migrations/001_create_counter.sql")
   migration |> string.contains("CREATE TABLE counter") |> should.be_true()
   migration |> string.contains("CHECK (id = 1)") |> should.be_true()
+
+  let assert Ok(seed) = simplifile.read(dir <> "/db/seeds/001_counter.sql")
+  seed
+  |> string.contains("INSERT OR IGNORE INTO counter")
+  |> should.be_true()
 
   let assert Ok(get_sql) = simplifile.read(dir <> "/src/sql/counter/get.sql")
   get_sql |> string.contains("SELECT value FROM counter") |> should.be_true()
@@ -62,7 +67,9 @@ pub fn init_project_writes_hex_scaffold_test() {
   let assert Ok(home) = simplifile.read(dir <> "/src/public/pages/home_.gleam")
   home |> string.contains("pub fn load(") |> should.be_true()
   home |> string.contains("counter_sql") |> should.be_true()
-  home |> string.contains("pub fn server_increment") |> should.be_true()
+  home |> string.contains("pub type ServerMsg") |> should.be_true()
+  home |> string.contains("PublicHomeIncrement") |> should.be_true()
+  home |> string.contains("pub fn handle(") |> should.be_true()
 
   simplifile.read(dir <> "/bin/dev")
   |> should.be_error()
@@ -75,26 +82,24 @@ pub fn init_project_writes_hex_scaffold_test() {
   let assert Ok(app) =
     simplifile.read(dir <> "/src/rally_init_test_hex_scaffold.gleam")
   app
-  |> string.contains("const db_path = \"db/rally_init_test_hex_scaffold.db\"")
+  |> string.contains("bootstrap.start(")
   |> should.be_true()
-  app |> string.contains("system.start(\"db/system.db\")") |> should.be_true()
-  app |> string.contains("envoy.get(\"PORT\")") |> should.be_true()
-  app |> string.contains("|> mist.port(port)") |> should.be_true()
   app
-  |> string.contains("case string.starts_with(path, \"/_build/\")")
+  |> string.contains("server_ssr.public_render_path")
   |> should.be_true()
+  app |> string.contains("envoy.get(\"PORT\")") |> should.be_false()
   app |> string.contains("import rally/runtime/migrate") |> should.be_false()
 
   simplifile.read(dir <> "/src/app.gleam")
   |> should.be_error()
 
-  let assert Ok(shell) = simplifile.read(dir <> "/src/public/shell.html")
-  shell
-  |> string.contains("{{rally_client_script}}")
+  let assert Ok(proute) = simplifile.read(dir <> "/proute.toml")
+  proute |> string.contains("name = \"public\"") |> should.be_true()
+
+  let assert Ok(public_app) = simplifile.read(dir <> "/src/public_app.gleam")
+  public_app
+  |> string.contains("browser_app.start_public_mount")
   |> should.be_true()
-  shell
-  |> string.contains("/_build/client/generated/app.mjs")
-  |> should.be_false()
 
   let assert Ok(readme) = simplifile.read(dir <> "/README.md")
   readme
@@ -301,10 +306,10 @@ pub fn init_project_refuses_existing_scaffold_directory_test() {
 
 pub fn init_project_refuses_existing_migration_test() {
   let dir = make_temp_dir("existing_migration")
-  let assert Ok(Nil) = simplifile.create_directory_all(dir <> "/migrations")
+  let assert Ok(Nil) = simplifile.create_directory_all(dir <> "/db/migrations")
   let assert Ok(Nil) =
     simplifile.write(
-      dir <> "/migrations/001_create_counter.sql",
+      dir <> "/db/migrations/001_create_counter.sql",
       "CREATE TABLE my_stuff (id INTEGER PRIMARY KEY);\n",
     )
 
@@ -313,7 +318,7 @@ pub fn init_project_refuses_existing_migration_test() {
     Error(message) -> {
       message
       |> string.contains(
-        "Refusing to overwrite migrations/001_create_counter.sql",
+        "Refusing to overwrite db/migrations/001_create_counter.sql",
       )
       |> should.be_true()
     }
@@ -375,21 +380,17 @@ pub fn init_project_refuses_existing_page_test() {
   cleanup(dir)
 }
 
-pub fn init_project_refuses_existing_layout_test() {
-  let dir = make_temp_dir("existing_layout")
+pub fn init_project_refuses_existing_app_shell_test() {
+  let dir = make_temp_dir("existing_app_shell")
+  let assert Ok(Nil) = simplifile.create_directory_all(dir <> "/src")
   let assert Ok(Nil) =
-    simplifile.create_directory_all(dir <> "/src/public/pages")
-  let assert Ok(Nil) =
-    simplifile.write(
-      dir <> "/src/public/pages/layout.gleam",
-      "pub fn layout(c) { c }\n",
-    )
+    simplifile.write(dir <> "/src/app_shell.gleam", "pub fn public(c) { c }\n")
 
   case init.init_project(dir) {
     Ok(_) -> should.fail()
     Error(message) -> {
       message
-      |> string.contains("Refusing to overwrite src/public/pages/layout.gleam")
+      |> string.contains("Refusing to overwrite src/app_shell.gleam")
       |> should.be_true()
     }
   }
@@ -433,7 +434,9 @@ gleeunit = \">= 1.0.0 and < 2.0.0\"
   toml |> string.contains("sqlight = ") |> should.be_true()
   toml |> string.contains("lustre = ") |> should.be_true()
   toml |> string.contains("marmot = ") |> should.be_true()
-  toml |> string.contains("[[tools.rally.clients]]") |> should.be_true()
+  toml
+  |> string.contains("[tools.rally.context]")
+  |> should.be_true()
   toml
   |> string.contains("database = \"db/rally_init_test_merge_toml.db\"")
   |> should.be_true()
@@ -568,8 +571,8 @@ gleeunit = \">= 1.0.0 and < 2.0.0\"
   cleanup(dir)
 }
 
-pub fn init_project_adds_public_client_when_other_namespace_exists_test() {
-  let dir = make_temp_dir("non_public_client")
+pub fn init_project_adds_rally_context_when_missing_test() {
+  let dir = make_temp_dir("missing_rally_context")
   let assert Ok(Nil) =
     simplifile.write(
       dir <> "/gleam.toml",
@@ -582,9 +585,9 @@ gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
 [dev_dependencies]
 gleeunit = \">= 1.0.0 and < 2.0.0\"
 
-[[tools.rally.clients]]
-namespace = \"admin\"
-route_root = \"/admin\"
+[tools.rally.push]
+module = \"broadcasts\"
+type = \"Event\"
 ",
     )
 
@@ -592,18 +595,18 @@ route_root = \"/admin\"
 
   let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
   toml
-  |> string.contains("namespace = \"admin\"")
+  |> string.contains("[tools.rally.push]")
   |> should.be_true()
   toml
-  |> string.contains("namespace = \"public\"")
+  |> string.contains("[tools.rally.context]")
   |> should.be_true()
   tom.parse(toml) |> should.be_ok()
 
   cleanup(dir)
 }
 
-pub fn init_project_skips_public_client_when_already_exists_test() {
-  let dir = make_temp_dir("has_public_client")
+pub fn init_project_skips_rally_context_when_already_exists_test() {
+  let dir = make_temp_dir("has_rally_context")
   let assert Ok(Nil) =
     simplifile.write(
       dir <> "/gleam.toml",
@@ -616,52 +619,20 @@ gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
 [dev_dependencies]
 gleeunit = \">= 1.0.0 and < 2.0.0\"
 
-[[tools.rally.clients]]
-namespace = \"public\"
-route_root = \"/\"
+[tools.rally.context]
+module = \"my/context\"
+type = \"Context\"
 ",
     )
 
   let assert Ok(Nil) = init.init_project(dir)
 
   let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
-  let public_count =
+  let context_count =
     toml
-    |> string.split("namespace = \"public\"")
+    |> string.split("[tools.rally.context]")
     |> list.length
-  public_count |> should.equal(2)
-  tom.parse(toml) |> should.be_ok()
-
-  cleanup(dir)
-}
-
-pub fn init_project_skips_public_client_when_inline_test() {
-  let dir = make_temp_dir("inline_public_client")
-  let assert Ok(Nil) =
-    simplifile.write(
-      dir <> "/gleam.toml",
-      "name = \"rally_init_test_inline_public_client\"
-version = \"1.0.0\"
-
-[dependencies]
-gleam_stdlib = \">= 1.0.0 and < 2.0.0\"
-
-[dev_dependencies]
-gleeunit = \">= 1.0.0 and < 2.0.0\"
-
-[tools.rally]
-clients = [{ namespace = \"public\", route_root = \"/\" }]
-",
-    )
-
-  let assert Ok(Nil) = init.init_project(dir)
-
-  let assert Ok(toml) = simplifile.read(dir <> "/gleam.toml")
-  let public_count =
-    toml
-    |> string.split("namespace = \"public\"")
-    |> list.length
-  public_count |> should.equal(2)
+  context_count |> should.equal(2)
   tom.parse(toml) |> should.be_ok()
 
   cleanup(dir)
@@ -679,7 +650,6 @@ pub fn init_project_merges_gitignore_test() {
   gitignore |> string.contains("/build") |> should.be_true()
   gitignore |> string.contains(".env") |> should.be_true()
   gitignore |> string.contains("db/") |> should.be_true()
-  gitignore |> string.contains(".generated_clients/") |> should.be_true()
   gitignore |> string.contains(".DS_Store") |> should.be_true()
 
   cleanup(dir)

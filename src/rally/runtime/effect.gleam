@@ -1,25 +1,5 @@
-//// The API that page modules import for server communication, broadcast,
-//// and navigation.
-////
-//// This module has a split personality by design. Each function has two
-//// implementations: the server-side version here (which queues push frames
-//// via the process dictionary or is a no-op), and a client-side version
-//// in the generated rally/runtime/effect.gleam shim (which calls the
-//// browser WebSocket transport). The codegen rewrites imports so the
-//// client package uses the shim, not this file.
-////
-//// Two server communication models:
-////
-////   rpc(msg, on_response:)    Stateless request-response. Define a
-////                             ServerX message type and server_x handler.
-////                             Client sends, server returns a value.
-////                             Use this by default.
-////
-////   send_to_server(msg)       Stateful bidirectional. Define ToServer/
-////                             ToClient types and server_init/server_update.
-////                             Server keeps a ServerModel per connection
-////                             and can push ToClient messages any time.
-////                             Use when the server needs state between calls.
+//// Page-side effects for navigation, theme preferences, and server-side
+//// broadcast fan-out.
 
 import lustre/effect
 import rally/runtime/internal/effect_state
@@ -32,25 +12,7 @@ pub fn none() -> Effect(a) {
   effect.none()
 }
 
-/// Send a ToServer variant to the server over WebSocket.
-/// Part of the stateful model (ToServer/ToClient/ServerModel).
-/// On the server this is a no-op. On the client, the generated
-/// transport module provides the real implementation.
-pub fn send_to_server(_msg: a) -> Effect(b) {
-  effect.none()
-}
-
-/// Call a server_* RPC handler and deliver the return value to on_response.
-/// Part of the stateless RPC model (ServerX type + server_x function).
-/// On the server this is a no-op. On the client, the generated transport
-/// module encodes the message and sends it over WebSocket.
-pub fn rpc(_msg: a, on_response _on_response: fn(b) -> msg) -> Effect(msg) {
-  effect.none()
-}
-
-/// Send a ToClient variant to the connected client.
-/// Encodes the message as a protocol-specific push frame and queues it for
-/// the WebSocket handler to send after the current dispatch.
+/// Queue a push frame for the current WebSocket connection.
 pub fn send_to_client(msg: a) -> Effect(b) {
   deferred(fn() { do_push(msg) })
 }
@@ -73,16 +35,6 @@ pub fn broadcast_to_app(msg: a) -> Effect(b) {
     let page = effect_state.get_ws_page()
     let frame = encode_push_frame(page, msg)
     let _ = topics.broadcast("app", frame)
-    effect_state.push_outgoing_frame(frame)
-  })
-}
-
-/// Send a ClientContextMsg to update the client's shared context.
-/// On the server, encodes and queues a push frame tagged "__ClientContext__".
-/// On the client, the generated app dispatches it through client_context.update.
-pub fn send_to_client_context(msg: a) -> Effect(b) {
-  deferred(fn() {
-    let frame = encode_push_frame("__ClientContext__", msg)
     effect_state.push_outgoing_frame(frame)
   })
 }

@@ -1,77 +1,59 @@
 # Configuration
 
-Rally reads its configuration from `gleam.toml` under `[[tools.rally.clients]]`. Each entry describes one browser app namespace.
+Rally uses normal project config plus Proute config. The Rally Scoreboard example is the reference shape: authored pages live under `src/<mount>/pages/`, Proute owns routing, Rally owns SSR and browser lifecycle glue, and Libero owns the wire codecs for page-local load/save contracts.
+
+## gleam.toml
+
+Use `[tools.rally.context]` to name the server-side value Rally passes to page `load` and `handle` functions. The starter app uses `sqlight.Connection`.
 
 ```toml
-[[tools.rally.clients]]
-namespace = "public"
-route_root = "/"
-protocol = "etf"
+[tools.rally.context]
+module = "sqlight"
+type = "Connection"
+
+[tools.marmot]
+database = "db/dev.sqlite"
+sql_dir = "src/sql"
+output = "src/generated/sql"
 ```
 
-- `namespace` names the client. Page modules live under `src/<namespace>/pages/` and generated code lands in `src/generated/<namespace>/`.
-- `route_root` sets the URL prefix for all routes in this client.
-- `protocol` selects the wire format (see [Protocols](#protocols) below). Defaults to `"etf"` if omitted.
+When `[tools.marmot]` is present, `rally migrate` delegates to Marmot's configured migration runner, and `rally build` runs Marmot before Rally codegen. Marmot's default migration directory is `db/migrations`.
 
-## Generated server files
+## proute.toml
 
-When codegen runs, Rally writes the following files into `src/generated/<namespace>/`:
+Proute config defines mounts and route roots.
 
-| File | Purpose |
+```toml
+[proute]
+pages_root = "src"
+
+[[proute.mounts]]
+name = "public"
+route_root = "/"
+```
+
+Page modules for that mount live under `src/public/pages/`. Proute generates route params, query params, page enums, path helpers, and page dispatch under `src/generated/proute/**`.
+
+## Build Outputs
+
+`gleam run -m rally build` runs Marmot if configured, runs Proute when `proute.toml` exists, generates Rally/Libero glue, then builds the app for Erlang and JavaScript.
+
+Generated files stay in the app package:
+
+| Path | Purpose |
 | --- | --- |
-| `router.gleam` | Route type, parser, path builder, and `href` |
-| `page_dispatch.gleam` | Per-route page init, update, and view dispatch |
-| `rpc_dispatch.gleam` | Server RPC dispatch |
-| `ssr_handler.gleam` | Server-side render entry |
-| `ws_handler.gleam` | WebSocket handler |
-| `http_handler.gleam` | HTTP RPC handler |
-| `protocol_wire.gleam` | Protocol facade |
+| `src/generated/proute/**` | Route types, route params, query params, path helpers, and page dispatch |
+| `src/generated/rally/**` | Browser boot, SSR, hydration, transport, WebSocket, topic, and load/save glue |
+| `src/generated/libero/**` | ETF codec helpers, decoder registration, wire helpers, and contract metadata |
+| `src/generated/sql/**` | Marmot query functions when SQL codegen is configured |
 
-These files are derived from your page modules. You don't edit them directly; re-running codegen overwrites them.
+Do not edit generated files directly. Change pages, config, SQL, or migrations, then run `rally build` again.
 
-## Generated client package
-
-Rally also writes a standalone client package under `.generated_clients/<namespace>/`. This package has its own `gleam.toml` (targeting JavaScript), a generated SPA entry point, transport layer, tree-shaken copies of your page modules, and the codec for whatever protocol you selected.
-
-The server project remains the source of truth. The client package is an output artifact, rebuilt on every codegen pass.
-
-## Protocols
-
-The `protocol` field in a client entry selects the wire format used between client and server.
-
-- **ETF** (Erlang Term Format) is the default. It maps closely to BEAM terms. Use it when your clients are browser SPAs and you do not need to inspect payloads by eye.
-- **JSON** is available for clients and tools that need readable envelopes, or when you want to inspect traffic in browser devtools.
-
-The generated `protocol_wire.gleam` facade adapts at compile time based on the selected protocol. Your application code never branches on protocol at runtime.
-
-```toml
-[[tools.rally.clients]]
-namespace = "public"
-protocol = "json"
-```
-
-## Multiple clients
-
-You can define more than one `[[tools.rally.clients]]` entry. Each gets its own namespace, route root, and protocol. Codegen runs once per entry, producing a separate set of generated server files and a separate client package.
-
-A common setup: one client for the public site and another for an admin panel.
-
-```toml
-[[tools.rally.clients]]
-namespace = "public"
-route_root = "/"
-
-[[tools.rally.clients]]
-namespace = "admin"
-route_root = "/admin"
-protocol = "json"
-```
-
-## Environment
+## Runtime Environment
 
 Rally checks the `APP_ENV` environment variable at startup.
 
-- `APP_ENV=dev` is the default. Session cookies are set without the `Secure` flag (so `localhost` works), and console output is verbose.
+- `APP_ENV=dev` is the default. Session cookies are set without the `Secure` flag so `localhost` works, and console output is verbose.
 - `APP_ENV=prod` enables secure session cookies and quieter logging. Set this in production.
 
 ```sh

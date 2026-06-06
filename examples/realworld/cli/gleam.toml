@@ -1,9 +1,0 @@
-name = "realworld_cli"
-version = "0.1.0"
-target = "erlang"
-
-[dependencies]
-gleam_stdlib = ">= 0.69.0 and < 2.0.0"
-gleam_erlang = ">= 1.0.0 and < 2.0.0"
-libero = ">= 6.0.0 and < 7.0.0"
-argv = ">= 1.0.0 and < 2.0.0"

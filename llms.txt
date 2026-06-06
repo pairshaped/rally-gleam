@@ -2,9 +2,9 @@
 
 ## Mental model
 
-Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules and `server_*` handler functions. Rally generates routing, server-side rendering, WebSocket transport, and typed client-server messaging.
+Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules with page-local models, messages, load handlers, save handlers, views, and broadcast hooks. Rally generates routing composition, server-side rendering, WebSocket transport, request/result protocol code, hydration, browser lifecycle, and typed client-server messaging.
 
-The page file is the contract. Client state, server calls, and the message types that cross the wire live together until you extract shared code. Libero scans server handler signatures, walks the type graph, and generates the wire protocol. Rally handles pages, routing, SSR, transport, and runtime. Libero handles the typed RPC contract, encode/decode, request envelopes, and response frames.
+The page file is the contract. Client state, server calls, and the message types that cross the wire live together until you extract shared code. Libero walks reachable page-local handler types and generates the wire protocol. Rally handles pages, routing, SSR, transport, and runtime. Libero handles typed request/result encoding, request envelopes, and response frames.
 
 Rally apps use SQLite by default: embedded database, migrations, and type-safe SQL codegen, with no separate database server for development.
 
@@ -21,9 +21,13 @@ gleam run -m rally build
 gleam run
 ```
 
-`rally init` creates the starter app files, including `src/my_app.gleam`. It only replaces the default files from `gleam new` or files from a previous Rally scaffold. If another target file already exists, Rally stops before writing anything and reports the path. After that, `rally build` runs Rally codegen (scans `src/<namespace>/pages/`, generates namespaced router, dispatch, RPC dispatch, SSR handler, WS handler, HTTP handler, and client package), builds every generated JS client, and runs Marmot if `[tools.marmot]` is configured. Start the server with `gleam run` on port 8080. Open `http://localhost:8080` to see the app. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run`.
+`rally init` creates the Rally Scoreboard style starter app. `rally gen` runs configured Marmot codegen, runs Proute when `proute.toml` exists, and generates Rally/Libero glue under `src/generated/**`. `rally regen` deletes `src/generated` first, then runs `gen`. `rally build` runs `gen` and builds the current package for Erlang and JavaScript. `rally migrate` delegates to Marmot migrate, and `rally reset` delegates to Marmot reset. `rally server` stops any process listening on `PORT` or 8080, then runs `gleam run` in the foreground. Open `http://localhost:8080` to see the app. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`.
 
 `APP_ENV=dev` is the default. Set `APP_ENV=prod` in production for secure session cookies and quieter console output.
+
+## Generator surfaces
+
+`rally build` is the unified-source generator used by Rally Scoreboard. Authored pages own `Model`, `Message`, `ServerMsg`, `initial_model`, optional `init`, `load`, optional `handle`, `broadcast_subscriptions`, and `apply_broadcast`. Proute owns route params, query params, page enums, and page dispatch. Rally owns transport, request/result encoding, hydration, SSR composition, browser boot, topic sync, server-side broadcast filtering, and generated browser lifecycle glue.
 
 ## Page conventions
 
@@ -41,80 +45,42 @@ Trailing underscore marks a dynamic segment. Names ending in `_id` become `Int` 
 
 ```gleam
 pub type Model { ... }
-pub type Msg { ... }
-pub fn init() -> #(Model, Effect(Msg))
-pub fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg))
-pub fn view(model: Model) -> Element(Msg)
+pub type Message { ... }
+pub fn initial_model(page_shared_state, query_params) -> Model
+pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message))
+pub fn view(model: Model) -> Element(Message)
 ```
 
-Apps with `client_context.gleam` receive `ClientContext` as the first argument to `init`, `update`, and `view`.
+Dynamic routes receive generated route params in `initial_model`, optional `init`, and route-aware hooks. Page shared state is app-defined per mount and constructed by generated Proute glue.
 
 ### SSR loading
 
-Pages can export `load` (server-side data fetch before first render) and `init_loaded` (client init from pre-fetched data). The model is base64-ETF encoded and embedded as `window.__RALLY_FLAGS__`.
+Pages can export Erlang-targeted `load` for server-side data fetch before first render. Rally encodes load results through generated Libero codecs, embeds hydration flags in the document, and reuses the same result type for browser navigation loads.
 
 ### Layouts
 
-`layout.gleam` provides page chrome. Rally assigns the nearest layout above a page route.
+`app_shell.gleam` provides standard page chrome for the generated browser mount and SSR document composition. Proute page modules own page dispatch; Rally owns browser lifecycle and hydration.
 
 ## Server messaging
 
-### RPC (stateless, recommended default)
+### Load and save handlers
 
-Define a message type and a `server_*` handler:
-
-```gleam
-pub type ServerLoadData { ServerLoadData(id: Int) }
-pub fn server_load_data(
-  msg msg: ServerLoadData,
-  server_context server_context: ServerContext,
-) -> Result(Data, List(String))
-```
-
-Client calls: `effect.rpc(ServerLoadData(id: 42), on_response: GotData)`.
-
-Libero treats the handler signature as the wire contract source of truth.
-
-### Stateful (bidirectional messaging)
-
-Define `ToServer`/`ToClient` message types, a `ServerModel`, and `server_init`/`server_update`:
+Page-local `ServerMsg`, `LoadResult`, `load`, and optional `handle` exports are the Rally Scoreboard surface:
 
 ```gleam
-pub type ToServer { ToggleFavorite; AddComment(body: String) }
-pub type ToClient { ArticleUpdated(Article); CommentAdded(Comment) }
-pub type ServerModel { ServerModel(article_id: Int) }
-pub fn server_init(slug: String, server_context: ServerContext) -> #(ServerModel, Effect(ToClient))
-pub fn server_update(model: ServerModel, msg: ToServer, server_context: ServerContext) -> #(ServerModel, Effect(ToClient))
+pub type ServerMsg { PublicHomeLoad; PublicHomeIncrement }
+pub type LoadResult { PublicHomeLoaded(count: Int) }
+pub fn load(db: sqlight.Connection) -> Result(Int, load.LoadError)
+pub fn handle(db: sqlight.Connection, message: ServerMsg) -> Result(Update, SaveError)
 ```
 
-The client sends `ToServer` messages with `effect.send_to_server`. Use stateful when the server needs state between calls (entity ownership for authorization) or server-initiated push.
-
-Stateful page dispatch currently uses ETF. JSON clients can use RPC, but `ToServer`/`ToClient` page messages are not wired for JSON yet.
+Generated browser modules expose page-specific save functions such as `generated/rally/server.save_public_home`. Generated SSR and browser lifecycle glue call `load` through the same typed wire contract. Libero treats the page handler signatures and reachable payload types as the source of truth for encoding.
 
 ### Broadcast
 
-| Effect | Who receives it |
-|---|---|
-| `send_to_client(msg)` | One specific connection |
-| `broadcast_to_session(msg)` | Every tab in the same browser session |
-| `broadcast_to_page(msg)` | Every connection viewing the same page |
-| `broadcast_to_app(msg)` | Every connection to the app |
+Broadcast-aware pages define typed topics and event payloads in app code, usually in a shared `broadcasts.gleam` module. Page `broadcast_subscriptions` hooks express interest for the current model or route, and page `apply_broadcast` hooks merge decoded events into the page model. Keep both hooks together in a `// BROADCAST` section.
 
-Broadcast uses OTP pg process groups. Connections auto-subscribe on WebSocket connect.
-
-### Effect primitives
-
-From `rally/runtime/effect`:
-
-- `rpc(msg, on_response: callback)`: stateless server call via WebSocket
-- `send_to_server(msg)`: stateful ToServer message
-- `send_to_client(variant)`: server push
-- `broadcast_to_page(variant)` / `broadcast_to_app(variant)` / `broadcast_to_session(variant)`: multi-cast push
-- `send_to_client_context(variant)`: cross-page state messaging
-- `navigate(path)`: client-side URL push via modem
-- `get_ws_session()`: session ID for current connection (server-side only)
-- `read_lang()`: language cookie, then browser language, then `"en"`
-- `none()`: no-op Rally effect. Import `lustre/effect` directly for arbitrary Lustre effects.
+Rally maps typed topics to compact text topic frames, stores active subscriptions per connection, filters broadcasts on the server, and does not send a broadcast back to the initiating connection.
 
 ## Runtime modules
 
@@ -122,14 +88,12 @@ Most Rally apps import only a few `rally/runtime/*` modules:
 
 | Module | Use it for |
 |---|---|
-| `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
 | `rally/runtime/load` | Standard page load error type |
 | `rally/runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
 | `rally/runtime/system` | App startup and background jobs |
 | `rally/runtime/session` | Session cookie generation, parsing, response headers |
 | `rally/runtime/auth` | Auth policy and load result types |
 | `rally/runtime/env` | `APP_ENV` parsing, production cookie policy |
-| `rally/runtime/migrate` | Numbered SQLite migrations |
 | `rally/runtime/test_db` | Fast in-memory SQLite for tests |
 
 Generated code also imports internal runtime modules for wire encoding, SSR,
@@ -139,50 +103,44 @@ treat those as private and import the modules above instead.
 ## Configuration
 
 ```toml
-[[tools.rally.clients]]
-namespace = "public"
+[tools.rally.context]
+module = "sqlight"
+type = "Connection"
+
+[tools.marmot]
+database = "db/dev.sqlite"
+sql_dir = "src/sql"
+output = "src/generated/sql"
+
+[proute]
+pages_root = "src"
+
+[[proute.mounts]]
+name = "public"
 route_root = "/"
-protocol = "etf"     # "etf" (default) or "json"
 ```
 
-Multiple `[[tools.rally.clients]]` entries are supported, each with its own namespace, route root, and protocol. The codegen runs once per entry.
+Rally reads standard project config from `gleam.toml` and `proute.toml`. `rally build` runs Marmot when `[tools.marmot]` is present, runs Proute when `proute.toml` exists, then generates Rally and Libero files under `src/generated/**`.
 
 ### Context types
 
-**ServerContext** (`server_context.gleam`): server-side infrastructure. Rally generates `load(server_context)` calls; put DB connections and config here. Rally treats it as opaque.
+**Load context** (`[tools.rally.context]`): server-side value passed to page `load` and `handle` functions. The starter app uses `sqlight.Connection`.
 
-**ClientContext** (`<namespace>/client_context.gleam`): cross-page client state. Shared by SSR and the browser SPA. Convention fields named `current_path`, `dark_mode`, or `lang` are synced from browser state at SPA boot.
+**Page shared state** (`src/<mount>/page_shared_state.gleam`): app-defined state visible to page initializers in a mount. Use it for page-visible shared values, not shell-only browser state.
 
-**`from_session`**: when `<namespace>/client_context_server.gleam` exports `pub fn from_session(server_context:, session_id:, hostname:)`, Rally's SSR and HTTP handlers call it to build `#(ClientContext, ServerContext)`.
+**Shell state**: browser-only state owned by the generated mount config and `app_shell.gleam`, such as active path and dark mode.
 
 ## Generated files
 
-Running `gleam run -m rally` produces:
+Running `gleam run -m rally build` produces:
 
-**Server-side** (`src/generated/<namespace>/`):
+Generated files stay in the app package:
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `router.gleam` | Route type, `parse_route`, `route_to_path`, `href` |
-| `page_dispatch.gleam` | PageModel/PageMsg unions, per-route init/update/view dispatch |
-| `rpc_dispatch.gleam` | Routes wire messages to `server_*` handlers |
-| `ssr_handler.gleam` | Calls `load`, renders `view` in layout, embeds model as flags |
-| `ws_handler.gleam` | WebSocket frame loop: page topics, RPC dispatch, push delivery |
-| `http_handler.gleam` | HTTP POST /rpc handler for non-WebSocket clients |
-| `protocol_wire.gleam` | Protocol facade: delegates to libero ETF or JSON wire module |
-
-**Client-side** (`.generated_clients/<namespace>/`):
-
-| File | Purpose |
-|---|---|
-| `src/generated/app.gleam` | Lustre SPA entry: per-page TEA loop, WebSocket transport, modem routing |
-| `src/generated/transport.gleam` | FFI bridge to WebSocket runtime |
-| `src/generated/types.gleam` | ClientMsg type mirroring server dispatch variants |
-| `src/generated/codec.gleam` | SSR flag decoding for hydration |
-| `src/<namespace>/pages/*.gleam` | Tree-shaken page modules (server code stripped) |
-| `src/rally/runtime/effect.gleam` | Client-side effect shim |
-
-The client package is a standalone Gleam project. The server project is the input to codegen.
+| `src/generated/proute/**` | Route types, route params, query params, and page dispatch |
+| `src/generated/rally/**` | Request/result protocols, client transport, browser mount/app glue, hydration, SSR, WS, theme, load/save result envelopes |
+| `src/generated/libero/**` | ETF codec helpers, decoder registration, atoms/wire modules, and Libero contract metadata |
 
 ## Internals
 
@@ -191,54 +149,31 @@ The `rally/internal/...` modules are Rally's codegen implementation. App code sh
 ### Pipeline
 
 ```text
-gleam.toml config -> scanner -> parser -> Libero handler scan -> generators -> tree shaker -> dependency resolver -> file output
+gleam.toml + proute.toml -> Marmot -> Proute -> Rally load/save discovery -> Libero codec graph -> generated Rally glue -> Erlang and JavaScript builds
 ```
 
 ### Codegen modules (`src/rally/internal/`)
 
 | Module | Role |
 |---|---|
-| `rally.gleam` | CLI entry point, reads `[[tools.rally.clients]]`, runs one pipeline per client |
-| `internal/scanner.gleam` | Walks pages directory, produces `List(ScannedRoute)` |
-| `internal/parser.gleam` | Glance AST: extracts Model/Msg types, function signatures |
-| `internal/generator.gleam` | Route type + parse_route + page dispatch codegen |
-| `internal/generator/client.gleam` | Client package: gleam.toml, app.gleam, transport |
-| `internal/generator/codec.gleam` | Client codegen: types, decoders, effect shim, per-page modules |
-| `internal/generator/ssr_handler.gleam` | SSR handler generation |
-| `internal/generator/ws_handler.gleam` | WebSocket handler generation |
-| `internal/generator/http_handler.gleam` | HTTP RPC handler generation |
-| `internal/generator/json_rpc_dispatch.gleam` | JSON-specific RPC dispatch |
-| `internal/dependency_resolver.gleam` | Follows imports to copy shared modules, catches @external(erlang) |
-| `internal/types.gleam` | Shared pipeline types: ScannedRoute, PageContract, ScanConfig |
-| `internal/tree_shaker.gleam` | Strips server code from page source using Glance AST |
+| `rally.gleam` | CLI entry point and unified build orchestration |
+| `internal/init.gleam` | Rally starter scaffold generation |
+| `internal/generator/load_rpc.gleam` | Unified Rally Scoreboard load/save, SSR, browser, hydration, WebSocket, topic, and protocol generation |
 | `internal/format.gleam` | Runs `gleam format` on generated code |
 
-Libero provides: scanner (server_ handler discovery), codegen_dispatch, walker (BFS type graph), codegen_decoders (JS type registration), field_type, glance_type_resolver (shared Glance type resolution), wire_identity (canonical type hashing), wire/protocol helpers, and trace (panic catching).
+Libero provides handler discovery, BFS type graph walking, codegen_decoders, field_type, glance_type_resolver (shared Glance type resolution), wire_identity (canonical type hashing), wire/protocol helpers, and trace (panic catching). Rally feeds page-local load/save contracts into Libero.
 
 ### Auth framework
 
-Auth activates when `src/<namespace>/auth.gleam` exists. Required exports:
-
-| Export | Signature | Purpose |
-|---|---|---|
-| `Identity` | type | App-defined identity type |
-| `resolve` | `fn(ServerContext, String) -> Result(Identity, Nil)` | Session to identity |
-| `is_authenticated` | `fn(Identity) -> Bool` | Whether identity is logged in |
-| `redirect_url` | `String` | Where to redirect unauthenticated users |
-
-Pages declare auth via `pub const page_auth = auth.Required` or `auth.Optional` after importing `rally/runtime/auth`. Pages can also export `pub fn authorize(server_context, identity) -> Bool`.
-
-Auth-enabled pages return `LoadResult(data)` instead of bare `data`, supporting `Page(data, cookies)` and `Redirect(url, cookies)` variants. Types live in `rally/runtime/auth.gleam`.
-
-Identity is excluded from the client-facing contract. Rally tells Libero's scanner to strip Identity params before message-type resolution. Server handlers still receive `identity: auth.Identity` as their last argument.
+`rally/runtime/auth` contains shared auth types and helpers for password hashing, short login codes, provider sessions, and page load auth results. `rally/runtime/auth_http` owns the standard email-code and Google provider HTTP route mechanics. Apps provide callbacks for user lookup/upsert, code storage/delivery, OAuth credentials, provider identity verification, return-path narrowing, and authorization policy.
 
 ### Transport
 
-WebSocket with auto-reconnect. HTTP POST /rpc for non-WebSocket clients. SSR renders full HTML with embedded flags on first request; the client reads flags and boots as a SPA.
+WebSocket with auto-reconnect for browser load/save requests and broadcasts. SSR renders full HTML with embedded flags on first request; the client reads flags and boots as a SPA.
 
 ### Dev tools
 
-Message inspector enabled in `APP_ENV=dev`. Browser console shows `->` (client to server, orange), `<-` (server response, blue), `<<` (server push, purple). RPC responses include round-trip latency. `window.__RALLY_MESSAGES__` holds the full message history.
+Message inspector enabled in `APP_ENV=dev`. Browser console shows `->` (client to server, orange), `<-` (server response, blue), `<<` (server-to-client frame, purple). Responses include round-trip latency. `window.__RALLY_MESSAGES__` holds the full message history.
 
 ## Verification
 
@@ -259,6 +194,7 @@ gleam run
 
 ## Links
 
+- [Rally Scoreboard example](../rally-scoreboard-example/): unified-source Rally example with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
 - [Rally on GitHub](https://github.com/pairshaped/rally-gleam)
 - [Gleam](https://gleam.run)
 - [Lustre](https://hexdocs.pm/lustre)

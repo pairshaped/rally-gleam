@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# On-demand auth codegen compile check. Not part of `gleam test`.
-# Creates a minimal auth app in ./tmp, runs codegen, builds, cleans up.
+# On-demand unified authorization codegen compile check. Not part of `gleam test`.
 #
-# Covers: Required+authorize page with server handler, from_session,
-#         LoadResult.Page, no-init_loaded page, auth zero-handler namespace.
+# This checks the Rally Scoreboard style path: Proute mounts, page shared state,
+# page-local load/save contracts, and the generated admin WebSocket auth gate.
 set -euo pipefail
 
 RALLY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,11 +17,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "=== Rally auth codegen check ==="
+echo "=== Rally unified auth codegen check ==="
 
-mkdir -p "$APP_DIR/src/admin/pages" "$APP_DIR/src/public/pages" "$APP_DIR/test"
+mkdir -p \
+  "$APP_DIR/src/admin/pages" \
+  "$APP_DIR/src/public/pages" \
+  "$APP_DIR/test"
 
-# --- gleam.toml ---
 cat > "$APP_DIR/gleam.toml" <<TOML
 name = "auth_check"
 version = "0.1.0"
@@ -32,198 +33,283 @@ target = "erlang"
 gleam_erlang = ">= 1.0.0 and < 2.0.0"
 gleam_http = ">= 4.0.0 and < 5.0.0"
 gleam_stdlib = ">= 0.60.0 and < 2.0.0"
-rally = { path = "$RALLY_ROOT" }
-libero = { path = "$RALLY_ROOT/../libero" }
-lustre = ">= 5.6.0 and < 7.0.0"
+libero = { path = "$RALLY_ROOT/../libero-gleam" }
+lustre = ">= 5.7.0 and < 6.0.0"
 mist = ">= 6.0.0 and < 7.0.0"
-gleam_time = ">= 1.7.0 and < 2.0.0"
+rally = { path = "$RALLY_ROOT" }
+sqlight = ">= 1.0.0 and < 2.0.0"
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"
+proute = { path = "$RALLY_ROOT/../proute" }
 
-[[tools.rally.clients]]
-namespace = "admin"
+[tools.rally.context]
+module = "sqlight"
+type = "Connection"
+TOML
+
+cat > "$APP_DIR/proute.toml" <<'TOML'
+[proute]
+pages_root = "src"
+
+[[proute.mounts]]
+name = "admin"
 route_root = "/admin"
 
-[[tools.rally.clients]]
-namespace = "public"
+[[proute.mounts]]
+name = "public"
 route_root = "/"
 TOML
 
-# --- server_context.gleam ---
-echo 'pub type ServerContext { ServerContext }' > "$APP_DIR/src/server_context.gleam"
-
-# --- admin/auth.gleam ---
-cat > "$APP_DIR/src/admin/auth.gleam" <<'GLEAM'
-import server_context.{type ServerContext}
-
-pub type Identity {
-  Authenticated(user_id: Int, role: String)
-  Anonymous
-}
-
-pub fn resolve(_server_context: ServerContext, _session_id: String) -> Result(Identity, Nil) {
-  Ok(Anonymous)
-}
-
-pub fn is_authenticated(identity: Identity) -> Bool {
-  case identity { Authenticated(..) -> True  Anonymous -> False }
-}
-
-pub const redirect_url = "/admin/login"
-GLEAM
-
-# --- admin/client_context_server.gleam ---
-cat > "$APP_DIR/src/admin/client_context_server.gleam" <<'GLEAM'
-import admin/auth
-import server_context.{type ServerContext}
-
-pub type ClientContext { ClientContext }
-
-pub fn from_session(
-  server_context server_context: ServerContext,
-  session_id _session_id: String,
-  hostname _hostname: String,
-  identity _identity: auth.Identity,
-) -> #(ClientContext, ServerContext) {
-  #(ClientContext, server_context)
+cat > "$APP_DIR/src/admin/page_shared_state.gleam" <<'GLEAM'
+pub type AdminPageSharedState {
+  AdminPageSharedState
 }
 GLEAM
 
-# --- admin/shell.html ---
-echo '<html><head></head><body><div id="app"></div></body></html>' > "$APP_DIR/src/admin/shell.html"
-echo '<html><head></head><body><div id="app"></div></body></html>' > "$APP_DIR/src/public/shell.html"
+cat > "$APP_DIR/src/public/page_shared_state.gleam" <<'GLEAM'
+pub type PublicPageSharedState {
+  PublicPageSharedState
+}
+GLEAM
 
-# --- admin/pages/dashboard.gleam: Required + authorize + server handler ---
 cat > "$APP_DIR/src/admin/pages/dashboard.gleam" <<'GLEAM'
-import admin/auth
-import lustre/element
-import lustre/effect
-import rally/runtime/auth as rally_auth
-import server_context.{type ServerContext}
+import admin/page_shared_state.{type AdminPageSharedState}
+import generated/proute/admin/page_input
+import gleam/int
+import lustre/effect.{type Effect, none}
+import lustre/element.{type Element}
+import lustre/element/html
+import rally/runtime/load as runtime_load
 
-pub const page_auth = rally_auth.Required
+@target(erlang)
+import sqlight
 
-pub type Model { Model(count: Int) }
-pub type Msg { NoOp }
-
-pub type ServerIncrement { ServerIncrement(amount: Int) }
-
-pub fn authorize(_server_context: ServerContext, identity: auth.Identity) -> Bool {
-  case identity { auth.Authenticated(..) -> True  _ -> False }
+pub type Model {
+  Model(count: Int)
 }
 
-pub fn server_increment(
-  msg: ServerIncrement,
-  _server_context: ServerContext,
-  _identity: auth.Identity,
-) -> Result(Int, Nil) {
-  Ok(msg.amount)
+pub type Message {
+  NoOp
+  Loaded(Result(Int, runtime_load.LoadError))
 }
 
+pub type ServerMsg {
+  AdminDashboardLoad
+  AdminDashboardIncrement
+}
+
+pub type LoadResult {
+  AdminDashboardLoaded(count: Int)
+}
+
+pub type GameUpdate {
+  GameUpdate(count: Int)
+}
+
+pub type SaveError {
+  SaveError(message: String)
+}
+
+pub fn initial_model(
+  _page_shared_state: AdminPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model(count: 0)
+}
+
+pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message)) {
+  case msg {
+    NoOp -> #(model, none())
+    Loaded(Ok(count)) -> #(Model(count:), none())
+    Loaded(Error(_)) -> #(model, none())
+  }
+}
+
+pub fn view(model: Model) -> Element(Message) {
+  html.text("admin " <> int.to_string(model.count))
+}
+
+@target(erlang)
 pub fn load(
-  _server_context: ServerContext,
-  _identity: auth.Identity,
-) -> rally_auth.LoadResult(Model) {
-  rally_auth.Page(data: Model(count: 0), cookies: [])
+  _db: sqlight.Connection,
+) -> Result(Int, runtime_load.LoadError) {
+  Ok(0)
 }
 
-pub fn init() -> #(Model, effect.Effect(Msg)) { #(Model(count: 0), effect.none()) }
-pub fn view(_model: Model) -> element.Element(Msg) { element.none() }
-pub fn update(model: Model, _msg: Msg) -> #(Model, effect.Effect(Msg)) { #(model, effect.none()) }
-GLEAM
-
-# --- admin/pages/about.gleam: no init_loaded (exercises data/model variable path) ---
-cat > "$APP_DIR/src/admin/pages/about.gleam" <<'GLEAM'
-import admin/auth
-import lustre/element
-import lustre/effect
-import rally/runtime/auth as rally_auth
-import server_context.{type ServerContext}
-
-pub const page_auth = rally_auth.Optional
-
-pub type Model { Model(info: String) }
-pub type Msg { NoOp }
-
-pub fn load(
-  _server_context: ServerContext,
-  _identity: auth.Identity,
-) -> rally_auth.LoadResult(Model) {
-  rally_auth.Page(data: Model(info: "about"), cookies: [])
-}
-
-pub fn init() -> #(Model, effect.Effect(Msg)) { #(Model(info: ""), effect.none()) }
-pub fn view(_model: Model) -> element.Element(Msg) { element.none() }
-pub fn update(model: Model, _msg: Msg) -> #(Model, effect.Effect(Msg)) { #(model, effect.none()) }
-GLEAM
-
-# --- public/auth.gleam: enables auth zero-handler namespace ---
-cat > "$APP_DIR/src/public/auth.gleam" <<'GLEAM'
-import server_context.{type ServerContext}
-
-pub type Identity {
-  Authenticated(user_id: Int)
-  Anonymous
-}
-
-pub fn resolve(_server_context: ServerContext, _session_id: String) -> Result(Identity, Nil) {
-  Ok(Anonymous)
-}
-
-pub fn is_authenticated(identity: Identity) -> Bool {
-  case identity { Authenticated(..) -> True  Anonymous -> False }
-}
-
-pub const redirect_url = "/login"
-GLEAM
-
-# --- public/client_context_server.gleam ---
-cat > "$APP_DIR/src/public/client_context_server.gleam" <<'GLEAM'
-import public/auth
-import server_context.{type ServerContext}
-
-pub type ClientContext { ClientContext }
-
-pub fn from_session(
-  server_context server_context: ServerContext,
-  session_id _session_id: String,
-  hostname _hostname: String,
-  identity _identity: auth.Identity,
-) -> #(ClientContext, ServerContext) {
-  #(ClientContext, server_context)
+@target(erlang)
+pub fn handle(
+  _db: sqlight.Connection,
+  message: ServerMsg,
+) -> Result(GameUpdate, SaveError) {
+  case message {
+    AdminDashboardLoad ->
+      Error(SaveError(message: "Load is not a save action."))
+    AdminDashboardIncrement -> Ok(GameUpdate(count: 1))
+  }
 }
 GLEAM
 
-# --- public/pages/home_.gleam: zero-handler namespace ---
+cat > "$APP_DIR/src/admin/pages/home_.gleam" <<'GLEAM'
+import admin/page_shared_state.{type AdminPageSharedState}
+import generated/proute/admin/page_input
+import lustre/effect.{type Effect, none}
+import lustre/element.{type Element}
+import lustre/element/html
+
+pub type Model {
+  Model
+}
+
+pub type Message {
+  NoOp
+}
+
+pub fn initial_model(
+  _page_shared_state: AdminPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model
+}
+
+pub fn update(model: Model, _msg: Message) -> #(Model, Effect(Message)) {
+  #(model, none())
+}
+
+pub fn view(_model: Model) -> Element(Message) {
+  html.text("admin home")
+}
+GLEAM
+
+cat > "$APP_DIR/src/admin/pages/not_found_.gleam" <<'GLEAM'
+import admin/page_shared_state.{type AdminPageSharedState}
+import generated/proute/admin/page_input
+import lustre/effect.{type Effect, none}
+import lustre/element.{type Element}
+import lustre/element/html
+
+pub type Model {
+  Model
+}
+
+pub type Message {
+  NoOp
+}
+
+pub fn initial_model(
+  _page_shared_state: AdminPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model
+}
+
+pub fn update(model: Model, _msg: Message) -> #(Model, Effect(Message)) {
+  #(model, none())
+}
+
+pub fn view(_model: Model) -> Element(Message) {
+  html.text("not found")
+}
+GLEAM
+
 cat > "$APP_DIR/src/public/pages/home_.gleam" <<'GLEAM'
-import lustre/element
-import lustre/effect
+import generated/proute/public/page_input
+import lustre/effect.{type Effect, none}
+import lustre/element.{type Element}
+import lustre/element/html
+import public/page_shared_state.{type PublicPageSharedState}
 
-pub type Model { Model }
-pub type Msg { NoOp }
+pub type Model {
+  Model
+}
 
-pub fn init() -> #(Model, effect.Effect(Msg)) { #(Model, effect.none()) }
-pub fn view(_model: Model) -> element.Element(Msg) { element.none() }
-pub fn update(model: Model, _msg: Msg) -> #(Model, effect.Effect(Msg)) { #(model, effect.none()) }
+pub type Message {
+  NoOp
+}
+
+pub fn initial_model(
+  _page_shared_state: PublicPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model
+}
+
+pub fn update(model: Model, _msg: Message) -> #(Model, Effect(Message)) {
+  #(model, none())
+}
+
+pub fn view(_model: Model) -> Element(Message) {
+  html.text("public home")
+}
 GLEAM
 
-# --- Dummy test file ---
+cat > "$APP_DIR/src/public/pages/not_found_.gleam" <<'GLEAM'
+import generated/proute/public/page_input
+import lustre/effect.{type Effect, none}
+import lustre/element.{type Element}
+import lustre/element/html
+import public/page_shared_state.{type PublicPageSharedState}
+
+pub type Model {
+  Model
+}
+
+pub type Message {
+  NoOp
+}
+
+pub fn initial_model(
+  _page_shared_state: PublicPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model
+}
+
+pub fn update(model: Model, _msg: Message) -> #(Model, Effect(Message)) {
+  #(model, none())
+}
+
+pub fn view(_model: Model) -> Element(Message) {
+  html.text("not found")
+}
+GLEAM
+
 cat > "$APP_DIR/test/auth_check_test.gleam" <<'GLEAM'
 import gleeunit
 import gleeunit/should
 
-pub fn main() { gleeunit.main() }
-pub fn dummy_test() { 1 |> should.equal(1) }
+pub fn main() {
+  gleeunit.main()
+}
+
+pub fn dummy_test() {
+  1 |> should.equal(1)
+}
 GLEAM
 
-# --- Codegen ---
 cd "$APP_DIR"
-echo "Running codegen..."
-gleam run -m rally > /dev/null
+echo "Running unified generation..."
+gleam run -m rally gen >/dev/null
 
-# --- Build ---
-echo "Building..."
-gleam build
+echo "Building Erlang target..."
+gleam build --target erlang >/dev/null
 
-echo "PASS: auth codegen produces compilable output"
+echo "Checking generated admin auth gate..."
+grep -Fq "admin_auth: fn(state) -> Option(admin_auth)" src/generated/rally/server_ws.gleam
+grep -Fq 'Error([runtime_load.LoadError(message: "Unauthorized.")])' src/generated/rally/server_ws.gleam
+grep -Fq 'Error([SaveError(field: None, message: "Unauthorized.")])' src/generated/rally/server_ws.gleam
+
+if {
+  find src -path src/generated -prune -o -type f -print
+  printf '%s\n' gleam.toml proute.toml
+} | xargs grep \
+  -e '\[\[tools\.rally\.clients\]\]' \
+  -e 'server''_context' \
+  -e 'shell\.html' \
+  -e 'server_' >/dev/null
+then
+  echo "Retired client-generation shape leaked into auth check fixture" >&2
+  exit 1
+fi
+
+echo "PASS: unified auth gate codegen produces compilable output"

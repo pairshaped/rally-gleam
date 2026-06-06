@@ -1,8 +1,6 @@
 ---
 version: 2.0.0
 title: load_rpc_hydration_gleam
-file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
-test_name: load_rpc_hydration_snapshot_test
 ---
 @target(javascript)
 import generated/rally/browser
@@ -18,6 +16,16 @@ import gleam/string
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(javascript)
 import public/pages/games/wire as public_games_wire
+
+@target(erlang)
+pub fn ensure() -> Nil {
+  Nil
+}
+
+@target(javascript)
+pub fn ensure() -> Nil {
+  Nil
+}
 
 @target(javascript)
 pub fn admin_games_load_result() -> Result(

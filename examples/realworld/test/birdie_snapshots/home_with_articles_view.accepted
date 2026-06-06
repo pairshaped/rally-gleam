@@ -1,7 +1,0 @@
----
-version: 2.0.0
-title: home_with_articles_view
-file: ./test/view_test.gleam
-test_name: home_with_articles_view_test
----
-<div class="home-page"><div class="banner"><div class="container"><h1 class="logo-font">conduit</h1><p>A place to share your knowledge.</p></div></div><div class="container page"><div class="row"><div class="col-md-9"><div class="feed-toggle"><ul class="nav nav-pills outline-active"><li class="nav-item"><a class="nav-link" href="#">Your Feed</a></li><li class="nav-item"><a class="nav-link active" href="#">Global Feed</a></li></ul></div><div class="article-preview"><div class="article-meta"><a href="/profile/jake"><img src="https://i.imgur.com/test.jpg"></a><div class="info"><a class="author" href="/profile/jake">jake</a><span class="date">1714800000</span></div><button class="btn btn-outline-primary btn-sm pull-xs-right"><i class="ion-heart"></i> 29</button></div><a class="preview-link" href="/article/how-to-train-your-dragon"><h1>How to train your dragon</h1><p>Ever wonder how?</p><span>Read more...</span></a></div></div><div class="col-md-3"><div class="sidebar"><p>Popular Tags</p><div class="tag-list"><a class="tag-pill tag-default" href="#">dragons</a><a class="tag-pill tag-default" href="#">training</a><a class="tag-pill tag-default" href="#">gleam</a></div></div></div></div></div></div>

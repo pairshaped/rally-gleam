@@ -4,16 +4,10 @@
 //// auth state, and outgoing frames. Page modules should import
 //// rally/runtime/effect instead.
 
-/// Store the WS connection handle, server context, and current page name.
+/// Store the WS connection handle, load context, and current page name.
 @external(erlang, "rally_runtime_ffi", "put_ws_state")
-pub fn put_ws_state(_conn: a, _server_context: b, _page: String) -> Nil {
+pub fn put_ws_state(_conn: a, _load_context: b, _page: String) -> Nil {
   Nil
-}
-
-/// Retrieve the server context stored on the current WS process.
-@external(erlang, "rally_runtime_ffi", "get_stored_server_context")
-pub fn get_stored_server_context() -> Result(a, Nil) {
-  Error(Nil)
 }
 
 /// Get the current page name for this WS connection.
@@ -25,18 +19,6 @@ pub fn get_ws_page() -> String {
 /// Get the mist connection handle for this WS process.
 @external(erlang, "rally_runtime_ffi", "get_ws_conn")
 pub fn get_ws_conn() -> Result(a, Nil) {
-  Error(Nil)
-}
-
-/// Store the server-side model for the current WS page.
-@external(erlang, "rally_runtime_ffi", "put_ws_server_model")
-pub fn put_ws_server_model(_model: a) -> Nil {
-  Nil
-}
-
-/// Retrieve the server-side model for the current WS page.
-@external(erlang, "rally_runtime_ffi", "get_ws_server_model")
-pub fn get_ws_server_model() -> Result(a, Nil) {
   Error(Nil)
 }
 

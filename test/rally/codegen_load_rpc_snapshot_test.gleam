@@ -277,14 +277,14 @@ pub fn load_rpc_generates_page_topic_transport_test() {
   |> string.contains("pub fn sync_topics(")
   |> should.be_true()
   browser_app
-  |> string.contains("pub fn public_page_topics(")
+  |> string.contains("pub fn public_page_broadcast_subscriptions(")
   |> should.be_true()
   browser_app
   |> string.contains("pub fn public_apply_broadcast(")
   |> should.be_true()
   browser_app
   |> string.contains(
-    "public_pages.GamesIdPage(route_params:, model:) ->\n      public_game_detail_page.topics(route_params, model)",
+    "public_pages.GamesIdPage(route_params:, model:) ->\n      public_game_detail_page.broadcast_subscriptions(route_params, model)",
   )
   |> should.be_true()
 }

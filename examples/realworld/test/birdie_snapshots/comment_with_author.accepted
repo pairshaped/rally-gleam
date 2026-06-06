@@ -1,7 +1,0 @@
----
-version: 1.5.5
-title: comment_with_author
-file: ./test/schema_test.gleam
-test_name: comment_test
----
-[#(1, "Great article!", 1735776000, "jake")]

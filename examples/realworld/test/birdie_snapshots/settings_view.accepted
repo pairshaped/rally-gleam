@@ -1,7 +1,0 @@
----
-version: 2.0.0
-title: settings_view
-file: ./test/view_test.gleam
-test_name: settings_view_test
----
-<div class="settings-page"><div class="container page"><div class="row"><div class="col-md-6 offset-md-3 col-xs-12"><h1 class="text-xs-center">Your Settings</h1><ul class="error-messages"></ul><fieldset><fieldset class="form-group"><input class="form-control" placeholder="URL of profile picture" type="text" value="https://i.imgur.com/test.jpg"></fieldset><fieldset class="form-group"><input class="form-control form-control-lg" placeholder="Your Name" type="text" value="jake"></fieldset><fieldset class="form-group"><textarea class="form-control form-control-lg" placeholder="Short bio about you" rows="8" value="I work at a thing"></textarea></fieldset><fieldset class="form-group"><input class="form-control form-control-lg" placeholder="Email" type="text" value="jake@jake.jake"></fieldset><fieldset class="form-group"><input class="form-control form-control-lg" placeholder="New Password" type="password" value></fieldset><button class="btn btn-lg btn-primary pull-xs-right" type="button">Update Settings</button></fieldset><hr><button class="btn btn-outline-danger" type="button">Or click here to logout.</button></div></div></div></div>

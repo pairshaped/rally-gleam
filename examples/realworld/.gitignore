@@ -1,6 +1,0 @@
-build/
-manifest.toml
-.generated_clients/
-src/generated/
-src/generated@*.erl
-app.db
