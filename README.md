@@ -9,7 +9,17 @@ Rally is a Gleam package for building Lustre apps that render on the server and 
 
 The page file is the contract. Client state, server calls, and the message types that cross the wire all live together until you choose to extract shared code.
 
-Rally apps use SQLite by default: embedded database, migrations, and type-safe SQL codegen, with no separate database server for development.
+Rally is opinionated. It chooses conventions so application code can stay small, generated code can stay predictable, and the framework can test the common path hard. A Rally app uses SQLite, Marmot, Proute, and Libero as part of that path. If an app needs a different foundation, fork Rally and submit a tested PR instead of growing local framework glue.
+
+## Convention Stack
+
+| Library | What Rally uses it for |
+|---|---|
+| SQLite | Embedded application database |
+| Marmot | SQL migrations and type-safe query generation from `.sql` files |
+| Proute | File-based routes, route params, query params, page enums, and page dispatch |
+| Libero | Typed wire codecs for page-local load/save contracts and broadcasts |
+| Lustre | Browser-side TEA views, updates, and effects |
 
 ## What Rally Generates
 
@@ -17,7 +27,7 @@ Rally reads page modules and writes the routing, SSR, WebSocket transport, reque
 
 You still write the UI, SQL, auth policy, and server handlers.
 
-`rally build` follows the Rally Scoreboard unified-source path. It runs configured Marmot codegen, runs Proute when `proute.toml` exists, composes Proute routes with Libero codecs, writes `src/generated/rally/**` and `src/generated/libero/**`, then builds the current package for Erlang and JavaScript.
+`rally build` follows the Rally Scoreboard Example path. It runs configured Marmot codegen, runs Proute when `proute.toml` exists, composes Proute routes with Libero codecs, writes `src/generated/rally/**` and `src/generated/libero/**`, then builds the current package for Erlang and JavaScript.
 
 ## Create an app
 
@@ -33,7 +43,7 @@ gleam run
 
 `rally init` writes the starter app into the current Gleam project, including `src/my_app.gleam`. It replaces the default files from `gleam new` that Rally needs to take over: `gleam.toml`, `.gitignore`, `README.md`, and `src/my_app.gleam`. If you already wrote your own `README.md`, Rally leaves it alone. If any other target file already exists, Rally stops before writing anything and tells you which file needs attention.
 
-`rally migrate` delegates to `marmot migrate`, so Marmot owns the configured database path and migration directory. The starter uses `db/migrations` and stores local SQLite databases under `db/`. `rally build` then regenerates framework glue and builds the app for Erlang and JavaScript. Start the server with `gleam run -m rally server` and open `http://localhost:8080`. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`. Run `rally migrate` before `rally build` and before deploying against a new database.
+`rally migrate` delegates to `marmot migrate`; Rally has no migration runner of its own. Marmot owns the configured database path and migration directory. The starter uses `db/migrations` and stores local SQLite databases under `db/`. `rally build` then regenerates framework glue and builds the app for Erlang and JavaScript. Start the server with `gleam run -m rally server` and open `http://localhost:8080`. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`. Run `rally migrate` before `rally build` and before deploying against a new database.
 
 Common workflow commands:
 
@@ -48,67 +58,104 @@ Common workflow commands:
 
 ## Writing a page
 
-A page file in `src/<namespace>/pages/` is a Lustre component with server load
-and save handlers beside the client UI:
+A page file in `src/<namespace>/pages/` is a Lustre component with Rally load,
+save, and broadcast hooks beside the client UI. A shortened admin games page
+looks like this:
 
 ```gleam
+import admin/page_shared_state.{type AdminPageSharedState}
+import broadcasts
+import generated/proute/admin/page_input
 import gleam/int
+import gleam/list
 import lustre/attribute
+import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
-import lustre/effect.{type Effect}
-import lustre/effect
 import lustre/event
-import generated/proute/public/page_input
-import public/page_shared_state.{type PublicPageSharedState}
 import rally/runtime/load as runtime_load
 
 @target(javascript)
 import generated/rally/server
 
 @target(erlang)
+import generated/sql/admin/pages/games_sql
+@target(erlang)
 import sqlight
 
-pub type Model {
-  Model(count: Int, error: String)
+pub type GameStatus {
+  Scheduled
+  Live(period: String)
+  Final
 }
 
-pub type Message {
-  Increment
-  Loaded(Result(Int, runtime_load.LoadError))
-  Saved(Result(GameUpdate, SaveError))
-}
-
-pub type ServerMsg {
-  PublicHomeLoad
-  PublicHomeIncrement
-}
-
-pub type LoadResult {
-  PublicHomeLoaded(count: Int)
+pub type AdminGameSummary {
+  AdminGameSummary(
+    id: Int,
+    home_code: String,
+    away_code: String,
+    home_score: Int,
+    away_score: Int,
+    status: GameStatus,
+  )
 }
 
 pub type GameUpdate {
-  GameUpdate(count: Int)
+  GameUpdate(
+    id: Int,
+    home_code: String,
+    away_code: String,
+    home_score: Int,
+    away_score: Int,
+    status: GameStatus,
+  )
+}
+
+pub type LoadResult {
+  AdminGamesLoadResult(games: List(AdminGameSummary))
+}
+
+pub type ServerMsg {
+  AdminGamesLoad
+  AdminGamesUpdateScore(
+    game_id: Int,
+    home_score: Int,
+    away_score: Int,
+    period: String,
+  )
 }
 
 pub type SaveError {
   SaveError(message: String)
 }
 
-pub fn initial_model(
-  _page_shared_state: PublicPageSharedState,
-  _query_params: page_input.QueryParams,
-) -> Model {
-  Model(count: 0, error: "")
+pub type Model {
+  Model(games: List(AdminGameSummary), error: String)
 }
 
-pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message)) {
+pub type Message {
+  AdjustHome(id: Int, home_score: Int, away_score: Int, delta: Int)
+  Loaded(Result(List(AdminGameSummary), runtime_load.LoadError))
+  Saved(Result(GameUpdate, SaveError))
+}
+
+pub fn initial_model(
+  _page_shared_state: AdminPageSharedState,
+  _query_params: page_input.QueryParams,
+) -> Model {
+  Model(games: [], error: "")
+}
+
+pub fn update(
+  _page_shared_state: AdminPageSharedState,
+  model: Model,
+  msg: Message,
+) -> #(Model, Effect(Message)) {
   case msg {
-    Increment -> #(model, save_effect(Increment))
-    Loaded(Ok(count)) -> #(Model(count:, error: ""), effect.none())
+    AdjustHome(..) -> #(model, message_effect(msg))
+    Loaded(Ok(games)) -> #(Model(games:, error: ""), effect.none())
     Loaded(Error(error)) -> #(Model(..model, error: error.message), effect.none())
-    Saved(Ok(GameUpdate(count:))) -> #(Model(count:, error: ""), effect.none())
+    Saved(Ok(game)) -> #(upsert_game(model, game), effect.none())
     Saved(Error(SaveError(message:))) ->
       #(Model(..model, error: message), effect.none())
   }
@@ -116,9 +163,10 @@ pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message)) {
 
 pub fn view(model: Model) -> Element(Message) {
   html.main([], [
-    html.button([event.on_click(Increment)], [
-      html.text("Count: " <> int.to_string(model.count)),
-    ]),
+    html.div(
+      [attribute.class("game-grid")],
+      list.map(model.games, view_game_card),
+    ),
     case model.error {
       "" -> html.text("")
       message -> html.p([attribute.class("error")], [html.text(message)])
@@ -126,41 +174,208 @@ pub fn view(model: Model) -> Element(Message) {
   ])
 }
 
+fn view_game_card(game: AdminGameSummary) -> Element(Message) {
+  html.article([attribute.class("game-card")], [
+    html.strong([], [html.text(game.home_code)]),
+    html.span([], [html.text(int.to_string(game.home_score))]),
+    html.button(
+      [
+        event.on_click(AdjustHome(
+          id: game.id,
+          home_score: game.home_score,
+          away_score: game.away_score,
+          delta: 1,
+        )),
+      ],
+      [html.text("+")],
+    ),
+  ])
+}
+
+// BROADCAST
+
+pub fn broadcast_subscriptions(_model: Model) -> List(broadcasts.Topic) {
+  [broadcasts.admin_games_topic()]
+}
+
+pub fn apply_broadcast(
+  model: Model,
+  message: broadcasts.Event,
+) -> #(Model, Effect(Message)) {
+  case message {
+    broadcasts.BroadcastGameUpdated(game) ->
+      #(upsert_game(model, update_from_broadcast(game)), effect.none())
+  }
+}
+
 @target(javascript)
-fn save_effect(_msg: Message) -> Effect(Message) {
-  server.save_public_home(
-    message: PublicHomeIncrement,
-    on_result: fn(result) {
-      Saved(case result {
-        Ok(update) -> Ok(update)
-        Error(_) -> Error(SaveError(message: "Could not save counter."))
-      })
-    },
-  )
+fn message_effect(msg: Message) -> Effect(Message) {
+  case msg {
+    AdjustHome(id, home_score, away_score, delta) ->
+      server.save_admin_games(
+        message: AdminGamesUpdateScore(
+          game_id: id,
+          home_score: clamp_score(home_score + delta),
+          away_score: away_score,
+          period: "Live",
+        ),
+        on_result: fn(result) { Saved(map_save_result(result)) },
+      )
+    Loaded(_) | Saved(_) -> effect.none()
+  }
 }
 
 @target(erlang)
-pub fn load(db: sqlight.Connection) -> Result(Int, runtime_load.LoadError) {
-  // Read from the database here.
-  Ok(0)
+fn message_effect(_msg: Message) -> Effect(Message) {
+  effect.none()
+}
+
+fn upsert_game(model: Model, game: GameUpdate) -> Model {
+  let games =
+    list.map(model.games, fn(existing) {
+      case existing.id == game.id {
+        True ->
+          AdminGameSummary(
+            id: game.id,
+            home_code: game.home_code,
+            away_code: game.away_code,
+            home_score: game.home_score,
+            away_score: game.away_score,
+            status: game.status,
+          )
+        False -> existing
+      }
+    })
+
+  Model(..model, games:)
+}
+
+@target(javascript)
+fn map_save_result(
+  result: Result(GameUpdate, List(server.SaveError)),
+) -> Result(GameUpdate, SaveError) {
+  case result {
+    Ok(game) -> Ok(game)
+    Error([server.SaveError(message: message, ..), ..]) ->
+      Error(SaveError(message:))
+    Error([]) -> Error(SaveError(message: "Could not save game."))
+  }
+}
+
+fn update_from_broadcast(game: broadcasts.GameSnapshot) -> GameUpdate {
+  let broadcasts.BroadcastGameSnapshot(
+    id:,
+    home: broadcasts.BroadcastTeam(code: home_code, ..),
+    away: broadcasts.BroadcastTeam(code: away_code, ..),
+    home_score:,
+    away_score:,
+    status:,
+  ) = game
+
+  GameUpdate(
+    id:,
+    home_code:,
+    away_code:,
+    home_score:,
+    away_score:,
+    status: game_status_from_broadcast(status),
+  )
+}
+
+fn game_status_from_broadcast(status: broadcasts.GameStatus) -> GameStatus {
+  case status {
+    broadcasts.BroadcastScheduled -> Scheduled
+    broadcasts.BroadcastLive(period) -> Live(period)
+    broadcasts.BroadcastFinal -> Final
+  }
+}
+
+fn clamp_score(score: Int) -> Int {
+  case score < 0 {
+    True -> 0
+    False -> score
+  }
+}
+
+@target(erlang)
+pub fn load(
+  db: sqlight.Connection,
+) -> Result(List(AdminGameSummary), runtime_load.LoadError) {
+  case games_sql.list_admin_games(db:) {
+    Ok(rows) -> Ok(list.map(rows, game_from_row))
+    Error(sqlight.SqlightError(..)) ->
+      Error(runtime_load.LoadError(message: "Could not load games."))
+  }
 }
 
 @target(erlang)
 pub fn handle(
   db: sqlight.Connection,
-  message: ServerMsg,
+  msg: ServerMsg,
 ) -> Result(GameUpdate, SaveError) {
-  case message {
-    PublicHomeLoad -> Error(SaveError(message: "Load is not a save action."))
-    PublicHomeIncrement -> {
-      // Write to the database here.
-      Ok(GameUpdate(count: 1))
-    }
+  case msg {
+    AdminGamesLoad -> Error(SaveError(message: "Load is not a save action."))
+    AdminGamesUpdateScore(game_id, home_score, away_score, period) ->
+      case
+        games_sql.update_game_score(
+          db:,
+          game_id:,
+          home_score:,
+          away_score:,
+          period:,
+        )
+      {
+        Ok([row, ..]) -> Ok(game_update_from_row(row))
+        Ok([]) -> Error(SaveError(message: "Game not found."))
+        Error(sqlight.SqlightError(..)) ->
+          Error(SaveError(message: "Could not save game."))
+      }
+  }
+}
+
+@target(erlang)
+pub fn after_save(
+  db: sqlight.Connection,
+  game: GameUpdate,
+) -> Result(broadcasts.TargetedEvent, Nil) {
+  broadcasts.game_updated_broadcast(db, game.id)
+}
+
+@target(erlang)
+fn game_from_row(row: games_sql.ListAdminGamesRow) -> AdminGameSummary {
+  AdminGameSummary(
+    id: row.id,
+    home_code: row.home_code,
+    away_code: row.away_code,
+    home_score: row.home_score,
+    away_score: row.away_score,
+    status: game_status(row.period, row.final),
+  )
+}
+
+@target(erlang)
+fn game_update_from_row(row: games_sql.UpdateGameScoreRow) -> GameUpdate {
+  GameUpdate(
+    id: row.id,
+    home_code: row.home_code,
+    away_code: row.away_code,
+    home_score: row.home_score,
+    away_score: row.away_score,
+    status: game_status(row.period, row.final),
+  )
+}
+
+@target(erlang)
+fn game_status(period: String, final: Int) -> GameStatus {
+  case final == 1, period {
+    True, _ -> Final
+    False, "Scheduled" -> Scheduled
+    False, _ -> Live(period)
   }
 }
 ```
 
-`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA. `ServerMsg`, `LoadResult`, `load`, and `handle` define the server boundary. Rally generates browser functions such as `generated/rally/server.save_public_home`, server dispatch, SSR loading, hydration, and WebSocket transport.
+`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA, with `AdminPageSharedState` passed into page lifecycle functions for app-wide browser state. `ServerMsg`, `LoadResult`, `load`, optional `handle`, and optional `after_save` define the server boundary. `broadcast_subscriptions` and `apply_broadcast` define live update interest. Rally generates browser functions such as `generated/rally/server.save_admin_games`, server dispatch, SSR loading, hydration, topic sync, and WebSocket transport.
 
 There is no separate API schema. Rally scans page-local handler signatures and wires them into generated browser and server code. Rally uses [Libero](https://hexdocs.pm/libero/) as its lower-level wire codec library, the same way Marmot-generated SQL access code uses SQLite underneath.
 
@@ -170,12 +385,13 @@ The filename determines the URL:
 
 | File | URL | Route variant |
 |------|-----|--------------|
-| `home_.gleam` or `index.gleam` | `/` | `Home` |
+| `home_.gleam` | `/` | `Home` |
 | `about.gleam` | `/about` | `About` |
+| `games.gleam` | `/games` | `Games` |
 | `products/id_.gleam` | `/products/:id` | `ProductsId(id: Int)` |
 | `settings/profile.gleam` | `/settings/profile` | `SettingsProfile` |
 
-A trailing `_` makes the segment dynamic. Params named `id` or ending in `_id` parse as `Int`; others parse as `String`.
+`home_.gleam` is the default route for the directory it lives in. A trailing `_` makes the segment dynamic. Params named `id` or ending in `_id` parse as `Int`; others parse as `String`.
 
 ## What to import
 
@@ -204,17 +420,17 @@ For short login-code flows, use `auth.generate_login_code`, then store `auth.has
 
 ## Generated files
 
-Running `gleam run -m rally build` reads the app's standard project config and produces unified-source generated files:
+Running `gleam run -m rally build` reads the app's standard project config and produces Rally Scoreboard Example generated files:
 
 - `src/generated/proute/**`: route types, route params, query params, and page dispatch, generated by Proute when `proute.toml` exists.
 - `src/generated/rally/**`: request/result protocols, client transport, browser mount/app glue, hydration, SSR, websocket handling, theme helpers, and load/save result envelopes.
 - `src/generated/libero/**`: ETF codec helpers, decoder registration, atoms/wire modules, and Libero contract metadata.
 
-For broadcast-aware pages in the unified-source surface, app code owns typed topics and broadcast event payloads. Page `broadcast_subscriptions` and `apply_broadcast` hooks live together in a `// BROADCAST` section. Generated Rally glue maps typed topics to text topic sync frames, filters broadcasts on the server per connection, and calls page `apply_broadcast` hooks with decoded events.
+For broadcast-aware pages in the Rally Scoreboard Example surface, app code owns typed topics and broadcast event payloads. Page `broadcast_subscriptions` and `apply_broadcast` hooks live together in a `// BROADCAST` section. Generated Rally glue maps typed topics to text topic sync frames, filters broadcasts on the server per connection, and calls page `apply_broadcast` hooks with decoded events.
 
 ## Examples
 
-- [Rally Scoreboard](../rally-scoreboard-example/): unified-source Rally example with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
+- [Rally Scoreboard](https://github.com/pairshaped/rally-scoreboard-example): definitive Rally Scoreboard Example app with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
 
 ## More docs
 
@@ -237,15 +453,11 @@ gleam build
 gleam test
 ```
 
-Rally depends on [Libero](https://hexdocs.pm/libero/) for wire encoding and decoding. Rally-generated code consumes Libero runtime modules directly, so Rally-managed apps list Libero as a runtime dependency. Projects that use Libero directly, or other frameworks built on Libero, can use Libero without Rally.
-
 ## Influences
 
 - [Lamdera](https://lamdera.com): explicit server handler types as the contract, TEA on both sides
 - [Lustre](https://lustre.build/): TEA, effects, and the client-side UI runtime
 - [elm-land](https://elm.land): file-based routing conventions
-- [Libero](https://hexdocs.pm/libero/): lower-level wire codec library used by Rally-generated code
-- [Marmot](https://hexdocs.pm/marmot/): SQL-first codegen with live SQLite introspection
 
 ## License
 

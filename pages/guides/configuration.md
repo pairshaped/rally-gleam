@@ -17,7 +17,9 @@ sql_dir = "src/sql"
 output = "src/generated/sql"
 ```
 
-When `[tools.marmot]` is present, `rally migrate` delegates to Marmot's configured migration runner, and `rally build` runs Marmot before Rally codegen. Marmot's default migration directory is `db/migrations`.
+When `[tools.marmot]` is present, `rally migrate` delegates to `marmot migrate`; Rally has no migration runner of its own. `rally build` runs Marmot before Rally codegen. Marmot's default migration directory is `db/migrations`.
+
+Rally checks delegated tools before running them. If `[tools.marmot]` is present, the app must list `marmot`. If `proute.toml` exists, the app must list `proute`. Rally codegen uses Libero for wire codecs, so the app must list `libero`. These can be in `[dependencies]`, `[dev-dependencies]`, or `[dev_dependencies]`.
 
 ## proute.toml
 

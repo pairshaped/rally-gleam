@@ -4,9 +4,9 @@
 
 Rally is a Gleam package for building Lustre apps that render on the server and hydrate in the browser. You write page modules with page-local models, messages, load handlers, save handlers, views, and broadcast hooks. Rally generates routing composition, server-side rendering, WebSocket transport, request/result protocol code, hydration, browser lifecycle, and typed client-server messaging.
 
-The page file is the contract. Client state, server calls, and the message types that cross the wire live together until you extract shared code. Libero walks reachable page-local handler types and generates the wire protocol. Rally handles pages, routing, SSR, transport, and runtime. Libero handles typed request/result encoding, request envelopes, and response frames.
+The page file is the contract. Client state, server calls, and the message types that cross the wire live together until you extract shared code.
 
-Rally apps use SQLite by default: embedded database, migrations, and type-safe SQL codegen, with no separate database server for development.
+Rally is opinionated and convention-driven. Rally apps use SQLite for the application database, Marmot for SQL migrations and type-safe query generation, Proute for file-based routing and page dispatch, Libero for typed wire codecs, and Lustre for browser-side TEA. If an app needs a different foundation such as PostgreSQL, fork Rally and submit a tested PR instead of adding local framework glue.
 
 ETF is the default wire format. JSON is available for non-Gleam clients.
 
@@ -21,13 +21,15 @@ gleam run -m rally build
 gleam run
 ```
 
-`rally init` creates the Rally Scoreboard style starter app. `rally gen` runs configured Marmot codegen, runs Proute when `proute.toml` exists, and generates Rally/Libero glue under `src/generated/**`. `rally regen` deletes `src/generated` first, then runs `gen`. `rally build` runs `gen` and builds the current package for Erlang and JavaScript. `rally migrate` delegates to Marmot migrate, and `rally reset` delegates to Marmot reset. `rally server` stops any process listening on `PORT` or 8080, then runs `gleam run` in the foreground. Open `http://localhost:8080` to see the app. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`.
+`rally init` creates the Rally Scoreboard Example starter app. `rally gen` runs configured Marmot codegen, runs Proute when `proute.toml` exists, and generates Rally/Libero glue under `src/generated/**`. `rally regen` deletes `src/generated` first, then runs `gen`. `rally build` runs `gen` and builds the current package for Erlang and JavaScript. `rally migrate` delegates to Marmot migrate, and `rally reset` delegates to Marmot reset. Rally has no migration runner of its own. `rally server` stops any process listening on `PORT` or 8080, then runs `gleam run` in the foreground. Open `http://localhost:8080` to see the app. To use a different port, set `PORT` in `.env` or run `PORT=8081 gleam run -m rally server`.
+
+Rally checks delegated package dependencies before shelling out. `[tools.marmot]` requires a direct `marmot` dependency, `proute.toml` requires `proute`, and Rally/Libero wire codegen requires `libero`.
 
 `APP_ENV=dev` is the default. Set `APP_ENV=prod` in production for secure session cookies and quieter console output.
 
 ## Generator surfaces
 
-`rally build` is the unified-source generator used by Rally Scoreboard. Authored pages own `Model`, `Message`, `ServerMsg`, `initial_model`, optional `init`, `load`, optional `handle`, `broadcast_subscriptions`, and `apply_broadcast`. Proute owns route params, query params, page enums, and page dispatch. Rally owns transport, request/result encoding, hydration, SSR composition, browser boot, topic sync, server-side broadcast filtering, and generated browser lifecycle glue.
+`rally build` is the Rally Scoreboard Example generator path. Authored pages own `Model`, `Message`, `ServerMsg`, `initial_model`, optional `init`, `load`, optional `handle`, `broadcast_subscriptions`, and `apply_broadcast`. Proute owns route params, query params, page enums, and page dispatch. Rally owns transport, request/result encoding, hydration, SSR composition, browser boot, topic sync, server-side broadcast filtering, and generated browser lifecycle glue.
 
 ## Page conventions
 
@@ -35,11 +37,12 @@ A page file in `src/<namespace>/pages/` maps to a URL route. The filename determ
 
 | File | URL | Route variant |
 |---|---|---|
-| `home_.gleam` or `index.gleam` | `/` | `Home` |
+| `home_.gleam` | `/` | `Home` |
 | `about.gleam` | `/about` | `About` |
+| `games.gleam` | `/games` | `Games` |
 | `products/id_.gleam` | `/products/:id` | `ProductsId(id: Int)` |
 
-Trailing underscore marks a dynamic segment. Names ending in `_id` become `Int` params; everything else `String`.
+`home_.gleam` is the default route for the directory it lives in. Trailing underscore marks a dynamic segment. Names ending in `_id` become `Int` params; everything else `String`.
 
 ### Required exports
 
@@ -156,9 +159,9 @@ gleam.toml + proute.toml -> Marmot -> Proute -> Rally load/save discovery -> Lib
 
 | Module | Role |
 |---|---|
-| `rally.gleam` | CLI entry point and unified build orchestration |
+| `rally.gleam` | CLI entry point and Rally Scoreboard Example build orchestration |
 | `internal/init.gleam` | Rally starter scaffold generation |
-| `internal/generator/load_rpc.gleam` | Unified Rally Scoreboard load/save, SSR, browser, hydration, WebSocket, topic, and protocol generation |
+| `internal/generator/load_rpc.gleam` | Rally Scoreboard Example load/save, SSR, browser, hydration, WebSocket, topic, and protocol generation |
 | `internal/format.gleam` | Runs `gleam format` on generated code |
 
 Libero provides handler discovery, BFS type graph walking, codegen_decoders, field_type, glance_type_resolver (shared Glance type resolution), wire_identity (canonical type hashing), wire/protocol helpers, and trace (panic catching). Rally feeds page-local load/save contracts into Libero.
@@ -194,7 +197,7 @@ gleam run
 
 ## Links
 
-- [Rally Scoreboard example](../rally-scoreboard-example/): unified-source Rally example with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
+- [Rally Scoreboard example](https://github.com/pairshaped/rally-scoreboard-example): definitive Rally Scoreboard Example app with Proute routes, Libero codecs, page-local load/save contracts, typed broadcast topics, SSR, hydration, and browser navigation.
 - [Rally on GitHub](https://github.com/pairshaped/rally-gleam)
 - [Gleam](https://gleam.run)
 - [Lustre](https://hexdocs.pm/lustre)

@@ -1,5 +1,5 @@
-//// CLI entry point for Rally. The default build path runs the unified
-//// Rally Scoreboard source pipeline: Marmot, Proute, Rally load/save
+//// CLI entry point for Rally. The default build path follows the Rally
+//// Scoreboard Example pipeline: Marmot, Proute, Rally load/save
 //// generation, and Erlang/JavaScript builds.
 
 import argv
@@ -19,7 +19,7 @@ import rally/runtime/env
 import simplifile
 import tom
 
-type RallyError {
+pub type RallyError {
   RallyError(message: String)
 }
 
@@ -66,8 +66,8 @@ fn run(args: List(String)) -> Result(String, RallyError) {
     ["regen"] -> run_regen()
     ["reset"] -> run_reset()
     ["server"] | ["server", "restart"] -> run_server()
-    ["build"] -> run_unified_build()
-    [] | ["gen"] -> run_unified_codegen()
+    ["build"] -> run_rally_build()
+    [] | ["gen"] -> run_rally_codegen()
     _ ->
       Error(RallyError(
         "Unknown command. Usage: rally init | rally migrate | rally reset | rally regen | rally server | rally build | rally gen",
@@ -78,6 +78,11 @@ fn run(args: List(String)) -> Result(String, RallyError) {
 fn run_rally_source_codegen_with_toml(
   toml_map: dict.Dict(String, tom.Toml),
 ) -> Result(String, RallyError) {
+  use Nil <- result.try(ensure_dependency(
+    toml_map,
+    package: "libero",
+    reason: "Rally codegen uses Libero to generate wire codecs.",
+  ))
   use push_contract <- result.try(rally_push_contract_from_toml(toml_map))
   use load_context <- result.try(rally_load_context_from_toml(toml_map))
   use loads <- result.try(
@@ -86,7 +91,7 @@ fn run_rally_source_codegen_with_toml(
       RallyError("Rally source discovery error: " <> msg)
     }),
   )
-  use libero_files <- result.try(generate_unified_libero_files(
+  use libero_files <- result.try(generate_rally_libero_files(
     loads:,
     push_contract:,
     package: package_name_from_toml(toml_map),
@@ -108,7 +113,7 @@ fn run_rally_source_codegen_with_toml(
   )
 }
 
-fn generate_unified_libero_files(
+fn generate_rally_libero_files(
   loads loads: List(load_rpc.LoadRpc),
   push_contract push_contract: option.Option(load_rpc.PushContract),
   package package: String,
@@ -300,15 +305,15 @@ fn write_rally_generated_files(
   })
 }
 
-fn run_unified_codegen() -> Result(String, RallyError) {
+fn run_rally_codegen() -> Result(String, RallyError) {
   use toml_map <- result.try(read_project_toml())
   use Nil <- result.try(run_marmot_if_configured(toml_map))
-  use Nil <- result.try(run_proute_if_configured())
+  use Nil <- result.try(run_proute_if_configured(toml_map))
   run_rally_source_codegen_with_toml(toml_map)
 }
 
-fn run_unified_build() -> Result(String, RallyError) {
-  use _ <- result.try(run_unified_codegen())
+fn run_rally_build() -> Result(String, RallyError) {
+  use _ <- result.try(run_rally_codegen())
   use gleam <- result.try(find_gleam())
   use Nil <- result.try(run_command(
     program: gleam,
@@ -322,7 +327,7 @@ fn run_unified_build() -> Result(String, RallyError) {
     dir: ".",
     label: "javascript build",
   ))
-  Ok("built unified app")
+  Ok("built Rally app")
 }
 
 fn run_migrate() -> Result(String, RallyError) {
@@ -354,7 +359,7 @@ fn run_regen() -> Result(String, RallyError) {
       )
     }),
   )
-  run_unified_codegen()
+  run_rally_codegen()
 }
 
 fn run_server() -> Result(String, RallyError) {
@@ -412,6 +417,11 @@ fn run_marmot_command_if_configured(
 ) -> Result(Nil, RallyError) {
   case should_run_marmot(toml_map) {
     True -> {
+      use Nil <- result.try(ensure_dependency(
+        toml_map,
+        package: "marmot",
+        reason: "Rally delegates this command to Marmot.",
+      ))
       use gleam <- result.try(find_gleam())
       run_command(program: gleam, args:, dir: ".", label:)
     }
@@ -419,9 +429,16 @@ fn run_marmot_command_if_configured(
   }
 }
 
-fn run_proute_if_configured() -> Result(Nil, RallyError) {
+fn run_proute_if_configured(
+  toml_map: dict.Dict(String, tom.Toml),
+) -> Result(Nil, RallyError) {
   case simplifile.is_file("proute.toml") {
     Ok(True) -> {
+      use Nil <- result.try(ensure_dependency(
+        toml_map,
+        package: "proute",
+        reason: "Rally delegates route generation to Proute when proute.toml exists.",
+      ))
       use gleam <- result.try(find_gleam())
       run_command(
         program: gleam,
@@ -431,6 +448,47 @@ fn run_proute_if_configured() -> Result(Nil, RallyError) {
       )
     }
     _ -> Ok(Nil)
+  }
+}
+
+@internal
+pub fn ensure_dependency(
+  toml_map: dict.Dict(String, tom.Toml),
+  package package: String,
+  reason reason: String,
+) -> Result(Nil, RallyError) {
+  case dependency_present(toml_map, package) {
+    True -> Ok(Nil)
+    False ->
+      Error(RallyError(
+        "Missing dependency `"
+        <> package
+        <> "` in gleam.toml. "
+        <> reason
+        <> " Add it with `gleam add "
+        <> package
+        <> "`.",
+      ))
+  }
+}
+
+fn dependency_present(
+  toml_map: dict.Dict(String, tom.Toml),
+  package: String,
+) -> Bool {
+  has_dependency_in_section(toml_map, ["dependencies"], package)
+  || has_dependency_in_section(toml_map, ["dev-dependencies"], package)
+  || has_dependency_in_section(toml_map, ["dev_dependencies"], package)
+}
+
+fn has_dependency_in_section(
+  toml_map: dict.Dict(String, tom.Toml),
+  section: List(String),
+  package: String,
+) -> Bool {
+  case tom.get(toml_map, list.append(section, [package])) {
+    Ok(_) -> True
+    Error(_) -> False
   }
 }
 

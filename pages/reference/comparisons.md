@@ -20,7 +20,7 @@ Every Rally app gets SQLite with WAL mode, busy timeout, and foreign keys enable
 
 Marmot generates type-safe query functions from `.sql` files via live SQLite introspection. You write SQL, Marmot runs it against your actual schema, and generates Gleam functions with the correct argument and return types.
 
-The joke version is: zero tradeoffs, you do not need anything more than `sqlite3`. The practical version is that SQLite removes a database service from local development and keeps deployment simple for many small and medium apps. Move when you have a concrete reason: independent database scaling, managed replicas, or operational features outside SQLite's lane.
+The joke version is: zero tradeoffs, you do not need anything more than `sqlite3`. The practical version is that SQLite removes a database service from local development and keeps deployment simple for many small and medium apps. Rally treats this as a framework convention. If another database should be supported, fork Rally and submit a tested PR instead of adding per-app framework glue.
 
 ## Lamdera-inspired
 
@@ -32,7 +32,7 @@ Where they diverge: Gleam on the BEAM gives you OTP processes, `pg` groups, and 
 
 These are two different architectures for building full-stack apps with Lustre.
 
-**Lustre server components** run the TEA loop on the server. Model, update, and view all execute server-side. On first connect, the server sends the full VDOM. On each update, it diffs the old and new VDOM and sends only the patch. The client is a thin JavaScript shell (~10KB) that applies DOM patches and forwards browser events back to the server.
+**Lustre server components** run the TEA loop on the server. Model, update, and view all execute server-side. On first connect, the server sends the current page's rendered DOM representation. On each update, it diffs the old and new view and sends only the patch. The client is a thin JavaScript shell that applies DOM patches and forwards browser events back to the server.
 
 **Rally** runs TEA in the browser for UI state. Server work is explicit: pages call typed load/save handlers and subscribe to typed broadcast topics. The wire carries domain messages, not VDOM patches.
 
@@ -41,15 +41,16 @@ These are two different architectures for building full-stack apps with Lustre.
 | **Where UI runs** | Server (model + update + view) | Client (model + update + view) |
 | **What goes over the wire** | VDOM patches down, DOM events up | Domain messages in both directions |
 | **Interaction latency** | Every event round-trips to server | Local state changes are instant |
-| **Server memory** | Model + VDOM + event handler cache (shared across subscribers) | Request state, topic subscriptions, and app-owned resources. Page UI models live in the browser |
-| **Client JS bundle** | Minimal (DOM patcher, ~10KB) | Full app logic (Lustre + page modules) |
-| **Real-time multi-user** | Built in (all subscribers see same state) | Requires explicit broadcast |
+| **Server memory** | Model + VDOM + event handler cache per running component instance | Request state, topic subscriptions, and app-owned resources. Page UI models live in the browser |
+| **Client payload** | Thin DOM patcher JS plus the current page DOM on load | Full app logic (Lustre + page modules), with SSR HTML on first load |
+| **Shadow DOM** | Component content renders in Shadow DOM, with open/closed shadow root config | Regular document DOM unless app code introduces a Shadow DOM boundary |
+| **Shared live state** | Subscribed clients to the same running component receive the same patches. App routing/grouping decides who shares an instance | Explicit typed broadcast topics and per-connection subscriptions |
 
 ## When to use Lustre server components
 
 To be honest? Most of the time.
 
-For apps where interactions are button clicks, form submissions, and navigation, the server round-trip on same-region infra is often short enough that users will not notice it. The model is smaller: the server owns the TEA loop, the browser applies patches, and all subscribers share the same server-side model.
+For apps where interactions are button clicks, form submissions, and navigation, the server round-trip on same-region infra is often short enough that users will not notice it. The model is smaller: the server owns the TEA loop and the browser applies patches. When multiple clients subscribe to the same running component, they receive patches from the same server-side state.
 
 Server components can also embed client-side Lustre components as web components when you need local interactivity. A server-rendered page can include a client-side rich text editor or drag-and-drop widget.
 
@@ -61,4 +62,4 @@ Rally fits when the browser needs to own more of the application behavior.
 
 **Responsive local interactions.** Typing with live feedback, drag-and-drop, rich editors, optimistic updates: anything where 10-50ms of server round-trip becomes perceptible. When state changes happen in the browser, the update does not wait for a request.
 
-Rally asks more from you in exchange. Each page has a client update and (optionally) a server update. You decide which side owns each interaction. The browser ships more code. If your app has a single web frontend and interactions that tolerate a short round-trip, server components are the simpler path. If you need multiple client surfaces or local-first responsiveness, Rally's explicit message layer can be worth the extra code.
+Rally asks more from you in exchange. Each page has a client update and (optionally) a server update. You decide which side owns each interaction. The browser ships more code up front, but that JavaScript is usually cached and long-lived. After that, Rally sends typed data messages that are often much smaller than VDOM diff patches. If your app has a single web frontend and interactions that tolerate a short round-trip, server components are the simpler path. If you need multiple client surfaces or local-first responsiveness, Rally's explicit message layer can be worth the extra code.

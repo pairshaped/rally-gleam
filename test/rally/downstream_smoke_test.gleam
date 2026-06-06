@@ -140,7 +140,7 @@ pub fn scaffold_builds_without_warnings_test() {
   cleanup(dir)
 }
 
-pub fn scoreboard_example_unified_build_test() {
+pub fn scoreboard_example_build_test() {
   let dir = rally_root() <> "/../rally-scoreboard-example"
   let assert Some(gleam) = find_executable("gleam")
   let #(rally_build_exit, rally_build_out) =

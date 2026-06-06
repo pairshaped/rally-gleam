@@ -80,7 +80,7 @@ glinter = ">= 2.19.0 and < 3.0.0"
 [tools.glinter]
 stats = true
 warnings_as_errors = false
-exclude = ["tmp/**", "examples/**"]
+exclude = ["tmp/**"]
 
 [tools.glinter.ignore]
 "src/rally/runtime/*.gleam" = ["unused_exports"]

@@ -2,7 +2,7 @@ import gleeunit/should
 import rally/runtime/bootstrap
 
 const project_toml = "
-name = \"scoreboard_unified\"
+name = \"scoreboard_app\"
 version = \"0.1.0\"
 
 [tools.marmot]
@@ -18,7 +18,7 @@ pub fn config_from_toml_uses_project_conventions_test() {
       database_path_override: Error(Nil),
     )
 
-  config.package_name |> should.equal("scoreboard_unified")
+  config.package_name |> should.equal("scoreboard_app")
   config.port |> should.equal(8080)
   config.database_path |> should.equal("db/scoreboard.db")
   config.auth_secret_env |> should.equal("SECRET_KEY_BASE")

@@ -3,7 +3,7 @@ import gleeunit/should
 import rally/internal/init
 import simplifile
 
-pub fn scaffold_uses_unified_bootstrap_and_page_contract_test() {
+pub fn scaffold_uses_rally_bootstrap_and_page_contract_test() {
   let script = scaffold_source()
 
   script

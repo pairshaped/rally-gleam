@@ -1,6 +1,6 @@
 //// Page-local load RPC glue generation.
 ////
-//// This module targets the unified-source chase app shape: page-local wire
+//// This module targets the Rally Scoreboard Example app shape: page-local wire
 //// modules own `ServerMsg` and `LoadResult`, while generated glue owns the
 //// repetitive request/result envelopes and browser transport callbacks.
 

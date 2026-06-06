@@ -90,7 +90,7 @@ The demo moment:
 
 ## Why This Is Better Than A Normal CRUD Example
 
-Rally Scoreboard proves the unified page path. This example should prove the
+Rally Scoreboard Example proves the page-local contract path. This example should prove the
 more specific Rally advantage: one typed server contract can serve multiple
 surfaces with different transports and different user experiences.
 

@@ -24,7 +24,7 @@ If you are new to the codebase, read these files in order:
 
 1. `src/rally.gleam`: CLI entry point and pipeline orchestration
 2. `src/rally/internal/init.gleam`: starter app scaffold generation
-3. `src/rally/internal/generator/load_rpc.gleam`: unified Rally Scoreboard load/save, SSR, browser, hydration, WebSocket, topic, and protocol generation
+3. `src/rally/internal/generator/load_rpc.gleam`: Rally Scoreboard Example load/save, SSR, browser, hydration, WebSocket, topic, and protocol generation
 4. `src/rally/internal/format.gleam`: formatting generated source
 
 The generator files build Gleam/Erlang/JS source as strings. They are harder to read than normal code. Start with the Scoreboard example output, then read `load_rpc.gleam` with that output nearby.
@@ -48,7 +48,7 @@ src/
     init.gleam                   # Starter app scaffold generation
     format.gleam                 # Runs gleam format on generated code
     generator/
-      load_rpc.gleam             # Unified Scoreboard-style Rally generation
+      load_rpc.gleam             # Rally Scoreboard Example generation
   rally/runtime/
     effect.gleam                 # navigation and broadcast effects
     db.gleam                     # SQLite helpers
