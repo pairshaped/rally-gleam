@@ -1,11 +1,9 @@
-//// Thin wrapper over libero's ETF wire protocol. Delegates all encode,
-//// decode, request/response framing, and push framing to libero/wire.
-//// This is the legacy direct import path; new generated code uses the
-//// protocol_wire facade instead.
+//// Thin wrapper over libero's ETF wire protocol. Generated code uses the
+//// protocol_wire facade for request/result/push helpers.
 
 import gleam/dynamic.{type Dynamic}
 import libero/error.{type DecodeError}
-import libero/wire as libero_wire
+import libero/etf/wire as libero_wire
 
 /// Raw ETF encode. Not safe for user custom types (bare atoms, not
 /// hashed). Only correct for pre-encoded values or primitives.

@@ -176,17 +176,17 @@ pub fn load_rpc_server_protocol_uses_libero_wire_encoders_test() {
 
   server
   |> string.contains(
-    "@external(erlang, \"generated@rpc_wire\", \"encode_public_pages_games_wire__load_result\")",
+    "@external(erlang, \"generated@libero_wire\", \"encode_public_pages_games_wire__load_result\")",
   )
   |> should.be_true()
   server
   |> string.contains(
-    "@external(erlang, \"generated@rpc_wire\", \"encode_admin_pages_games__game_update\")",
+    "@external(erlang, \"generated@libero_wire\", \"encode_admin_pages_games__game_update\")",
   )
   |> should.be_true()
   server
   |> string.contains(
-    "@external(erlang, \"generated@rpc_wire\", \"encode_broadcasts__event\")",
+    "@external(erlang, \"generated@libero_wire\", \"encode_broadcasts__event\")",
   )
   |> should.be_true()
   server

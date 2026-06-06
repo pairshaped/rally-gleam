@@ -487,8 +487,8 @@ export function registerOnDisconnect(callback) {
  * timeout; if no response arrives, the registered RPC error handler
  * receives an InternalError so the UI doesn't hang indefinitely.
  * @param {string} url WebSocket URL (typically from rpc_config)
- * @param {string} module wire envelope string (codegen emits "rpc")
- * @param {any} msg the typed ClientMsg value to encode and send
+ * @param {string} module wire envelope string emitted by generated protocol code
+ * @param {any} msg the typed request value to encode and send
  * @param {(result: any) => void} callback invoked with the handler return value
  */
 export function send(url, module, msg, callback) {

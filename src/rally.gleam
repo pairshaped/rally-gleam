@@ -125,12 +125,12 @@ fn generate_rally_libero_files(
     libero.walk(seeds)
     |> result.map_error(fn(errors) {
       list.each(errors, gen_error.print_error)
-      RallyError("Libero type discovery failed for Rally load RPC types")
+      RallyError("Libero type discovery failed for Rally wire types")
     }),
   )
-  let atoms_module = "generated@rpc_atoms"
-  let wire_module = "generated@rpc_wire"
-  let decoders_module = "generated/libero/rpc_decoders"
+  let atoms_module = "generated@libero_atoms"
+  let wire_module = "generated@libero_wire"
+  let decoders_module = "generated/libero/decoders"
   let atoms_erl =
     libero.generate_atoms(
       endpoints:,
@@ -150,9 +150,7 @@ fn generate_rally_libero_files(
       Ok(source) -> Ok(source)
       Error(err) -> {
         gen_error.print_error(err)
-        Error(RallyError(
-          "Libero wire generation failed for Rally load RPC types",
-        ))
+        Error(RallyError("Libero wire generation failed for Rally wire types"))
       }
     },
   )
@@ -175,16 +173,9 @@ fn generate_rally_libero_files(
     )
 
   Ok([
+    load_rpc.GeneratedFile("src/generated/libero/decoders_ffi.mjs", decoders_js),
     load_rpc.GeneratedFile(
-      "src/generated/libero/dispatch.gleam",
-      libero.generate_client_msg_module(endpoints:),
-    ),
-    load_rpc.GeneratedFile(
-      "src/generated/libero/rpc_decoders_ffi.mjs",
-      decoders_js,
-    ),
-    load_rpc.GeneratedFile(
-      "src/generated/libero/rpc_decoders.gleam",
+      "src/generated/libero/decoders.gleam",
       decoders_gleam,
     ),
     load_rpc.GeneratedFile("src/generated/libero/etf.gleam", etf_gleam),
@@ -196,7 +187,7 @@ fn generate_rally_libero_files(
       "src/generated/libero/" <> wire_module <> ".erl",
       wire_erl,
     ),
-    load_rpc.GeneratedFile("src/generated/libero/rpc_contract.json", contract),
+    load_rpc.GeneratedFile("src/generated/libero/contract.json", contract),
   ])
 }
 

@@ -14,12 +14,12 @@ This boundary is represented by generated `protocol_wire` facades. Rally
 backs onto Libero for scanning, dispatch generation, wire transforms, protocol
 facades, and typed decoders.
 
-The test is simple: Libero should be able to add JSON RPC as a configured
-protocol and Rally should not care which protocol is selected. ETF remains
-valuable and should continue to be supported. Rally may need regenerated
-Libero-owned modules or updated facade imports. It should not need to rewrite
-WebSocket transport logic, response handling, push handling, page init, SSR
-hydration, or the message inspector because the configured protocol changed.
+The test is simple: Libero should be able to add JSON as a configured protocol
+and Rally should not care which protocol is selected. ETF remains valuable and
+should continue to be supported. Rally may need regenerated Libero-owned
+modules or updated facade imports. It should not need to rewrite WebSocket
+transport logic, response handling, push handling, page init, SSR hydration, or
+the message inspector because the configured protocol changed.
 
 Rally's generated browser lifecycle glue defaults to ETF. JSON is useful for
 non-Gleam tools that call the same handler contract. Rally should benefit from
@@ -37,7 +37,7 @@ Rally owns:
 - Session and topic membership.
 - Push delivery policy.
 - Message logging and inspector display.
-- When page init, RPC, and push messages are sent.
+- When page init, request, and push messages are sent.
 
 Libero should own:
 
@@ -56,8 +56,9 @@ objects, positional arrays, or any future protocol shape.
 
 Current protocol boundary:
 
-- `rally.gleam` uses Libero scanner, walker, dispatch generation, atoms, and
-  wire module generation.
+- `rally.gleam` uses Libero type walking, atom generation, wire module
+  generation, typed decoder generation, ETF facade generation, and contract
+  generation.
 - Generated `protocol_wire.gleam` and `protocol_wire.mjs` choose ETF or JSON.
 - `transport_ffi.mjs` imports `encode_request` and `decode_server_frame` from
   `./protocol_wire.mjs`.
@@ -72,8 +73,8 @@ Current protocol boundary:
 Rally's transport should look like this conceptually:
 
 ```text
-send rpc:
-  frame = generated_libero.encode_request("rpc", request_id, msg)
+send request:
+  frame = generated_libero.encode_request("libero", request_id, msg)
   websocket.send(frame)
 
 on websocket message:
@@ -99,7 +100,7 @@ SSR hydration should use generated Libero helpers rather than raw
 
 Generated Rally browser code should expose framework operations:
 
-- `send_rpc(msg, callback)`
+- `send_request(msg, callback)`
 - `send_page_init(page, params)`
 - `register_push_handler(page, handler)`
 - `read_flags()`

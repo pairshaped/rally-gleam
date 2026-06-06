@@ -3610,7 +3610,7 @@ fn server_protocol_push_helpers(push_contract: Option(PushContract)) -> String {
     Some(contract) -> {
       let PushContract(module_path:, type_name:) = contract
       "@target(erlang)
-@external(erlang, \"generated@rpc_wire\", \"" <> wire_encoder_function(
+@external(erlang, \"generated@libero_wire\", \"" <> wire_encoder_function(
         module_path,
         type_name,
       ) <> "\")
@@ -3846,7 +3846,7 @@ fn encode_" <> load.name <> "_load_result_payload(
 }
 
 @target(erlang)
-@external(erlang, \"generated@rpc_wire\", \"" <> wire_encoder_function(
+@external(erlang, \"generated@libero_wire\", \"" <> wire_encoder_function(
     load.wire_module,
     "LoadResult",
   ) <> "\")
@@ -3869,7 +3869,7 @@ fn encode_" <> load.name <> "_save_result_payload(
 }
 
 @target(erlang)
-@external(erlang, \"generated@rpc_wire\", \"" <> wire_encoder_function(
+@external(erlang, \"generated@libero_wire\", \"" <> wire_encoder_function(
         load.wire_module,
         save_result_type,
       ) <> "\")

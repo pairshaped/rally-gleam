@@ -29,10 +29,12 @@ The app depends on these generated/runtime surfaces:
   `ApiLoadError` and `ApiSaveError`.
 - `generated/libero/etf` as the neutral ETF entrypoint used by Rally protocol
   glue.
-- `generated/libero/rpc_decoders` and `generated/libero/rpc_decoders_ffi.mjs`
+- `generated/libero/decoders` and `generated/libero/decoders_ffi.mjs`
   for browser constructor and decoder registration.
-- `generated/libero/generated@rpc_wire.erl` for typed server-side wire encoders
-  and decoders.
+- `generated/libero/generated@libero_atoms.erl` for server-side atom
+  registration.
+- `generated/libero/generated@libero_wire.erl` for typed server-side wire
+  encoders and decoders.
 - `generated/rally/client_transport` for WebSocket connection, request ids, and
   result callback dispatch.
 - `generated/rally/client_protocol` and `generated/rally/server_protocol` for
