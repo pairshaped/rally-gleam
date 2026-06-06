@@ -743,6 +743,8 @@ import lustre
 import lustre/effect.{type Effect}
 @target(javascript)
 import lustre/element.{type Element}
+@target(javascript)
+import rally/runtime/load as runtime_load
 " <> browser_app_int_import(loads) <> browser_app_list_import(push_contract) <> browser_app_client_protocol_import(
     push_contract,
   ) <> push_import(push_contract, "@target(javascript)") <> browser_app_mount_imports(
@@ -1727,7 +1729,7 @@ fn browser_app_load_result_message(
       Ok(" <> wire <> "." <> load.load_result_constructor <> "(data)) ->
         " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Ok(data)))
       Error(errors) ->
-        " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(" <> page <> ".LoadError(message: api_load_error(errors)))))
+        " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(runtime_load.LoadError(message: api_load_error(errors)))))
     }"
 }
 
@@ -2104,15 +2106,12 @@ import gleam/list
 import gleam/option.{type Option}
 @target(javascript)
 import lustre/effect.{type Effect}
+@target(javascript)
+import rally/runtime/load as runtime_load
 " <> wire_imports(loads, "@target(javascript)", client_only: True) <> "
 @target(erlang)
 pub fn ensure() -> Nil {
   Nil
-}
-
-@target(javascript)
-pub type LoadError {
-  LoadError(message: String)
 }
 
 @target(javascript)
@@ -2126,12 +2125,12 @@ pub type SaveError {
 @target(javascript)
 fn map_load_result(
   result: Result(a, List(transport_result.ApiLoadError)),
-) -> Result(a, List(LoadError)) {
+) -> Result(a, List(runtime_load.LoadError)) {
   case result {
     Ok(value) -> Ok(value)
     Error(errors) -> Error(list.map(errors, fn(error) {
       let transport_result.ApiLoadError(message:) = error
-      LoadError(message:)
+      runtime_load.LoadError(message:)
     }))
   }
 }
@@ -2176,6 +2175,8 @@ import gleam/string
 @target(erlang)
 import mist.{type Next, type WebsocketConnection, type WebsocketMessage}
 @target(erlang)
+import rally/runtime/load as runtime_load
+@target(erlang)
 import rally/runtime/topics
 " <> wire_imports(loads, "@target(erlang)", client_only: False) <> server_ws_page_imports(
     loads,
@@ -2184,11 +2185,6 @@ import rally/runtime/topics
     push_contract,
     "@target(erlang)",
   ) <> "
-@target(erlang)
-pub type LoadError {
-  LoadError(message: String)
-}
-
 @target(erlang)
 pub type SaveError {
   SaveError(field: Option(String), message: String)
@@ -2238,12 +2234,12 @@ pub fn handle_client_frame(
 " <> server_ws_map_page_load_result(loads, load_context:) <> "
 @target(erlang)
 fn map_load_result(
-  result: Result(a, List(LoadError)),
+  result: Result(a, List(runtime_load.LoadError)),
 ) -> Result(a, List(transport_result.ApiLoadError)) {
   case result {
     Ok(value) -> Ok(value)
     Error(errors) -> Error(list.map(errors, fn(error) {
-      let LoadError(message:) = error
+      let runtime_load.LoadError(message:) = error
       transport_result.ApiLoadError(message:)
     }))
   }
@@ -2288,6 +2284,8 @@ import gleam/list
 import lustre/effect.{type Effect}
 @target(erlang)
 import lustre/element.{type Element}
+@target(erlang)
+import rally/runtime/load as runtime_load
 " <> server_ssr_mount_imports(mounts) <> wire_imports(
     loads,
     "@target(erlang)",
@@ -3304,11 +3302,11 @@ fn server_ws_map_page_load_result(
 @target(erlang)
 fn map_page_load_result(
   result: Result(a, List(String)),
-) -> Result(a, List(LoadError)) {
+) -> Result(a, List(runtime_load.LoadError)) {
   case result {
     Ok(value) -> Ok(value)
     Error(errors) ->
-      Error(list.map(errors, fn(message) { LoadError(message:) }))
+      Error(list.map(errors, fn(message) { runtime_load.LoadError(message:) }))
   }
 }
 "
@@ -3855,7 +3853,7 @@ fn page_server_load(load: LoadRpc) -> String {
   "@target(javascript)
 pub fn load_" <> load.name <> "(" <> signature <> "
   on_result on_result: fn(
-    Result(" <> client_load_result_type(load) <> ", List(LoadError)),
+    Result(" <> client_load_result_type(load) <> ", List(runtime_load.LoadError)),
   ) -> msg,
 ) -> Effect(msg) {
   client_transport.send_" <> load.name <> "_load(
@@ -3944,7 +3942,7 @@ fn server_ws_load_handler_field(load: LoadRpc) -> String {
   <> server_ws_handler_args_type(load)
   <> ") -> Result("
   <> wire_alias(load)
-  <> ".LoadResult, List(LoadError)),"
+  <> ".LoadResult, List(runtime_load.LoadError)),"
 }
 
 fn server_ws_save_handler_fields(load: LoadRpc) -> Option(String) {
@@ -4088,7 +4086,7 @@ fn server_ws_load_result_call(
     True ->
       server_ws_authorized_result(
         load:,
-        error: "Error([LoadError(message: \"Unauthorized.\")])",
+        error: "Error([runtime_load.LoadError(message: \"Unauthorized.\")])",
         body: generated_direct_load_call(
           load:,
           load_context: "handlers.load_context(state)",
@@ -4649,9 +4647,9 @@ fn server_ssr_load_result_message(
           Ok(" <> wire <> "." <> load.load_result_constructor <> "(data)) ->
             " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Ok(data)))
           Error([message, ..]) ->
-            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(" <> page <> ".LoadError(message: message))))
+            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(runtime_load.LoadError(message: message))))
           Error([]) ->
-            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(" <> page <> ".LoadError(message: \"Could not load page.\"))))
+            " <> pages <> "." <> message <> "(" <> page <> ".Loaded(Error(runtime_load.LoadError(message: \"Could not load page.\"))))
         }"
 }
 
@@ -4800,9 +4798,7 @@ fn generated_direct_load_call(
   <> "."
   <> load.load_result_constructor
   <> "(data))
-      Error("
-  <> page_alias(load)
-  <> ".LoadError(message: message)) -> Error([message])
+      Error(runtime_load.LoadError(message: message)) -> Error([message])
     }"
 }
 

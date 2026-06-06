@@ -1,8 +1,6 @@
 ---
 version: 2.0.0
 title: load_rpc_server_ssr_gleam
-file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
-test_name: load_rpc_server_ssr_snapshot_test
 ---
 @target(javascript)
 pub fn ensure() -> Nil {
@@ -49,6 +47,8 @@ import public/pages/games/id_ as public_game_detail_page
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(erlang)
 import public/pages/games/wire as public_games_wire
+@target(erlang)
+import rally/runtime/load as runtime_load
 @target(erlang)
 import sqlight as load_context
 
@@ -103,15 +103,13 @@ pub fn admin_load_route(route route: admin_routes.Route) -> AdminLoadRoute {
           Error([message, ..]) ->
             admin_pages.AdminGamesMsg(
               admin_games_wire.Loaded(
-                Error(admin_games_wire.LoadError(message: message)),
+                Error(runtime_load.LoadError(message: message)),
               ),
             )
           Error([]) ->
             admin_pages.AdminGamesMsg(
               admin_games_wire.Loaded(
-                Error(admin_games_wire.LoadError(
-                  message: "Could not load page.",
-                )),
+                Error(runtime_load.LoadError(message: "Could not load page.")),
               ),
             )
         }
@@ -131,15 +129,13 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
           Error([message, ..]) ->
             public_pages.GamesMsg(
               public_games_page.Loaded(
-                Error(public_games_page.LoadError(message: message)),
+                Error(runtime_load.LoadError(message: message)),
               ),
             )
           Error([]) ->
             public_pages.GamesMsg(
               public_games_page.Loaded(
-                Error(public_games_page.LoadError(
-                  message: "Could not load page.",
-                )),
+                Error(runtime_load.LoadError(message: "Could not load page.")),
               ),
             )
         }
@@ -152,15 +148,13 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
           Error([message, ..]) ->
             public_pages.GamesIdMsg(
               public_game_detail_page.Loaded(
-                Error(public_game_detail_page.LoadError(message: message)),
+                Error(runtime_load.LoadError(message: message)),
               ),
             )
           Error([]) ->
             public_pages.GamesIdMsg(
               public_game_detail_page.Loaded(
-                Error(public_game_detail_page.LoadError(
-                  message: "Could not load page.",
-                )),
+                Error(runtime_load.LoadError(message: "Could not load page.")),
               ),
             )
         }
@@ -235,7 +229,7 @@ pub fn admin_boot_page(
     AdminGamesLoad(to_message:) -> {
       let result = case admin_games_wire.load(load_context) {
         Ok(data) -> Ok(admin_games_wire.AdminGamesLoaded(data))
-        Error(admin_games_wire.LoadError(message: message)) -> Error([message])
+        Error(runtime_load.LoadError(message: message)) -> Error([message])
       }
       boot_loaded_page(
         page: page,
@@ -264,7 +258,7 @@ pub fn public_boot_page(
     PublicGamesLoad(to_message:) -> {
       let result = case public_games_page.load(load_context) {
         Ok(data) -> Ok(public_games_wire.PublicGamesLoaded(data))
-        Error(public_games_page.LoadError(message: message)) -> Error([message])
+        Error(runtime_load.LoadError(message: message)) -> Error([message])
       }
       boot_loaded_page(
         page: page,
@@ -282,7 +276,7 @@ pub fn public_boot_page(
               case public_game_detail_page.load(load_context, game_id) {
                 Ok(data) ->
                   Ok(public_game_detail_wire.PublicGameDetailLoaded(data))
-                Error(public_game_detail_page.LoadError(message: message)) ->
+                Error(runtime_load.LoadError(message: message)) ->
                   Error([message])
               }
             Error(Nil) -> Error(["Invalid route parameter."])

@@ -1,14 +1,14 @@
 ---
 # rally-sb6j
 title: Centralize Rally page load error type
-status: todo
+status: completed
 type: task
 priority: normal
 tags:
     - generator
     - load-rpc
 created_at: 2026-06-06T03:41:22Z
-updated_at: 2026-06-06T03:41:33Z
+updated_at: 2026-06-06T03:51:32Z
 ---
 
 Repeated exact page-local load error types like `pub type LoadError { LoadError(message: String) }` should be centralized instead of copied into every Rally page.
@@ -27,10 +27,10 @@ Goal:
 
 Acceptance criteria:
 
-[ ] Repeated `LoadError(message: String)` page declarations are removed from Rally Scoreboard pages.
-[ ] Regenerated Rally glue compiles without page-local `LoadError` constructors.
-[ ] Erlang and JavaScript Scoreboard tests pass.
-[ ] Rally generator snapshots document the new shared load-error boundary.
+[x] Repeated `LoadError(message: String)` page declarations are removed from Rally Scoreboard pages.
+[x] Regenerated Rally glue compiles without page-local `LoadError` constructors.
+[x] Erlang and JavaScript Scoreboard tests pass.
+[x] Rally generator snapshots document the new shared load-error boundary.
 
 Decision update:
 

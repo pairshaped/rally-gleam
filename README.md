@@ -122,6 +122,7 @@ Most Rally apps use only a few modules directly:
 | Module | Use it for |
 |---|---|
 | `rally/runtime/effect` | Page effects: RPC, server messages, navigation, broadcast, client context updates |
+| `rally/runtime/load` | Standard page load error type |
 | `rally/runtime/db` | SQLite open, timed queries, nested transactions, SQL value helpers |
 | `rally/runtime/system` | App startup and background jobs |
 | `rally/runtime/session` | Session cookie generation, parsing, response headers |

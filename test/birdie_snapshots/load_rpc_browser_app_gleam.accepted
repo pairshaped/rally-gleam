@@ -1,8 +1,6 @@
 ---
 version: 2.0.0
 title: load_rpc_browser_app_gleam
-file: ./test/rally/codegen_load_rpc_snapshot_test.gleam
-test_name: load_rpc_browser_app_snapshot_test
 ---
 @target(erlang)
 pub fn ensure() -> Nil {
@@ -61,6 +59,8 @@ import public/pages/games/id_ as public_game_detail_page
 import public/pages/games/id_/wire as public_game_detail_wire
 @target(javascript)
 import public/pages/games/wire as public_games_wire
+@target(javascript)
+import rally/runtime/load as runtime_load
 
 @target(javascript)
 pub type AdminLoadRoute {
@@ -99,9 +99,7 @@ pub fn admin_load_route(route route: admin_routes.Route) -> AdminLoadRoute {
             Error(errors) ->
               admin_pages.AdminGamesMsg(
                 admin_games_wire.Loaded(
-                  Error(
-                    admin_games_wire.LoadError(message: api_load_error(errors)),
-                  ),
+                  Error(runtime_load.LoadError(message: api_load_error(errors))),
                 ),
               )
           }
@@ -122,9 +120,7 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
           Error(errors) ->
             public_pages.GamesMsg(
               public_games_page.Loaded(
-                Error(
-                  public_games_page.LoadError(message: api_load_error(errors)),
-                ),
+                Error(runtime_load.LoadError(message: api_load_error(errors))),
               ),
             )
         }
@@ -137,11 +133,7 @@ pub fn public_load_route(route route: public_routes.Route) -> PublicLoadRoute {
           Error(errors) ->
             public_pages.GamesIdMsg(
               public_game_detail_page.Loaded(
-                Error(
-                  public_game_detail_page.LoadError(message: api_load_error(
-                    errors,
-                  )),
-                ),
+                Error(runtime_load.LoadError(message: api_load_error(errors))),
               ),
             )
         }
