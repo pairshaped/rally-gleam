@@ -8,18 +8,32 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import simplifile
 
+type WarningMode {
+  Warn
+  Quiet
+}
+
 pub fn format_gleam(code: String) -> String {
+  format_gleam_with_warnings(code, Warn)
+}
+
+pub fn format_gleam_quiet(code: String) -> String {
+  format_gleam_with_warnings(code, Quiet)
+}
+
+fn format_gleam_with_warnings(code: String, warnings: WarningMode) -> String {
   let suffix = format_unique_id()
   let tmp_dir = get_tmp_dir()
   let tmp = tmp_dir <> "/rally_fmt_" <> suffix <> ".gleam"
   case simplifile.write(tmp, code) {
     Ok(_) -> {
-      let formatted = run_format(tmp, code)
+      let formatted = run_format(tmp, code, warnings)
       let _delete_result = simplifile.delete(tmp)
       formatted
     }
     _ -> {
-      io.println_error(
+      warn(
+        warnings,
         "warning: could not write temp file for formatting, skipping gleam format",
       )
       code
@@ -27,10 +41,10 @@ pub fn format_gleam(code: String) -> String {
   }
 }
 
-fn run_format(tmp: String, fallback: String) -> String {
+fn run_format(tmp: String, fallback: String, warnings: WarningMode) -> String {
   case find_executable("gleam") {
     None -> {
-      io.println_error("warning: gleam not found on PATH, skipping format")
+      warn(warnings, "warning: gleam not found on PATH, skipping format")
       fallback
     }
     Some(path) -> {
@@ -44,15 +58,23 @@ fn run_format(tmp: String, fallback: String) -> String {
           // modules (e.g. generated/admin/rpc_dispatch) that don't exist in
           // Rally's own dependency tree. Formatter exits non-zero but the
           // fallback (unformatted original) is correct.
-          io.println_error(
+          warn(
+            warnings,
             "warning: gleam format failed (exit code "
-            <> int.to_string(exit_code)
-            <> "), using unformatted output",
+              <> int.to_string(exit_code)
+              <> "), using unformatted output",
           )
           fallback
         }
       }
     }
+  }
+}
+
+fn warn(warnings: WarningMode, message: String) -> Nil {
+  case warnings {
+    Warn -> io.println_error(message)
+    Quiet -> Nil
   }
 }
 

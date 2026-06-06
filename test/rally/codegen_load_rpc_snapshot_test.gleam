@@ -727,7 +727,7 @@ fn content_for_files(files: List(GeneratedFile), path: String) -> String {
       let GeneratedFile(path: file_path, ..) = file
       file_path == path
     })
-  format.format_gleam(content)
+  format.format_gleam_quiet(content)
 }
 
 fn drop_terminal_newline(content: String) -> String {

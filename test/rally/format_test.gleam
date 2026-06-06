@@ -19,6 +19,6 @@ pub fn format_gleam_idempotent_test() {
 pub fn format_fallback_on_invalid_gleam_syntax_test() {
   // If gleam format exits non-zero (bad syntax), the original is returned unchanged.
   let source = "this is not valid gleam"
-  let formatted = format.format_gleam(source)
+  let formatted = format.format_gleam_quiet(source)
   formatted |> should.equal(source)
 }
