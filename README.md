@@ -58,324 +58,89 @@ Common workflow commands:
 
 ## Writing a page
 
-A page file in `src/<namespace>/pages/` is a Lustre component with Rally load,
-save, and broadcast hooks beside the client UI. A shortened admin games page
-looks like this:
+A page file in `src/<namespace>/pages/` is a Lustre component with Rally
+contracts beside the client UI. A page that loads server data has this shape:
 
 ```gleam
-import admin/page_shared_state.{type AdminPageSharedState}
-import broadcasts
-import generated/proute/admin/page_input
+import generated/proute/public/page_input
 import gleam/int
 import gleam/list
-import lustre/attribute
 import lustre/effect.{type Effect}
 import lustre/element.{type Element}
 import lustre/element/html
-import lustre/event
+import public/page_shared_state.{type PublicPageSharedState}
 import rally/runtime/load as runtime_load
 
-@target(javascript)
-import generated/rally/server
-
 @target(erlang)
-import generated/sql/admin/pages/games_sql
+import generated/sql/public/pages/games_sql
 @target(erlang)
 import sqlight
 
-pub type GameStatus {
-  Scheduled
-  Live(period: String)
-  Final
-}
-
-pub type AdminGameSummary {
-  AdminGameSummary(
-    id: Int,
-    home_code: String,
-    away_code: String,
-    home_score: Int,
-    away_score: Int,
-    status: GameStatus,
-  )
-}
-
-pub type GameUpdate {
-  GameUpdate(
-    id: Int,
-    home_code: String,
-    away_code: String,
-    home_score: Int,
-    away_score: Int,
-    status: GameStatus,
-  )
+pub type Game {
+  Game(id: Int, name: String)
 }
 
 pub type LoadResult {
-  AdminGamesLoadResult(games: List(AdminGameSummary))
+  PublicGamesLoaded(games: List(Game))
 }
 
 pub type ServerMsg {
-  AdminGamesLoad
-  AdminGamesUpdateScore(
-    game_id: Int,
-    home_score: Int,
-    away_score: Int,
-    period: String,
-  )
-}
-
-pub type SaveError {
-  SaveError(message: String)
+  PublicGamesLoad
 }
 
 pub type Model {
-  Model(games: List(AdminGameSummary), error: String)
+  Model(games: List(Game))
 }
 
 pub type Message {
-  AdjustHome(id: Int, home_score: Int, away_score: Int, delta: Int)
-  Loaded(Result(List(AdminGameSummary), runtime_load.LoadError))
-  Saved(Result(GameUpdate, SaveError))
+  Loaded(Result(List(Game), runtime_load.LoadError))
+  NavigateGame(id: Int)
 }
 
 pub fn initial_model(
-  _page_shared_state: AdminPageSharedState,
+  _page_shared_state: PublicPageSharedState,
   _query_params: page_input.QueryParams,
 ) -> Model {
-  Model(games: [], error: "")
+  Model(games: [])
 }
 
 pub fn update(
-  _page_shared_state: AdminPageSharedState,
+  _page_shared_state: PublicPageSharedState,
   model: Model,
   msg: Message,
 ) -> #(Model, Effect(Message)) {
   case msg {
-    AdjustHome(..) -> #(model, message_effect(msg))
-    Loaded(Ok(games)) -> #(Model(games:, error: ""), effect.none())
-    Loaded(Error(error)) -> #(Model(..model, error: error.message), effect.none())
-    Saved(Ok(game)) -> #(upsert_game(model, game), effect.none())
-    Saved(Error(SaveError(message:))) ->
-      #(Model(..model, error: message), effect.none())
+    Loaded(Ok(games)) -> #(Model(games:), effect.none())
+    Loaded(Error(_)) | NavigateGame(_) -> #(model, effect.none())
   }
 }
 
 pub fn view(model: Model) -> Element(Message) {
   html.main([], [
-    html.div(
-      [attribute.class("game-grid")],
-      list.map(model.games, view_game_card),
-    ),
-    case model.error {
-      "" -> html.text("")
-      message -> html.p([attribute.class("error")], [html.text(message)])
-    },
+    html.ul([], list.map(model.games, view_game)),
   ])
 }
 
-fn view_game_card(game: AdminGameSummary) -> Element(Message) {
-  html.article([attribute.class("game-card")], [
-    html.strong([], [html.text(game.home_code)]),
-    html.span([], [html.text(int.to_string(game.home_score))]),
-    html.button(
-      [
-        event.on_click(AdjustHome(
-          id: game.id,
-          home_score: game.home_score,
-          away_score: game.away_score,
-          delta: 1,
-        )),
-      ],
-      [html.text("+")],
-    ),
+fn view_game(game: Game) -> Element(Message) {
+  html.li([], [
+    html.text(game.name <> " #" <> int.to_string(game.id)),
   ])
-}
-
-// BROADCAST
-
-pub fn broadcast_subscriptions(_model: Model) -> List(broadcasts.Topic) {
-  [broadcasts.admin_games_topic()]
-}
-
-pub fn apply_broadcast(
-  model: Model,
-  message: broadcasts.Event,
-) -> #(Model, Effect(Message)) {
-  case message {
-    broadcasts.BroadcastGameUpdated(game) ->
-      #(upsert_game(model, update_from_broadcast(game)), effect.none())
-  }
-}
-
-@target(javascript)
-fn message_effect(msg: Message) -> Effect(Message) {
-  case msg {
-    AdjustHome(id, home_score, away_score, delta) ->
-      server.save_admin_games(
-        message: AdminGamesUpdateScore(
-          game_id: id,
-          home_score: clamp_score(home_score + delta),
-          away_score: away_score,
-          period: "Live",
-        ),
-        on_result: fn(result) { Saved(map_save_result(result)) },
-      )
-    Loaded(_) | Saved(_) -> effect.none()
-  }
-}
-
-@target(erlang)
-fn message_effect(_msg: Message) -> Effect(Message) {
-  effect.none()
-}
-
-fn upsert_game(model: Model, game: GameUpdate) -> Model {
-  let games =
-    list.map(model.games, fn(existing) {
-      case existing.id == game.id {
-        True ->
-          AdminGameSummary(
-            id: game.id,
-            home_code: game.home_code,
-            away_code: game.away_code,
-            home_score: game.home_score,
-            away_score: game.away_score,
-            status: game.status,
-          )
-        False -> existing
-      }
-    })
-
-  Model(..model, games:)
-}
-
-@target(javascript)
-fn map_save_result(
-  result: Result(GameUpdate, List(server.SaveError)),
-) -> Result(GameUpdate, SaveError) {
-  case result {
-    Ok(game) -> Ok(game)
-    Error([server.SaveError(message: message, ..), ..]) ->
-      Error(SaveError(message:))
-    Error([]) -> Error(SaveError(message: "Could not save game."))
-  }
-}
-
-fn update_from_broadcast(game: broadcasts.GameSnapshot) -> GameUpdate {
-  let broadcasts.BroadcastGameSnapshot(
-    id:,
-    home: broadcasts.BroadcastTeam(code: home_code, ..),
-    away: broadcasts.BroadcastTeam(code: away_code, ..),
-    home_score:,
-    away_score:,
-    status:,
-  ) = game
-
-  GameUpdate(
-    id:,
-    home_code:,
-    away_code:,
-    home_score:,
-    away_score:,
-    status: game_status_from_broadcast(status),
-  )
-}
-
-fn game_status_from_broadcast(status: broadcasts.GameStatus) -> GameStatus {
-  case status {
-    broadcasts.BroadcastScheduled -> Scheduled
-    broadcasts.BroadcastLive(period) -> Live(period)
-    broadcasts.BroadcastFinal -> Final
-  }
-}
-
-fn clamp_score(score: Int) -> Int {
-  case score < 0 {
-    True -> 0
-    False -> score
-  }
 }
 
 @target(erlang)
 pub fn load(
   db: sqlight.Connection,
-) -> Result(List(AdminGameSummary), runtime_load.LoadError) {
-  case games_sql.list_admin_games(db:) {
-    Ok(rows) -> Ok(list.map(rows, game_from_row))
+) -> Result(List(Game), runtime_load.LoadError) {
+  case games_sql.list_games(db:) {
+    Ok(rows) ->
+      Ok(list.map(rows, fn(row) { Game(id: row.id, name: row.name) }))
     Error(sqlight.SqlightError(..)) ->
       Error(runtime_load.LoadError(message: "Could not load games."))
   }
 }
-
-@target(erlang)
-pub fn handle(
-  db: sqlight.Connection,
-  msg: ServerMsg,
-) -> Result(GameUpdate, SaveError) {
-  case msg {
-    AdminGamesLoad -> Error(SaveError(message: "Load is not a save action."))
-    AdminGamesUpdateScore(game_id, home_score, away_score, period) ->
-      case
-        games_sql.update_game_score(
-          db:,
-          game_id:,
-          home_score:,
-          away_score:,
-          period:,
-        )
-      {
-        Ok([row, ..]) -> Ok(game_update_from_row(row))
-        Ok([]) -> Error(SaveError(message: "Game not found."))
-        Error(sqlight.SqlightError(..)) ->
-          Error(SaveError(message: "Could not save game."))
-      }
-  }
-}
-
-@target(erlang)
-pub fn after_save(
-  db: sqlight.Connection,
-  game: GameUpdate,
-) -> Result(broadcasts.TargetedEvent, Nil) {
-  broadcasts.game_updated_broadcast(db, game.id)
-}
-
-@target(erlang)
-fn game_from_row(row: games_sql.ListAdminGamesRow) -> AdminGameSummary {
-  AdminGameSummary(
-    id: row.id,
-    home_code: row.home_code,
-    away_code: row.away_code,
-    home_score: row.home_score,
-    away_score: row.away_score,
-    status: game_status(row.period, row.final),
-  )
-}
-
-@target(erlang)
-fn game_update_from_row(row: games_sql.UpdateGameScoreRow) -> GameUpdate {
-  GameUpdate(
-    id: row.id,
-    home_code: row.home_code,
-    away_code: row.away_code,
-    home_score: row.home_score,
-    away_score: row.away_score,
-    status: game_status(row.period, row.final),
-  )
-}
-
-@target(erlang)
-fn game_status(period: String, final: Int) -> GameStatus {
-  case final == 1, period {
-    True, _ -> Final
-    False, "Scheduled" -> Scheduled
-    False, _ -> Live(period)
-  }
-}
 ```
 
-`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA, with `AdminPageSharedState` passed into page lifecycle functions for app-wide browser state. `ServerMsg`, `LoadResult`, `load`, optional `handle`, and optional `after_save` define the server boundary. `broadcast_subscriptions` and `apply_broadcast` define live update interest. Rally generates browser functions such as `generated/rally/server.save_admin_games`, server dispatch, SSR loading, hydration, topic sync, and WebSocket transport.
+`Model`, `Message`, `initial_model`, `update`, and `view` are normal Lustre TEA, with page shared state passed into page lifecycle functions for app-wide browser state. `ServerMsg`, `LoadResult`, and `load` define the load boundary. Pages that save data add `handle`, a page-local save error type, and generated browser save calls. Pages that receive live updates add `broadcast_subscriptions` and `apply_broadcast` in a `// BROADCAST` section.
 
 There is no separate API schema. Rally scans page-local handler signatures and wires them into generated browser and server code. Rally uses [Libero](https://hexdocs.pm/libero/) as its lower-level wire codec library, the same way Marmot-generated SQL access code uses SQLite underneath.
 
@@ -456,7 +221,6 @@ gleam test
 ## Influences
 
 - [Lamdera](https://lamdera.com): explicit server handler types as the contract, TEA on both sides
-- [Lustre](https://lustre.build/): TEA, effects, and the client-side UI runtime
 - [elm-land](https://elm.land): file-based routing conventions
 
 ## License
