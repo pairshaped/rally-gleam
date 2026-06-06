@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-06-06T02:40:29Z
-updated_at: 2026-06-06T03:08:06Z
+updated_at: 2026-06-06T03:11:20Z
 ---
 
 ## Problem
@@ -93,3 +93,13 @@ Remaining in this bean: decide whether `initial_model` can shrink further or whe
 ## Decision
 
 Do not keep `loaded_from_wire` as an escape hatch. It is transport-shaped and SSR-specific, so it leaks generated wire plumbing into page code. The current convention is that Rally maps load results into the page-owned `Loaded(Result(data, LoadError))` message shape. If a future page needs custom load-result interpretation, add a symmetric page lifecycle hook that works for browser and SSR instead of reviving `loaded_from_wire`.
+
+
+
+## Progress
+
+- Renamed generated Proute `pages.load_sync(...)` to `pages.initial_page(...)` because it constructs the pure page value and does not load data.
+- Updated Rally SSR generation to call `initial_page(...)` before layering server-loaded data and hydration onto the page.
+- Regenerated Scoreboard Proute and Rally generated files; the old `load_sync` name is gone across Proute, Rally, and Scoreboard.
+
+Decision: keep authored `initial_model` required for now. Proute cannot safely synthesize arbitrary page model constructors, and SSR needs a pure model path that does not run optional browser startup effects from `init`.

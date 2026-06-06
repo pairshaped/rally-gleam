@@ -4591,7 +4591,7 @@ pub fn " <> mount <> "_boot_page(
   " <> server_ssr_mount_context_param(mount, loads, load_context:) <> "
   update_page update_page: fn(" <> pages <> ".Page, " <> pages <> ".Message) -> #(" <> pages <> ".Page, Effect(" <> pages <> ".Message)),
 ) -> #(" <> pages <> ".Page, List(String)) {
-  let page = " <> pages <> ".load_sync(page_shared_state, query_params, route)
+  let page = " <> pages <> ".initial_page(page_shared_state, query_params, route)
 
   case " <> mount <> "_load_route(route) {
     " <> prefix <> "NoLoad -> #(page, [])
