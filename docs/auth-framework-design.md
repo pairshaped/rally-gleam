@@ -1,8 +1,8 @@
 # Rally Auth Framework Design
 
-Status: intended design
+Status: intended design, partially implemented runtime support
 Date: 2026-05-10
-Last checked: 2026-05-13
+Last checked: 2026-06-06
 
 ## Problem
 
@@ -10,6 +10,11 @@ Rally apps need a convention for authentication and authorization that works
 across SSR page loads, browser navigation, page-local saves, and WebSocket
 broadcasts. App code should define identity and policy; Rally should call those
 hooks consistently without inspecting app domain types.
+
+Current Rally exposes runtime auth helpers and generated mount auth checks. The
+full `auth.gleam` discovery flow, identity-threaded page handler signatures,
+`derive_state`, and per-page `authorize` plumbing described below are intended
+design. Do not treat this document as the current generated app contract.
 
 ## Design
 

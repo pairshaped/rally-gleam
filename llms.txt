@@ -17,6 +17,7 @@ gleam new my_app
 cd my_app
 gleam add rally libero
 gleam run -m rally init
+gleam run -m rally migrate
 gleam run -m rally build
 gleam run
 ```
@@ -50,7 +51,7 @@ A page file in `src/<namespace>/pages/` maps to a URL route. The filename determ
 pub type Model { ... }
 pub type Message { ... }
 pub fn initial_model(page_shared_state, query_params) -> Model
-pub fn update(model: Model, msg: Message) -> #(Model, Effect(Message))
+pub fn update(page_shared_state, model: Model, msg: Message) -> #(Model, Effect(Message))
 pub fn view(model: Model) -> Element(Message)
 ```
 
@@ -186,13 +187,16 @@ gleam format --check
 gleam docs build
 ```
 
-Integration check with the curling/v3 app:
+Integration check with the Rally Scoreboard example:
 
 ```sh
-cd /Users/daverapin/projects/curling/v3
-bin/regen
+cd ../rally-scoreboard-example
+gleam clean
+gleam run -m rally reset
+gleam run -m rally regen
 gleam run -m rally build
-gleam run
+mkdir -p tmp
+TEMP=$PWD/tmp gleam test
 ```
 
 ## Links

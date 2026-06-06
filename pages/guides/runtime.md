@@ -42,7 +42,15 @@ If your app has a supervisor, use `system.supervised_job_runner` and add the ret
 
 ## `auth`
 
-Rally's auth system is convention-based: it activates when a file at `src/<namespace>/auth.gleam` exists in your project. The `auth` module defines policy types (`Required` and `Optional`) that page modules reference to declare whether a visitor must be authenticated. `LoadResult` carries the auth outcome into SSR so pages can render differently for logged-in and anonymous users. Your identity type threads through the whole pipeline, from the auth check to the page's model.
+`rally/runtime/auth` defines shared policy and load-result types for auth-aware
+pages. `Required` and `Optional` are the policy values used by the intended
+page-auth contract, and `LoadResult` carries page data, redirects, and cookies
+for auth-aware server rendering.
+
+Current generated apps should treat app identity lookup and authorization as
+app-owned. Rally ships the runtime auth helpers and generated mount auth checks,
+but the fuller `src/<namespace>/auth.gleam` convention is still intended design,
+not the current generated app contract.
 
 ## `env`
 
