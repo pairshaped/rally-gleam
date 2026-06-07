@@ -3525,7 +3525,10 @@ fn server_ws_transport_loop(
     Some(load_context) -> {
       let load_context_type = load_context_type_ref(load_context)
       let default_handler_fields =
-        server_ws_default_handler_fields(loads, load_context: Some(load_context))
+        server_ws_default_handler_fields(
+          loads,
+          load_context: Some(load_context),
+        )
       let handlers = case default_handler_fields {
         "" -> "  let handlers = Handlers"
         fields -> "  let handlers =
@@ -5191,10 +5194,15 @@ fn drop_pages_prefix(parts: List(String)) -> List(String) {
 }
 
 fn pascal_segment(segment: String) -> String {
-  case string.pop_grapheme(segment) {
-    Ok(#(first, rest)) -> string.uppercase(first) <> rest
-    Error(Nil) -> segment
-  }
+  segment
+  |> string.split("_")
+  |> list.map(fn(part) {
+    case string.pop_grapheme(part) {
+      Ok(#(first, rest)) -> string.uppercase(first) <> rest
+      Error(Nil) -> part
+    }
+  })
+  |> string.join("")
 }
 
 fn server_ssr_hydration_payload(load: LoadRpc) -> String {
