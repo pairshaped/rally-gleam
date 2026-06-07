@@ -19,9 +19,10 @@ export function listen_shell_navigation(dispatch) {
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
-    const link = event.target?.closest?.("a[data-rally-spa-nav]");
+    const link = event.target?.closest?.("a[href]");
     if (!link) return;
     if (link.target === "_blank" || link.hasAttribute("download")) return;
+    if (link.hasAttribute("data-rally-document-nav")) return;
 
     const location = globalThis.location;
     if (!location) return;
@@ -31,6 +32,10 @@ export function listen_shell_navigation(dispatch) {
 
     const destination = url.pathname + url.search;
     const current = location.pathname + location.search;
+    if (mount_for_path(url.pathname) !== mount_for_path(location.pathname)) {
+      return;
+    }
+
     if (destination === current) {
       if (url.hash && url.hash !== location.hash) return;
       event.preventDefault();
@@ -40,4 +45,10 @@ export function listen_shell_navigation(dispatch) {
     event.preventDefault();
     dispatch(destination);
   });
+}
+
+function mount_for_path(path) {
+  const parts = path.split("/").filter(Boolean);
+  if (parts[0] === "admin" || parts[1] === "admin") return "admin";
+  return "public";
 }

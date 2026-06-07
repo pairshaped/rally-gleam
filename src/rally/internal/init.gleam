@@ -846,7 +846,6 @@ pub fn public(
       html.a(
         [
           attribute.href(\"/\"),
-          attribute.attribute(\"data-rally-spa-nav\", \"1\"),
         ],
         [html.text(\"Rally\")],
       ),

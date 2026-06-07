@@ -3486,12 +3486,12 @@ fn server_ws_has_direct_page_loads(
 }
 
 fn server_ws_load_context_import(
-  loads: List(LoadRpc),
+  _loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
 ) -> String {
-  case server_ws_has_direct_loads(loads, load_context:) {
-    True -> load_context_import(load_context, "@target(erlang)")
-    False -> ""
+  case load_context {
+    Some(_) -> load_context_import(load_context, "@target(erlang)")
+    None -> ""
   }
 }
 
@@ -3524,6 +3524,15 @@ fn server_ws_transport_loop(
   case load_context {
     Some(load_context) -> {
       let load_context_type = load_context_type_ref(load_context)
+      let default_handler_fields =
+        server_ws_default_handler_fields(loads, load_context: Some(load_context))
+      let handlers = case default_handler_fields {
+        "" -> "  let handlers = Handlers"
+        fields -> "  let handlers =
+    Handlers(
+" <> fields <> "
+    )"
+      }
       "
 @target(erlang)
 pub type ConnectionState(admin_auth) {
@@ -3558,10 +3567,7 @@ pub fn handler(
   msg msg: WebsocketMessage(BitArray),
   conn conn: WebsocketConnection,
 ) -> Next(ConnectionState(admin_auth), BitArray) {
-  let handlers =
-    Handlers(
-" <> server_ws_default_handler_fields(loads, load_context: Some(load_context)) <> "
-    )
+" <> handlers <> "
 
   case msg {
     mist.Binary(data) -> {
@@ -4516,9 +4522,13 @@ fn load_mount_from_module(module_path: String) -> String {
 }
 
 fn load_mounts(loads: List(LoadRpc)) -> List(String) {
-  loads
-  |> list.map(load_mount)
-  |> list.unique
+  case loads {
+    [] -> ["admin", "public"]
+    _ ->
+      loads
+      |> list.map(load_mount)
+      |> list.unique
+  }
 }
 
 fn mount_loads(loads: List(LoadRpc), mount: String) -> List(LoadRpc) {
@@ -4620,17 +4630,17 @@ fn server_ssr_mount_uses_direct_context(
   loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
 ) -> Bool {
-  server_ssr_has_direct_loads(loads, load_context:)
+  option.is_some(load_context)
   && !server_ssr_has_indirect_loads(loads, load_context:)
 }
 
 fn server_ssr_load_context_import(
-  direct_loads: List(LoadRpc),
+  _direct_loads: List(LoadRpc),
   load_context load_context: Option(LoadContext),
 ) -> String {
-  case direct_loads {
-    [] -> ""
-    _ -> load_context_import(load_context, "@target(erlang)")
+  case load_context {
+    Some(_) -> load_context_import(load_context, "@target(erlang)")
+    None -> ""
   }
 }
 

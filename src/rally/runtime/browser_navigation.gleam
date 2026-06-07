@@ -20,7 +20,12 @@ pub fn listen_browser_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
   )
 }
 
-/// Listen for links Rally has marked as SPA-owned.
+/// Listen for normal same-mount document links.
+///
+/// Same-origin links in the current mount are SPA navigations by default. Links
+/// that switch mounts, such as public to admin, are left alone so the browser
+/// loads the correct entrypoint. Add `data-rally-document-nav` when an otherwise
+/// interceptable link should force a document navigation.
 pub fn listen_shell_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
   effect.from(fn(dispatch) {
     do_listen_shell_navigation(fn(path) { dispatch(to_message(path)) })
