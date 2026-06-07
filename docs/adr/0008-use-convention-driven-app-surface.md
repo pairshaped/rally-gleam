@@ -37,9 +37,20 @@ Rally owns the standard framework surface around that app code:
 - HTTP routing shell, public/admin mount dispatch, and fallback behavior.
 - SSR document boot mechanics, hydration attributes, boot data encoding,
   browser entrypoint selection, and query-param extraction.
+- Dark-mode first-paint mechanics and browser persistence. The generated theme
+  helper treats `dark=1` as the only persisted dark-mode cookie value. Missing
+  cookies or any other value use the light document theme on the server, while
+  browser startup can still fall back to the device color-scheme preference
+  before a user choice is persisted.
 - Browser lifecycle ceremony: mount startup, current-path boot, page effect
   wiring, server-frame handling, navigation effects, browser navigation
   listeners, dark-mode runtime effects, and topic sync.
+- Browser navigation policy. Rally wraps browser URL/navigation helpers such as
+  Modem rather than exposing a broad same-origin interceptor as the app contract.
+  The wrapper owns link eligibility, mount ownership, and server-owned route
+  escape behavior before pushing browser history. Rally uses Modem for browser
+  URL-change messages, while generated mounts keep silent history pushes for
+  navigations they have already handled.
 - WebSocket transport ceremony: upgrade handler shape, per-connection state
   threading, topic selector setup, topic joins/leaves, custom-frame forwarding,
   load/save dispatch, request/result encoding, and broadcast delivery.

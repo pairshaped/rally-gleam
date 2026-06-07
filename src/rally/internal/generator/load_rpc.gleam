@@ -305,24 +305,6 @@ pub fn query_string_for_path(_path: String) -> String {
 }
 
 @target(javascript)
-@external(javascript, \"./browser_ffi.mjs\", \"push_path\")
-pub fn push_path(_path: String) -> Nil {
-  Nil
-}
-
-@target(javascript)
-@external(javascript, \"./browser_ffi.mjs\", \"listen_popstate\")
-pub fn listen_popstate(_dispatch: fn(String) -> Nil) -> Nil {
-  Nil
-}
-
-@target(javascript)
-@external(javascript, \"./browser_ffi.mjs\", \"listen_spa_navigation\")
-pub fn listen_spa_navigation(_dispatch: fn(String) -> Nil) -> Nil {
-  Nil
-}
-
-@target(javascript)
 @external(javascript, \"./browser_ffi.mjs\", \"device_dark_mode\")
 pub fn device_dark_mode() -> Bool {
   False
@@ -390,46 +372,6 @@ export function query_string_for_path(path) {
   return new URL(path, base).searchParams.toString();
 }
 
-export function push_path(path) {
-  const history = globalThis.history;
-  const location = globalThis.location;
-  if (!history || !location) return;
-  const current = location.pathname + location.search;
-  if (current === path) return;
-  history.pushState(null, \"\", path);
-}
-
-export function listen_popstate(dispatch) {
-  globalThis.addEventListener?.(\"popstate\", () => {
-    dispatch(path());
-  });
-}
-
-export function listen_spa_navigation(dispatch) {
-  globalThis.document?.addEventListener?.(\"click\", event => {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-
-    const link = event.target?.closest?.(\"a[data-rally-spa-nav]\");
-    if (!link) return;
-
-    const location = globalThis.location;
-    if (!location) return;
-
-    const url = new URL(link.href, location.href);
-    if (url.origin !== location.origin) return;
-
-    const destination = url.pathname + url.search;
-    if (destination === location.pathname + location.search) {
-      event.preventDefault();
-      return;
-    }
-
-    event.preventDefault();
-    dispatch(destination);
-  });
-}
-
 const darkModeCookie = \"dark\";
 
 export function device_dark_mode() {
@@ -490,6 +432,8 @@ import gleam/result
 import gleam/uri
 @target(javascript)
 import lustre/effect.{type Effect}
+@target(javascript)
+import rally/runtime/browser_navigation
 
 @target(javascript)
 pub fn device_dark_mode() -> Bool {
@@ -531,21 +475,17 @@ pub fn startup_effects(
 
 @target(javascript)
 pub fn push_path(path: String) -> Effect(msg) {
-  effect.from(fn(_dispatch) { browser.push_path(path) })
+  browser_navigation.push_path(path)
 }
 
 @target(javascript)
 fn listen_for_browser_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
-  effect.from(fn(dispatch) {
-    browser.listen_popstate(fn(path) { dispatch(to_message(path)) })
-  })
+  browser_navigation.listen_browser_navigation(to_message)
 }
 
 @target(javascript)
 fn listen_for_shell_navigation(to_message: fn(String) -> msg) -> Effect(msg) {
-  effect.from(fn(dispatch) {
-    browser.listen_spa_navigation(fn(path) { dispatch(to_message(path)) })
-  })
+  browser_navigation.listen_shell_navigation(to_message)
 }
 
 @target(javascript)

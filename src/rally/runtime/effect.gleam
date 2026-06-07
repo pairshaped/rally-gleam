@@ -2,6 +2,7 @@
 //// broadcast fan-out.
 
 import lustre/effect
+import rally/runtime/browser_navigation
 import rally/runtime/internal/effect_state
 import rally/runtime/topics
 
@@ -39,19 +40,11 @@ pub fn broadcast_to_app(msg: a) -> Effect(b) {
   })
 }
 
-/// Navigate to a new URL path. Pushes a new history entry and triggers
-/// a route change via modem's popstate listener.
+/// Navigate to a new URL path. Pushes a new history entry and triggers Rally's
+/// browser navigation listener.
 /// On the server, this is a no-op.
 pub fn navigate(path: String) -> Effect(a) {
-  effect.from(fn(_dispatch) {
-    let Nil = do_navigate(path)
-    Nil
-  })
-}
-
-@external(javascript, "./rally_effect_ffi.mjs", "navigate")
-fn do_navigate(_path: String) -> Nil {
-  Nil
+  browser_navigation.navigate(path)
 }
 
 /// Toggle dark mode. On the client, sets the cookie and toggles the class.

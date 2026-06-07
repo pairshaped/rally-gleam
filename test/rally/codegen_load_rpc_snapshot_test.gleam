@@ -117,6 +117,12 @@ pub fn load_rpc_generated_files_stay_in_rally_namespace_test() {
 pub fn load_rpc_browser_runtime_helpers_are_app_neutral_test() {
   content_for("src/generated/rally/browser_ffi.mjs")
   |> string.contains("data-rally-spa-nav")
+  |> should.be_false()
+  content_for("src/generated/rally/browser_mount.gleam")
+  |> string.contains("import rally/runtime/browser_navigation")
+  |> should.be_true()
+  content_for("src/generated/rally/browser_mount.gleam")
+  |> string.contains("browser_navigation.listen_shell_navigation")
   |> should.be_true()
   content_for("src/generated/rally/client_transport_ffi.mjs")
   |> string.contains("rally:to-server")
