@@ -579,6 +579,12 @@ function send_request_frame(requestId, frame) {
 export function send_topic_frame(topics) {
   const names = Array.from(topics);
   const text = names.length === 0 ? \"unsub\" : \"sub:\" + names.join(\",\");
+
+  if (text === \"unsub\" && !currentTopicFrame && !sentTopicFrame) {
+    pending = pending.filter(frame => !is_topic_frame(frame));
+    return undefined;
+  }
+
   currentTopicFrame = text;
 
   if (socket && socket.readyState === WebSocket.OPEN) {
