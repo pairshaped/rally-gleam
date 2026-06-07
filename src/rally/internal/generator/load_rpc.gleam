@@ -69,6 +69,40 @@ pub type LoadContext {
   LoadContext(module_path: String, type_name: String)
 }
 
+fn int_parse_body(
+  route_args route_args: List(#(String, LoadArg)),
+  success success: String,
+  error error: String,
+) -> String {
+  route_args
+  |> list.filter_map(fn(pair) {
+    let #(route_field, arg) = pair
+    case arg.type_ref {
+      "Int" -> Ok(#(route_field, arg.label))
+      _ -> Error(Nil)
+    }
+  })
+  |> nested_int_parse_body(success:, error:)
+}
+
+fn nested_int_parse_body(
+  parsers parsers: List(#(String, String)),
+  success success: String,
+  error error: String,
+) -> String {
+  case parsers {
+    [] -> success
+    [#(route_field, label), ..rest] -> "case int.parse(" <> route_field <> ") {
+            Ok(" <> label <> ") -> " <> nested_int_parse_body(
+        rest,
+        success:,
+        error:,
+      ) <> "
+            Error(Nil) -> " <> error <> "
+          }"
+  }
+}
+
 type SourceModule {
   SourceModule(
     source_module: String,
@@ -1717,26 +1751,14 @@ fn browser_app_load_route_arg_body(
   load: LoadRpc,
   route_module: String,
 ) -> String {
-  let args = browser_app_route_args(load)
-  let route_fields = list.map(args, fn(pair) { pair.0 })
-  let load_args = list.map(args, fn(pair) { pair.1 })
+  let route_args = browser_app_route_args(load)
+  let load_args = list.map(route_args, fn(pair) { pair.1 })
 
   case browser_app_supported_route_args(load) {
     False -> mount_type_prefix(load_mount(load)) <> "NoLoad"
     True -> {
-      let parsers =
-        list.zip(route_fields, load_args)
-        |> list.map(fn(pair) {
-          let #(route_field, arg) = pair
-          case arg.type_ref {
-            "Int" -> Some("case int.parse(" <> route_field <> ") {
-          Ok(" <> arg.label <> ") -> ")
-            _ -> None
-          }
-        })
-        |> option.values
-      case parsers {
-        [] ->
+      case list.any(load_args, fn(arg) { arg.type_ref == "Int" }) {
+        False ->
           browser_app_load_route_constructor(
             load,
             route_module,
@@ -1744,28 +1766,22 @@ fn browser_app_load_route_arg_body(
               |> list.map(fn(arg) { arg.label <> ":" })
               |> string.join(", "),
           )
-        _ -> {
-          let close_parens =
-            list.repeat("}", list.length(parsers))
-            |> string.join("\n")
+        True -> {
           let load_arg_labels =
             load_args
             |> list.map(fn(arg) { arg.label <> ":" })
             |> string.join(", ")
           let no_load = mount_type_prefix(load_mount(load)) <> "NoLoad"
 
-          string.join(parsers, "")
-          <> browser_app_load_route_constructor(
-            load,
-            route_module,
-            load_arg_labels,
+          int_parse_body(
+            route_args:,
+            success: browser_app_load_route_constructor(
+              load,
+              route_module,
+              load_arg_labels,
+            ),
+            error: no_load,
           )
-          <> "
-          Error(Nil) -> "
-          <> no_load
-          <> "
-        "
-          <> close_parens
         }
       }
     }
@@ -1938,25 +1954,11 @@ fn browser_app_int_load_arg_body(
   route_fields: List(String),
   load_args: List(LoadArg),
 ) -> String {
-  let parsers =
-    list.zip(route_fields, load_args)
-    |> list.map(fn(pair) {
-      let #(route_field, arg) = pair
-      case arg.type_ref {
-        "Int" -> Some("case int.parse(" <> route_field <> ") {
-            Ok(" <> arg.label <> ") -> ")
-        _ -> None
-      }
-    })
-    |> option.values
-
-  let close_parens =
-    list.repeat("}", list.length(parsers))
-    |> string.join("\n")
-
-  string.join(parsers, "") <> browser_app_transport_call(load) <> "
-            Error(Nil) -> effect.none()
-          " <> close_parens
+  int_parse_body(
+    route_args: list.zip(route_fields, load_args),
+    success: browser_app_transport_call(load),
+    error: "effect.none()",
+  )
 }
 
 fn browser_app_transport_call(load: LoadRpc) -> String {
@@ -5020,32 +5022,15 @@ fn server_ssr_int_load_arg_body(
   load_args: List(LoadArg),
   load_context load_context: String,
 ) -> String {
-  let parsers =
-    list.zip(route_fields, load_args)
-    |> list.map(fn(pair) {
-      let #(route_field, arg) = pair
-      case arg.type_ref {
-        "Int" -> Some("case int.parse(" <> route_field <> ") {
-            Ok(" <> arg.label <> ") -> ")
-        _ -> None
-      }
-    })
-    |> option.values
-
-  let close_parens =
-    list.repeat("}", list.length(parsers))
-    |> string.join("\n")
-
-  string.join(parsers, "")
-  <> generated_direct_load_call(
-    load:,
-    load_context:,
-    args: call_args(load.args),
+  int_parse_body(
+    route_args: list.zip(route_fields, load_args),
+    success: generated_direct_load_call(
+      load:,
+      load_context:,
+      args: call_args(load.args),
+    ),
+    error: "Error([\"Invalid route parameter.\"])",
   )
-  <> "
-            Error(Nil) -> Error([\"Invalid route parameter.\"])
-          "
-  <> close_parens
 }
 
 fn generated_direct_load_call(
