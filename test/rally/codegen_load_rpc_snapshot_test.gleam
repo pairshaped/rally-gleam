@@ -513,6 +513,96 @@ pub type GameSummary {
   )) = list.find(discovered, fn(load) { load.name == "public_games" })
 }
 
+pub fn load_rpc_discover_scopes_unprefixed_page_load_messages_test() {
+  let root = "./tmp/load_rpc_unprefixed_load_names_test"
+  let src = root <> "/src"
+  let _ = simplifile.delete(file_or_dir_at: root)
+  let assert Ok(Nil) =
+    simplifile.create_directory_all(src <> "/public/pages/games/id_")
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games.gleam",
+      "pub type ServerMsg {
+  Load
+}
+
+pub type LoadResult {
+  Loaded(games: List(GameSummary))
+}
+
+pub type GameSummary {
+  GameSummary(id: Int)
+}
+",
+    )
+  let assert Ok(Nil) =
+    simplifile.write(
+      src <> "/public/pages/games/id_.gleam",
+      "pub type ServerMsg {
+  Load(game_id: Int)
+}
+
+pub type LoadResult {
+  Loaded(id: Int)
+}
+",
+    )
+
+  let assert Ok(discovered) = discover(src)
+
+  let assert Ok(LoadRpc(
+    name: "public_games",
+    module_path: "public/pages/games",
+    wire_module: "public/pages/games",
+    import_on_client: False,
+    request_constructor: "Load",
+    load_result_constructor: "Loaded",
+    route_modules: ["public/pages/games"],
+    navigation_sources: [],
+    update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
+    args: [],
+    save_result_type: None,
+  )) =
+    list.find(discovered, fn(load) { load.module_path == "public/pages/games" })
+  let assert Ok(LoadRpc(
+    name: "public_games_id",
+    module_path: "public/pages/games/id_",
+    wire_module: "public/pages/games/id_",
+    import_on_client: False,
+    request_constructor: "Load",
+    load_result_constructor: "Loaded",
+    route_modules: ["public/pages/games/id_"],
+    navigation_sources: [],
+    update_uses_page_shared_state: False,
+    broadcast_subscription_modules: [],
+    apply_broadcast_modules: [],
+    args: [LoadArg(label: "game_id", type_ref: "Int")],
+    save_result_type: None,
+  )) =
+    list.find(discovered, fn(load) {
+      load.module_path == "public/pages/games/id_"
+    })
+
+  let generated = generate(discovered, push_contract: None, load_context: None)
+  let assert Ok(GeneratedFile(content: client_protocol, ..)) =
+    list.find(generated, fn(file) {
+      let GeneratedFile(path:, ..) = file
+      path == "src/generated/rally/client_protocol.gleam"
+    })
+
+  client_protocol
+  |> string.contains("pub fn encode_public_games_request")
+  |> should.be_true()
+  client_protocol
+  |> string.contains("pub fn encode_public_games_id_request")
+  |> should.be_true()
+  client_protocol
+  |> string.contains("pub fn encode__request")
+  |> should.be_false()
+}
+
 pub fn load_rpc_discover_rejects_app_owned_wire_payload_types_test() {
   let root = "./tmp/load_rpc_boundary_test"
   let src = root <> "/src"

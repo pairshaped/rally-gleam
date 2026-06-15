@@ -2598,10 +2598,7 @@ fn discover_source(
 
           load_variants
           |> list.try_map(fn(variant) {
-            let name =
-              variant.name
-              |> string.drop_end(string.length("Load"))
-              |> to_snake_case
+            let name = load_rpc_name(module_path, variant.name)
             use args <- result.try(load_args(
               fields: variant.fields,
               resolver: resolver,
@@ -2627,6 +2624,37 @@ fn discover_source(
         }
       }
     }
+  }
+}
+
+fn load_rpc_name(module_path: String, constructor: String) -> String {
+  let from_constructor =
+    constructor
+    |> string.drop_end(string.length("Load"))
+    |> to_snake_case
+
+  case from_constructor {
+    "" -> load_rpc_name_from_module(module_path)
+    name -> name
+  }
+}
+
+fn load_rpc_name_from_module(module_path: String) -> String {
+  let mount = load_mount_from_module(module_path)
+  let page =
+    module_path
+    |> page_segments_from_module
+    |> list.map(fn(segment) {
+      case string.ends_with(segment, "_") {
+        True -> string.drop_end(segment, 1)
+        False -> segment
+      }
+    })
+    |> string.join("_")
+
+  case page {
+    "" -> mount
+    _ -> mount <> "_" <> page
   }
 }
 
