@@ -201,6 +201,13 @@ fn wait_for_cli_build_cache(attempts: Int) -> Nil {
 pub fn scoreboard_example_build_test() {
   let dir = rally_root() <> "/../rally-scoreboard-example"
   let assert Some(gleam) = find_executable("gleam")
+  let #(deps_exit, deps_out) =
+    run_in_dir(gleam, ["deps", "update", "rally"], dir)
+  case deps_exit {
+    0 -> Nil
+    _ -> panic as { "Rally Scoreboard dependency update failed: " <> deps_out }
+  }
+
   let #(rally_build_exit, rally_build_out) =
     run_in_dir(gleam, ["run", "-m", "rally", "build"], dir)
   case rally_build_exit {

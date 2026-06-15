@@ -1,5 +1,5 @@
 name = "rally"
-version = "2.0.0"
+version = "2.0.1"
 description = "A web framework for building server-rendered Lustre apps in Gleam."
 licences = ["MIT"]
 target = "erlang"
